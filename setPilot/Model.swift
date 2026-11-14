@@ -47,6 +47,8 @@ final class Model {
     var tempRange: ClosedRange<Double> = 2200...6500
 
     var mac: String?
+    var module: String?
+    var firmware: String?
     var rssi: Int?
     var info: [String: String] = [:] // method -> pretty-printed result
     enum Link { case none, connecting, connected, unreachable }
@@ -103,6 +105,8 @@ final class Model {
         pending = false
         mismatch = nil
         mac = nil
+        module = nil
+        firmware = nil
         rssi = nil
         info = [:]
         live = false
@@ -110,6 +114,7 @@ final class Model {
         status = ""
         bulb.send("getPilot", retry: true)
         bulb.send("getModelConfig", retry: true)
+        bulb.send("getSystemConfig", retry: true)
         startLiveUpdates(ip)
     }
 
@@ -260,6 +265,8 @@ final class Model {
             info[method] = pretty(result)
         case "getSystemConfig", "getPower":
             if let m = result["mac"] as? String { mac = m }
+            if let m = result["moduleName"] as? String { module = m }
+            if let f = result["fwVersion"] as? String { firmware = f }
             info[method] = pretty(result)
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !liveStatus.hasPrefix("Live updates on") {

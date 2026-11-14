@@ -16,7 +16,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             bulbPanel
             lightPanel
             commandPanel
@@ -41,7 +41,17 @@ struct ContentView: View {
     // MARK: Bulb
 
     private var bulbPanel: some View {
-        GroupBox {
+        Panel("Bulb") {
+            Button {
+                model.sync()
+            } label: {
+                Label("Sync", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("r")
+            .disabled(model.link == .none)
+            .help("Read the bulb's current state (⌘R)")
+        } content: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     TextField("IP address", text: $ip, prompt: Text("Bulb IP address"))
@@ -57,32 +67,21 @@ struct ContentView: View {
                         .frame(width: 8, height: 8)
                     Text(linkText)
                     if model.link == .connected {
-                        Text(model.live ? "· Live updates" : "· No live updates")
+                        Text("·").foregroundStyle(.tertiary)
+                        Text(model.live ? "Live updates" : "No live updates")
                             .foregroundStyle(.secondary)
                             .help(model.liveStatus)
                     }
-                    Spacer()
-                    Button {
-                        model.sync()
-                    } label: {
-                        Label("Sync", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut("r")
-                    .disabled(model.link == .none)
-                    .help("Read the bulb's current state (⌘R)")
                 }
                 .font(.callout)
+                .padding(.leading, 2)
             }
-            .padding(6)
-        } label: {
-            Text("Bulb")
         }
     }
 
     @ViewBuilder private var findButton: some View {
         if model.discovered.count > 1 && !model.discovering {
-            Menu("\(model.discovered.count) found") {
+            Menu("\(model.discovered.count) Found") {
                 ForEach(model.discovered) { d in
                     Button("\(d.ip)  —  \(d.mac)") { use(d.ip) }
                 }
@@ -124,24 +123,27 @@ struct ContentView: View {
     // MARK: Light
 
     private var lightPanel: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Toggle("Power", isOn: Binding(get: { model.isOn ?? false }, set: { model.power($0) }))
-                        .toggleStyle(.switch)
-                        .fixedSize()
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                        .opacity(model.pending ? 1 : 0)
-                        .help("Waiting for the bulb to confirm")
-                    Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
+        Panel("Light") {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .opacity(model.pending ? 1 : 0)
+                    .help("Waiting for the bulb to confirm")
+                Toggle("Power", isOn: Binding(get: { model.isOn ?? false }, set: { model.power($0) }))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
                     .labelsHidden()
-                    .fixedSize()
+                    .help("Power")
+            }
+        } content: {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
+                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .frame(maxWidth: .infinity) // centred
 
                 Divider()
 
@@ -150,14 +152,14 @@ struct ContentView: View {
                     ChannelSlider(label: "Red", tint: .red, range: 0...255, value: bind(\.r))
                     ChannelSlider(label: "Green", tint: .green, range: 0...255, value: bind(\.g))
                     ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: bind(\.b))
-                    ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
-                    ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
+                    ChannelSlider(label: "Cool white", tint: .cyan, range: 0...255, value: bind(\.c))
+                    ChannelSlider(label: "Warm white", tint: .orange, range: 0...255, value: bind(\.w))
                 case .temp:
                     ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
                                   marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
                                   value: bind(\.temp))
                 case .scene:
-                    HStack {
+                    HStack(spacing: 8) {
                         Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
                         Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                             ForEach(Scenes.all) { Text($0.name).tag($0.id) }
@@ -174,19 +176,14 @@ struct ContentView: View {
                 ChannelSlider(label: "Dimming", range: model.minDimming...100, value: bind(\.dimming))
 
                 if model.mode == .rgbcw {
-                    HStack {
-                        Spacer()
-                        Button("Set All Channels to 0") {
-                            model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
-                            model.changed()
-                        }
-                        .controlSize(.small)
+                    Button("Set All Channels to 0") {
+                        model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
+                        model.changed()
                     }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .padding(6)
-        } label: {
-            Text("Light")
         }
         .disabled(model.link != .connected)
     }
@@ -194,43 +191,43 @@ struct ContentView: View {
     // MARK: Last command
 
     private var commandPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
+        Panel("Last Command") {
+            Button {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(#"{"method":"setPilot","params":\#(model.lastSent)}"#, forType: .string)
+            } label: {
+                Label("Copy JSON", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.lastSent.isEmpty)
+            .help("Copy the full setPilot request as JSON")
+        } content: {
+            VStack(alignment: .leading, spacing: 8) {
                 Group {
                     if model.lastSent.isEmpty {
-                        Text("No command sent yet").foregroundStyle(.tertiary)
+                        Text("Nothing sent yet").foregroundStyle(.tertiary)
                     } else {
                         Text("setPilot ").foregroundStyle(.secondary) + Text(JSONHighlighter.highlight(model.lastSent))
                     }
                 }
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.setString(#"{"method":"setPilot","params":\#(model.lastSent)}"#, forType: .string)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .disabled(model.lastSent.isEmpty)
-                .help("Copy the full setPilot request as JSON")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
 
-            if let mismatch = model.mismatch {
-                Label(mismatch, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
-            }
-            if !model.status.isEmpty {
-                Text(model.status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let mismatch = model.mismatch {
+                    Label(mismatch, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                } else if model.status == "Bulb confirmed" {
+                    Label("Bulb confirmed", systemImage: "checkmark.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else if !model.status.isEmpty {
+                    Text(model.status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -238,33 +235,47 @@ struct ContentView: View {
     // MARK: Device
 
     private var devicePanel: some View {
-        GroupBox {
-            HStack(spacing: 8) {
-                LabeledContent("MAC address") {
-                    Text(model.mac ?? "—")
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
+        Panel("Device") {
+            Button {
+                model.readConfig()
+                showingConfig = true
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Device configuration")
+            .accessibilityLabel("Device configuration")
+            .disabled(model.link != .connected)
+            .popover(isPresented: $showingConfig, arrowEdge: .bottom) { configPopover }
+        } content: {
+            HStack(alignment: .top) {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
+                    GridRow {
+                        Text("MAC address").foregroundStyle(.secondary)
+                        deviceValue(model.mac, monospaced: true)
+                    }
+                    GridRow {
+                        Text("Module").foregroundStyle(.secondary)
+                        deviceValue(model.module)
+                    }
+                    GridRow {
+                        Text("Firmware").foregroundStyle(.secondary)
+                        deviceValue(model.firmware)
+                    }
                 }
                 .font(.callout)
-                .fixedSize()
-                Button {
-                    model.readConfig()
-                    showingConfig = true
-                } label: {
-                    Image(systemName: "info.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Device configuration")
-                .accessibilityLabel("Device configuration")
-                .popover(isPresented: $showingConfig, arrowEdge: .bottom) { configPopover }
                 Spacer()
                 Button("Reboot…") { confirmingReboot = true }
+                    .disabled(model.link != .connected)
             }
-            .disabled(model.link != .connected)
-            .padding(6)
-        } label: {
-            Text("Device")
         }
+    }
+
+    private func deviceValue(_ value: String?, monospaced: Bool = false) -> some View {
+        Text(value ?? "—")
+            .fontDesign(monospaced ? .monospaced : .default)
+            .foregroundStyle(value == nil ? HierarchicalShapeStyle.tertiary : .primary)
+            .textSelection(.enabled)
     }
 
     private var configPopover: some View {
@@ -326,8 +337,38 @@ struct ContentView: View {
     }
 }
 
+/// A titled section: a heading with optional trailing controls, above a group box.
+struct Panel<Accessory: View, Content: View>: View {
+    let title: String
+    let accessory: Accessory
+    let content: Content
+
+    init(_ title: String, @ViewBuilder accessory: () -> Accessory, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.accessory = accessory()
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(title).font(.headline)
+                Spacer(minLength: 8)
+                accessory
+            }
+            .frame(minHeight: 22) // same height with or without controls
+            .padding(.horizontal, 4)
+            GroupBox {
+                content
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
 struct ChannelSlider: View {
-    static let labelWidth: CGFloat = 64
+    static let labelWidth: CGFloat = 76
 
     let label: String
     var tint: Color? = nil
