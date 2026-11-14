@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: xcodebuild -version
       - name: Build
@@ -23,7 +23,7 @@ jobs:
           codesign -d --entitlements - build/Release/setPilot.app
       - name: Zip
         run: ditto -c -k --keepParent build/Release/setPilot.app setPilot.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: setPilot
           path: setPilot.zip
