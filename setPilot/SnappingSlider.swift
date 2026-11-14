@@ -29,8 +29,8 @@ enum SliderScale {
 }
 
 /// A slider that snaps to multiples of `step` when dragged, with arrow keys and with VoiceOver,
-/// and draws tick marks only at `marks`. Optionally shows a colour-temperature strip under the
-/// track (values in kelvin).
+/// and draws labelled marks only at `marks`. Optionally draws the track as a colour-temperature
+/// scale (values in kelvin).
 ///
 /// SwiftUI can't do this on macOS: `Slider(step:)` draws a tick per step, and the macOS 26
 /// `tick:`/`ticks:` APIs are ignored or drawn evenly spaced by the underlying NSSlider. NSSlider's
@@ -81,8 +81,12 @@ struct SnappingSlider: NSViewRepresentable {
         slider.trackFillColor = tint.map { NSColor($0) }
         if mappingChanged { slider.value = current } // keep the knob on the same value
         if container.marks != marks { container.marks = marks }
-        if container.colourTemperatureStrip != colourTemperatureStrip {
-            container.colourTemperatureStrip = colourTemperatureStrip
+        if let cell = slider.cell as? SnapSliderCell {
+            let (scale, range) = (scale, range)
+            cell.barColour = colourTemperatureStrip
+                ? { ColourTemperature.colour(kelvin: scale.value(at: $0, in: range)) }
+                : nil
+            slider.needsDisplay = true
         }
         container.needsDisplay = true // range or scale may have moved the marks
     }
@@ -101,6 +105,11 @@ struct SnappingSlider: NSViewRepresentable {
 
 /// NSSlider working in track positions 0...1; `value` maps through `scale` onto `range`.
 final class SnapSlider: NSSlider {
+    override class var cellClass: AnyClass? {
+        get { SnapSliderCell.self }
+        set {}
+    }
+
     var range: ClosedRange<Double> = 0...1
     var scale: SliderScale = .linear
     var step: Double = 1
@@ -150,16 +159,17 @@ final class SnapSlider: NSSlider {
     }
 }
 
-/// The slider at its natural height, with the optional colour-temperature strip and marks drawn
-/// in their own space below it. (NSSlider centres its track in a taller frame, so drawing them
-/// inside the slider would collide with the knob.)
+/// The slider at its natural height, with labelled marks drawn in their own space below it.
+/// (NSSlider centres its track in a taller frame, so drawing them inside the slider would collide
+/// with the knob.)
 final class SnapSliderContainer: NSView {
-    let slider = SnapSlider()
-    var marks: [Double] = [] { didSet { invalidateIntrinsicContentSize() } }
-    var colourTemperatureStrip = false { didSet { invalidateIntrinsicContentSize() } }
+    /// NSSlider's natural height; the track is centred in it.
+    static let sliderHeight: CGFloat = max(NSSlider().intrinsicContentSize.height, 16)
+    private static let marksSpace: CGFloat = 18 // gap, tick, label
+    private static let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
 
-    private static let stripSpace: CGFloat = 7 // 3 gap + 4 strip
-    private static let marksSpace: CGFloat = 6 // 2 gap + 4 mark
+    let slider = SnapSlider()
+    var marks: [Double] = [] { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -170,47 +180,53 @@ final class SnapSliderContainer: NSView {
 
     override var isFlipped: Bool { true }
 
-    private var sliderHeight: CGFloat { max(slider.intrinsicContentSize.height, 16) }
-
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric,
-               height: sliderHeight + (colourTemperatureStrip ? Self.stripSpace : 0) + (marks.isEmpty ? 0 : Self.marksSpace))
+        NSSize(width: NSView.noIntrinsicMetric, height: Self.sliderHeight + (marks.isEmpty ? 0 : Self.marksSpace))
     }
 
     override func layout() {
         super.layout()
-        slider.frame = NSRect(x: 0, y: 0, width: bounds.width, height: sliderHeight)
+        slider.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Self.sliderHeight)
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        var y = slider.frame.maxY
-
-        if colourTemperatureStrip {
-            // Sample along the track (not in kelvin) so colours line up with the knob on any scale.
-            let samples = 48
-            var colours: [NSColor] = []
-            var locations: [CGFloat] = [] // passed as a C array to NSGradient
-            for i in 0...samples {
-                let p = Double(i) / Double(samples)
-                colours.append(ColourTemperature.colour(kelvin: slider.scale.value(at: p, in: slider.range)))
-                locations.append(CGFloat(p))
-            }
-            let x0 = slider.knobCentreX(at: slider.range.lowerBound)
-            let x1 = slider.knobCentreX(at: slider.range.upperBound)
-            let bar = NSRect(x: x0 - 2, y: y + 3, width: x1 - x0 + 4, height: 4)
-            let path = NSBezierPath(roundedRect: bar, xRadius: 2, yRadius: 2)
-            NSGradient(colors: colours, atLocations: locations, colorSpace: .sRGB)?.draw(in: path, angle: 0)
-            NSColor.separatorColor.setStroke() // keeps the near-white cool end visible
-            path.lineWidth = 0.5
-            path.stroke()
-            y += Self.stripSpace
-        }
-
-        NSColor.tertiaryLabelColor.setFill()
+        let y = slider.frame.maxY
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Self.labelFont,
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
         for mark in marks where slider.range.contains(mark) {
             let x = slider.knobCentreX(at: mark)
-            NSBezierPath(roundedRect: NSRect(x: x - 1, y: y + 2, width: 2, height: 4), xRadius: 1, yRadius: 1).fill()
+            NSColor.tertiaryLabelColor.setFill()
+            NSBezierPath(roundedRect: NSRect(x: x - 0.75, y: y + 1, width: 1.5, height: 4), xRadius: 0.75, yRadius: 0.75).fill()
+            let label = NSAttributedString(string: String(Int(mark)), attributes: attributes)
+            let size = label.size()
+            let lx = min(max(x - size.width / 2, 0), bounds.width - size.width)
+            label.draw(at: NSPoint(x: lx, y: y + 6))
         }
+    }
+}
+
+/// Draws the track as a gradient when `barColour` is set (position 0...1 → colour).
+final class SnapSliderCell: NSSliderCell {
+    var barColour: ((Double) -> NSColor)?
+
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        guard let barColour else { return super.drawBar(inside: rect, flipped: flipped) }
+        let samples = 48
+        var colours: [NSColor] = []
+        var locations: [CGFloat] = []
+        for i in 0...samples {
+            let p = Double(i) / Double(samples)
+            colours.append(barColour(p))
+            locations.append(CGFloat(p))
+        }
+        let r = rect.height > 6 ? rect.insetBy(dx: 0, dy: (rect.height - 6) / 2) : rect
+        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        NSGradient(colors: colours, atLocations: locations, colorSpace: .sRGB)?.draw(in: path, angle: 0)
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
     }
 }

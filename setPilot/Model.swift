@@ -61,7 +61,12 @@ final class Model {
     var mac: String?
     var rssi: Int?
     var info: [String: String] = [:] // method -> pretty-printed result
-    var status = "Not connected"
+    enum Link { case none, connecting, connected, unreachable }
+    /// Whether the bulb has answered since the last Connect.
+    var link: Link = .none
+    /// Registered for, and receiving, syncPilot pushes.
+    var live = false
+    var status = ""
     var liveStatus = "Live updates off"
     var lastSent = ""
     /// A setPilot hasn't been read back yet; the UI shows what was requested meanwhile.
@@ -86,6 +91,7 @@ final class Model {
         bulb.onError = { [weak self] message in
             guard let self else { return }
             status = message
+            if link == .connecting && message.hasPrefix("getPilot") { link = .unreachable }
             if message.hasPrefix("getPilot") || message.hasPrefix("setPilot") {
                 // Couldn't confirm; stop showing the request as pending.
                 pending = false
@@ -95,6 +101,7 @@ final class Model {
         push.onMessage = { [weak self] in self?.handlePush($0) }
         push.onFailure = { [weak self] reason in
             self?.registerTask?.cancel()
+            self?.live = false
             self?.liveStatus = "Live updates off — \(reason)"
         }
     }
@@ -110,7 +117,9 @@ final class Model {
         mac = nil
         rssi = nil
         info = [:]
-        status = "Querying \(ip)…"
+        live = false
+        link = ip.trimmingCharacters(in: .whitespaces).isEmpty ? .none : .connecting
+        status = ""
         bulb.send("getPilot", retry: true)
         bulb.send("getModelConfig", retry: true)
         startLiveUpdates(ip)
@@ -237,6 +246,7 @@ final class Model {
 
     private func handleReply(_ reply: [String: Any]) {
         let method = reply["method"] as? String ?? "?"
+        link = .connected
         if let err = reply["error"] as? [String: Any] {
             let text = (err["code"] as? Int) == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
             if method.hasPrefix("get") && method != "getPilot" { info[method] = text }
@@ -266,6 +276,7 @@ final class Model {
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !liveStatus.hasPrefix("Live updates on") {
                 liveStatus = "Live updates on"
+                live = true
             }
         default:
             status = "\(method) ok"
@@ -279,6 +290,7 @@ final class Model {
         else { return }
         let time = Date().formatted(date: .omitted, time: .standard)
         liveStatus = "Live updates on — last push \(time)"
+        live = true
         // While a change is unconfirmed, pushes may describe the old state; the read-back settles it.
         if !pending { applyPilot(params) }
     }

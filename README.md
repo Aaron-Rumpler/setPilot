@@ -5,17 +5,22 @@ with raw RGBCW values.
 
 ## Features
 
-- Sliders (and exact-value fields) for **R, G, B, cool white, warm white** and **dimming**, sent as
-  raw `setPilot` values. The last payload sent is shown so you can copy it.
-- **Temperature** (Kelvin) and **scene** (with speed) modes.
+- Sliders (with exact-value fields and steppers) for **R, G, B, cool white, warm white** and
+  **dimming**, sent as raw `setPilot` values. The last payload sent is shown, with a button to copy
+  it as JSON.
+- Every change is read back from the bulb; values it ignored or adjusted are flagged.
+- **Temperature** mode: the slider's track shows the colour of each temperature (Planckian locus,
+  CIE 1931 2°, rendered in sRGB), uses a mired scale so warm whites get more room, and snaps to
+  50 K. **Scene** mode with speed.
 - **Discovery** on every IPv4 interface's broadcast address, using the same `registration`
   broadcast as [pywizlight](https://github.com/sbidy/pywizlight).
-- **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the sliders follow
-  changes made from the WiZ app or a remote.
+- **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
+  follow changes made from the WiZ app or a remote.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; a Device section
   shows the raw `getSystemConfig` / `getModelConfig` / `getUserConfig` / `getPower` results and
   offers reboot and factory reset.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
+- Keyboard: arrow keys step sliders (50 K for temperature), ⌘R syncs.
 
 Not supported: signed requests (firmware that requires the `udp_signing_key` from the WiZ app),
 multiple bulbs, dual-head and fan devices.

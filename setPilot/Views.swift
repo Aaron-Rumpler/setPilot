@@ -5,78 +5,22 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
     @AppStorage("deviceExpanded") private var deviceExpanded = false
-    @State private var model = Model()
+    @State private var model: Model
     @State private var confirming: Maintenance?
 
+    init(model: Model? = nil) {
+        _model = State(initialValue: model ?? Model())
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            connectionRow
-
-            HStack {
-                Button("On") { model.power(true) }
-                Button("Off") { model.power(false) }
-                Text(model.isOn.map { $0 ? "Bulb is on" : "Bulb is off" } ?? "")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if model.mode == .rgbcw {
-                    Button("Zero RGBCW") {
-                        model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
-                        model.changed()
-                    }
-                }
-            }
-
-            Divider()
-
-            HStack {
-                Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                ProgressView()
-                    .controlSize(.small)
-                    .opacity(model.pending ? 1 : 0)
-                    .help("Waiting for the bulb to confirm")
-            }
-
-            switch model.mode {
-            case .rgbcw:
-                ChannelSlider(label: "Red", tint: .red, range: 0...255, value: bind(\.r))
-                ChannelSlider(label: "Green", tint: .green, range: 0...255, value: bind(\.g))
-                ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: bind(\.b))
-                ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
-                ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
-            case .temp:
-                ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
-                              marks: [2200, 2400, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
-                              value: bind(\.temp))
-            case .scene:
-                Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
-                    ForEach(Scenes.all) { Text("\($0.name) (\($0.id))").tag($0.id) }
-                }
-                ChannelSlider(label: "Speed", range: 10...200, value: bind(\.speed))
-            }
-            ChannelSlider(label: "Dimming", range: model.minDimming...100, value: bind(\.dimming))
-
-            Divider()
-
-            Text(model.lastSent.isEmpty ? " " : "setPilot \(model.lastSent)")
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-            if let mismatch = model.mismatch {
-                Label(mismatch, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
-            }
-            Text(model.status).font(.caption).foregroundStyle(.secondary)
-            Text(model.liveStatus).font(.caption).foregroundStyle(.secondary)
-
+        VStack(alignment: .leading, spacing: 16) {
+            bulbPanel
+            lightPanel
+            commandPanel
             DisclosureGroup("Device", isExpanded: $deviceExpanded) { deviceSection }
         }
-        .padding()
-        .frame(width: 520)
+        .padding(20)
+        .frame(width: 500)
         .fixedSize()
         .background(GeometryReader { WindowSizer(size: $0.size) })
         // Pin to the top and always match the window (min 0: never larger than it). Otherwise,
@@ -95,62 +39,247 @@ struct ContentView: View {
         }
     }
 
-    private var connectionRow: some View {
-        HStack {
-            TextField("Bulb IP", text: $ip)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { model.connect(ip) }
-            Button("Connect") { model.connect(ip) }
-            Button(model.discovering ? "Finding…" : "Find") {
-                Task {
-                    if let found = await model.find() { use(found) }
+    // MARK: Bulb
+
+    private var bulbPanel: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField("IP address", text: $ip, prompt: Text("Bulb IP address"))
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { model.connect(ip) }
+                    Button("Connect") { model.connect(ip) }
+                        .disabled(ip.trimmingCharacters(in: .whitespaces).isEmpty)
+                    findButton
                 }
-            }
-            .disabled(model.discovering)
-            .help("Broadcast discovery on all interfaces (5 s)")
-            if model.discovered.count > 1 {
-                Menu("\(model.discovered.count) found") {
-                    ForEach(model.discovered) { d in
-                        Button("\(d.ip)  \(d.mac)") { use(d.ip) }
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(linkColour)
+                        .frame(width: 8, height: 8)
+                    Text(linkText)
+                    if model.link == .connected {
+                        Text(model.live ? "· Live updates" : "· No live updates")
+                            .foregroundStyle(.secondary)
+                            .help(model.liveStatus)
                     }
+                    Spacer()
+                    Button {
+                        model.sync()
+                    } label: {
+                        Label("Sync", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .keyboardShortcut("r")
+                    .disabled(model.link == .none)
+                    .help("Read the bulb's current state (⌘R)")
                 }
-                .fixedSize()
+                .font(.callout)
             }
-            Button("Sync") { model.sync() }
-                .help("Read current values from the bulb (getPilot)")
+            .padding(6)
+        } label: {
+            Text("Bulb")
         }
     }
 
-    private var deviceSection: some View {
+    @ViewBuilder private var findButton: some View {
+        if model.discovered.count > 1 && !model.discovering {
+            Menu("\(model.discovered.count) found") {
+                ForEach(model.discovered) { d in
+                    Button("\(d.ip)  —  \(d.mac)") { use(d.ip) }
+                }
+                Divider()
+                Button("Search Again") { find() }
+            }
+            .fixedSize()
+        } else {
+            Button {
+                find()
+            } label: {
+                Text("Find")
+                    .opacity(model.discovering ? 0 : 1)
+                    .overlay { if model.discovering { ProgressView().controlSize(.small) } }
+            }
+            .disabled(model.discovering)
+            .help("Search every network interface for WiZ bulbs (5 s)")
+        }
+    }
+
+    private var linkColour: Color {
+        switch model.link {
+        case .none: .secondary.opacity(0.5)
+        case .connecting: .yellow
+        case .connected: .green
+        case .unreachable: .red
+        }
+    }
+
+    private var linkText: String {
+        switch model.link {
+        case .none: "Not connected"
+        case .connecting: "Connecting…"
+        case .connected: "Connected" + (model.rssi.map { " · \($0 < 0 ? "\u{2212}" : "")\(abs($0)) dBm" } ?? "")
+        case .unreachable: "No response"
+        }
+    }
+
+    // MARK: Light
+
+    private var lightPanel: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Toggle("Power", isOn: Binding(get: { model.isOn ?? false }, set: { model.power($0) }))
+                        .toggleStyle(.switch)
+                        .fixedSize()
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                        .opacity(model.pending ? 1 : 0)
+                        .help("Waiting for the bulb to confirm")
+                    Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
+                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+
+                Divider()
+
+                switch model.mode {
+                case .rgbcw:
+                    ChannelSlider(label: "Red", tint: .red, range: 0...255, value: bind(\.r))
+                    ChannelSlider(label: "Green", tint: .green, range: 0...255, value: bind(\.g))
+                    ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: bind(\.b))
+                    ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
+                    ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
+                case .temp:
+                    ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
+                                  marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
+                                  value: bind(\.temp))
+                case .scene:
+                    HStack {
+                        Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+                        Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
+                            ForEach(Scenes.all) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Text("ID \(model.sceneId)")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    ChannelSlider(label: "Speed", range: 10...200, value: bind(\.speed))
+                }
+                ChannelSlider(label: "Dimming", range: model.minDimming...100, value: bind(\.dimming))
+
+                if model.mode == .rgbcw {
+                    HStack {
+                        Spacer()
+                        Button("Set All Channels to 0") {
+                            model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
+                            model.changed()
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .padding(6)
+        } label: {
+            Text("Light")
+        }
+        .disabled(model.link != .connected)
+    }
+
+    // MARK: Last command
+
+    private var commandPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Group {
+                    if model.lastSent.isEmpty {
+                        Text("No command sent yet").foregroundStyle(.tertiary)
+                    } else {
+                        Text("setPilot ").foregroundStyle(.secondary) + Text(model.lastSent)
+                    }
+                }
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(#"{"method":"setPilot","params":\#(model.lastSent)}"#, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .disabled(model.lastSent.isEmpty)
+                .help("Copy the full setPilot request as JSON")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+
+            if let mismatch = model.mismatch {
+                Label(mismatch, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+            if !model.status.isEmpty {
+                Text(model.status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Device
+
+    private var deviceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Button("Read config") { model.readConfig() }
+                Button("Read Config") { model.readConfig() }
                     .help("getSystemConfig, getModelConfig, getUserConfig, getPower")
                 Spacer()
                 Button("Reboot…") { confirming = .reboot }
-                Button("Factory reset…") { confirming = .reset }
+                Button("Factory Reset…") { confirming = .reset }
             }
+            .disabled(model.link != .connected)
             if let mac = model.mac {
-                Text("MAC \(mac)" + (model.rssi.map { "   RSSI \($0) dBm" } ?? ""))
-                    .font(.caption)
-                    .textSelection(.enabled)
+                LabeledContent("MAC address") {
+                    Text(mac).font(.callout.monospaced()).textSelection(.enabled)
+                }
+                .font(.callout)
             }
             if !model.info.isEmpty {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(model.info.keys.sorted(), id: \.self) { key in
-                            Text(key).font(.caption.bold())
+                            Text(key).font(.caption.bold()).foregroundStyle(.secondary)
                             Text(model.info[key] ?? "")
                                 .font(.system(.caption, design: .monospaced))
                                 .textSelection(.enabled)
                         }
                     }
+                    .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(height: 220)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
             }
         }
-        .padding(.top, 4)
+        .padding(.top, 8)
+    }
+
+    // MARK: Helpers
+
+    private func find() {
+        Task {
+            if let found = await model.find() { use(found) }
+        }
     }
 
     private func use(_ found: String) {
@@ -173,6 +302,8 @@ struct ContentView: View {
 }
 
 struct ChannelSlider: View {
+    static let labelWidth: CGFloat = 64
+
     let label: String
     var tint: Color? = nil
     let range: ClosedRange<Double>
@@ -184,10 +315,12 @@ struct ChannelSlider: View {
     @Binding var value: Double
 
     var body: some View {
-        HStack {
-            Text(label).frame(width: 60, alignment: .leading)
+        HStack(spacing: 8) {
+            Text(label).frame(width: Self.labelWidth, alignment: .leading)
             SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale,
                            colourTemperatureStrip: colourTemperatureStrip, tint: tint)
+                // Centre the row on the track, not on the track plus the marks below it.
+                .alignmentGuide(VerticalAlignment.center) { _ in SnapSliderContainer.sliderHeight / 2 }
             NumberField(value: $value, range: range)
                 .frame(width: 56)
             Stepper("", value: $value, in: range, step: 1)
