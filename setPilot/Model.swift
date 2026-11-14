@@ -64,19 +64,34 @@ final class Model {
     var status = "Not connected"
     var liveStatus = "Live updates off"
     var lastSent = ""
+    /// A setPilot hasn't been read back yet; the UI shows what was requested meanwhile.
+    var pending = false
+    /// What the bulb reported differently from the last setPilot, if anything.
+    var mismatch: String?
     var discovered: [DiscoveredBulb] = []
     var discovering = false
 
     private let bulb = Bulb()
     private let push = PushListener()
     @ObservationIgnored private var sendScheduled = false
-    @ObservationIgnored private var ignorePushUntil = Date.distantPast
+    @ObservationIgnored private var lastPilot: [String: Int] = [:]
+    @ObservationIgnored private var sendSeq = 0
+    @ObservationIgnored private var verifyingSeq: Int?
+    @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var registerTask: Task<Void, Never>?
     private let phoneMac = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
 
     init() {
         bulb.onReply = { [weak self] in self?.handleReply($0) }
-        bulb.onError = { [weak self] in self?.status = $0 }
+        bulb.onError = { [weak self] message in
+            guard let self else { return }
+            status = message
+            if message.hasPrefix("getPilot") || message.hasPrefix("setPilot") {
+                // Couldn't confirm; stop showing the request as pending.
+                pending = false
+                verifyingSeq = nil
+            }
+        }
         push.onMessage = { [weak self] in self?.handlePush($0) }
         push.onFailure = { [weak self] reason in
             self?.registerTask?.cancel()
@@ -88,6 +103,10 @@ final class Model {
 
     func connect(_ ip: String) {
         bulb.connect(to: ip)
+        verifyTask?.cancel()
+        verifyingSeq = nil
+        pending = false
+        mismatch = nil
         mac = nil
         rssi = nil
         info = [:]
@@ -131,7 +150,11 @@ final class Model {
 
     // MARK: Commands
 
-    func sync() { bulb.send("getPilot", retry: true) }
+    func sync() {
+        verifyingSeq = nil
+        pending = false
+        bulb.send("getPilot", retry: true)
+    }
 
     func power(_ on: Bool) {
         isOn = on
@@ -177,9 +200,37 @@ final class Model {
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
-        // Our own changes come back as pushes; don't let them yank the sliders mid-drag.
-        ignorePushUntil = Date().addingTimeInterval(0.6)
+        lastPilot = p.compactMapValues { $0 as? Int }
+        sendSeq += 1
+        pending = true
         bulb.send("setPilot", p, retry: retry)
+        scheduleVerify()
+    }
+
+    /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
+    /// (it replies "success" to some setPilots it doesn't fully apply).
+    private func scheduleVerify() {
+        verifyTask?.cancel()
+        verifyTask = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            verifyingSeq = sendSeq
+            bulb.send("getPilot", retry: true)
+        }
+    }
+
+    private func verify(_ result: [String: Any]) {
+        var diffs: [String] = []
+        for key in lastPilot.keys.sorted() {
+            let want = lastPilot[key]!
+            let got = (result[key] as? NSNumber)?.intValue
+            // Absent zero channels and speed (static scenes) aren't meaningful differences.
+            if got == want || (got == nil && (want == 0 || key == "speed")) { continue }
+            diffs.append("\(key) \(want)→\(got.map(String.init) ?? "absent")")
+        }
+        if result["state"] as? Bool == false { diffs.append("bulb is off") }
+        mismatch = diffs.isEmpty ? nil : "Bulb didn't apply: " + diffs.joined(separator: ", ")
+        status = diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state"
     }
 
     // MARK: Incoming
@@ -195,8 +246,17 @@ final class Model {
         guard let result = reply["result"] as? [String: Any] else { return }
         switch method {
         case "getPilot":
-            applyPilot(result)
-            status = "Synced"
+            if let seq = verifyingSeq {
+                // A newer setPilot went out after this check started; its own check will follow.
+                guard seq == sendSeq else { return }
+                verifyingSeq = nil
+                pending = false
+                applyPilot(result)
+                verify(result)
+            } else {
+                applyPilot(result)
+                status = "Synced"
+            }
         case "getModelConfig", "getUserConfig":
             applyLimits(result)
             info[method] = pretty(result)
@@ -219,7 +279,8 @@ final class Model {
         else { return }
         let time = Date().formatted(date: .omitted, time: .standard)
         liveStatus = "Live updates on — last push \(time)"
-        if Date() >= ignorePushUntil { applyPilot(params) }
+        // While a change is unconfirmed, pushes may describe the old state; the read-back settles it.
+        if !pending { applyPilot(params) }
     }
 
     private func applyPilot(_ p: [String: Any]) {

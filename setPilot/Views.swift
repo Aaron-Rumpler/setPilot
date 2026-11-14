@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -25,11 +26,17 @@ struct ContentView: View {
 
             Divider()
 
-            Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+            HStack {
+                Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
+                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                ProgressView()
+                    .controlSize(.small)
+                    .opacity(model.pending ? 1 : 0)
+                    .help("Waiting for the bulb to confirm")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             switch model.mode {
             case .rgbcw:
@@ -39,7 +46,7 @@ struct ContentView: View {
                 ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
                 ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
             case .temp:
-                ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, step: 10, value: bind(\.temp))
+                ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, value: bind(\.temp))
             case .scene:
                 Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                     ForEach(Scenes.all) { Text("\($0.name) (\($0.id))").tag($0.id) }
@@ -53,13 +60,21 @@ struct ContentView: View {
             Text(model.lastSent.isEmpty ? " " : "setPilot \(model.lastSent)")
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
+            if let mismatch = model.mismatch {
+                Label(mismatch, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
             Text(model.status).font(.caption).foregroundStyle(.secondary)
             Text(model.liveStatus).font(.caption).foregroundStyle(.secondary)
 
             DisclosureGroup("Device") { deviceSection }
         }
         .padding()
-        .frame(width: 480)
+        .frame(width: 520)
+        .fixedSize()
+        .background(GeometryReader { WindowSizer(size: $0.size) })
         .onAppear { if !ip.isEmpty { model.connect(ip) } }
         .confirmationDialog(
             confirming?.title ?? "",
@@ -139,7 +154,12 @@ struct ContentView: View {
     private func bind(_ kp: ReferenceWritableKeyPath<Model, Double>) -> Binding<Double> {
         Binding(
             get: { model[keyPath: kp] },
-            set: { model[keyPath: kp] = $0.rounded(); model.changed() }
+            set: {
+                let v = $0.rounded()
+                guard v != model[keyPath: kp] else { return } // continuous sliders move in fractions
+                model[keyPath: kp] = v
+                model.changed()
+            }
         )
     }
 }
@@ -148,21 +168,114 @@ struct ChannelSlider: View {
     let label: String
     let tint: Color
     let range: ClosedRange<Double>
-    var step: Double = 1
     @Binding var value: Double
 
     var body: some View {
         HStack {
             Text(label).frame(width: 60, alignment: .leading)
-            Slider(value: $value, in: range, step: step).tint(tint)
-            TextField("", value: clamped, format: .number.grouping(.never))
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
+            // No `step:` — on macOS it draws a tick mark per step. The binding rounds instead.
+            Slider(value: $value, in: range).tint(tint)
+            NumberField(value: $value, range: range)
                 .frame(width: 56)
+            Stepper("", value: $value, in: range, step: 1)
+                .labelsHidden()
+        }
+    }
+}
+
+/// Integer text field that selects everything on the click that focuses it, so you can type a
+/// replacement straight away. Commits on Return or when focus leaves; invalid input reverts.
+struct NumberField: NSViewRepresentable {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> SelectAllTextField {
+        let field = SelectAllTextField()
+        field.alignment = .right
+        field.bezelStyle = .roundedBezel
+        field.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        field.delegate = context.coordinator
+        field.stringValue = Self.format(value)
+        context.coordinator.shown = value
+        return field
+    }
+
+    func updateNSView(_ field: SelectAllTextField, context: Context) {
+        context.coordinator.parent = self
+        // Only overwrite the text when the value really changed (slider, stepper, bulb),
+        // so an unrelated redraw doesn't clobber what you're typing.
+        if value != context.coordinator.shown {
+            field.stringValue = Self.format(value)
+            context.coordinator.shown = value
         }
     }
 
-    private var clamped: Binding<Double> {
-        Binding(get: { value }, set: { value = min(max($0, range.lowerBound), range.upperBound) })
+    static func format(_ v: Double) -> String { String(Int(v.rounded())) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: NumberField
+        var shown: Double = .nan
+
+        init(_ parent: NumberField) { self.parent = parent }
+
+        func controlTextDidEndEditing(_ note: Notification) {
+            guard let field = note.object as? NSTextField else { return }
+            let text = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if let v = Double(text) {
+                let clamped = min(max(v.rounded(), parent.range.lowerBound), parent.range.upperBound)
+                if clamped != parent.value { parent.value = clamped }
+            }
+            field.stringValue = NumberField.format(parent.value)
+            shown = parent.value
+        }
+    }
+}
+
+final class SelectAllTextField: NSTextField {
+    override func mouseDown(with event: NSEvent) {
+        let wasEditing = currentEditor() != nil
+        super.mouseDown(with: event) // tracks until mouse-up, placing the caret
+        if !wasEditing { currentEditor()?.selectAll(nil) }
+    }
+}
+
+/// Sizes the window to the (fixed-size) SwiftUI content, keeping its top edge in place.
+/// `.windowResizability(.contentSize)` alone limits the size but doesn't grow the window.
+struct WindowSizer: NSViewRepresentable {
+    let size: CGSize
+
+    func makeNSView(context: Context) -> SizerView { SizerView() }
+
+    func updateNSView(_ view: SizerView, context: Context) {
+        view.target = size
+        view.apply()
+    }
+
+    final class SizerView: NSView {
+        var target: CGSize = .zero
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+        }
+
+        func apply() {
+            // Not during SwiftUI's update pass; the work reads current state when it runs.
+            DispatchQueue.main.async { [weak self] in self?.resize() }
+        }
+
+        private func resize() {
+            guard let window, let host = window.contentView, target.width > 0, target.height > 0 else { return }
+            let insets = host.safeAreaInsets // title bar, if the content view extends under it
+            let want = NSSize(width: target.width + insets.left + insets.right,
+                              height: target.height + insets.top + insets.bottom)
+            let current = window.contentRect(forFrameRect: window.frame)
+            guard abs(current.width - want.width) > 0.5 || abs(current.height - want.height) > 0.5 else { return }
+            var frame = window.frameRect(forContentRect: NSRect(origin: current.origin, size: want))
+            frame.origin.y = window.frame.maxY - frame.height
+            window.setFrame(frame, display: true)
+        }
     }
 }
