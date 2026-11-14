@@ -48,15 +48,16 @@ struct ContentView: View {
                 ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
                 ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
             case .temp:
-                ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, step: 50,
-                              marks: [2200, 2400, 2700, 4200, 6500], scale: .mired, value: bind(\.temp))
+                ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
+                              marks: [2200, 2400, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
+                              value: bind(\.temp))
             case .scene:
                 Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                     ForEach(Scenes.all) { Text("\($0.name) (\($0.id))").tag($0.id) }
                 }
-                ChannelSlider(label: "Speed", tint: .purple, range: 10...200, value: bind(\.speed))
+                ChannelSlider(label: "Speed", range: 10...200, value: bind(\.speed))
             }
-            ChannelSlider(label: "Dimming", tint: .gray, range: model.minDimming...100, value: bind(\.dimming))
+            ChannelSlider(label: "Dimming", range: model.minDimming...100, value: bind(\.dimming))
 
             Divider()
 
@@ -173,18 +174,20 @@ struct ContentView: View {
 
 struct ChannelSlider: View {
     let label: String
-    let tint: Color
+    var tint: Color? = nil
     let range: ClosedRange<Double>
     /// Slider snapping (drag, arrow keys, VoiceOver); the field and stepper still work in 1s.
     var step: Double = 1
     var marks: [Double] = []
     var scale: SliderScale = .linear
+    var colourTemperatureStrip = false
     @Binding var value: Double
 
     var body: some View {
         HStack {
             Text(label).frame(width: 60, alignment: .leading)
-            SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale, tint: tint)
+            SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale,
+                           colourTemperatureStrip: colourTemperatureStrip, tint: tint)
             NumberField(value: $value, range: range)
                 .frame(width: 56)
             Stepper("", value: $value, in: range, step: 1)

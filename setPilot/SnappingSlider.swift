@@ -29,7 +29,8 @@ enum SliderScale {
 }
 
 /// A slider that snaps to multiples of `step` when dragged, with arrow keys and with VoiceOver,
-/// and draws tick marks only at `marks`.
+/// and draws tick marks only at `marks`. Optionally shows a colour-temperature strip under the
+/// track (values in kelvin).
 ///
 /// SwiftUI can't do this on macOS: `Slider(step:)` draws a tick per step, and the macOS 26
 /// `tick:`/`ticks:` APIs are ignored or drawn evenly spaced by the underlying NSSlider. NSSlider's
@@ -41,40 +42,49 @@ struct SnappingSlider: NSViewRepresentable {
     var step: Double = 1
     var marks: [Double] = []
     var scale: SliderScale = .linear
-    var tint: Color = .accentColor
+    var colourTemperatureStrip = false
+    /// Track fill colour; nil for the system default.
+    var tint: Color? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeNSView(context: Context) -> SnapSlider {
-        let slider = SnapSlider()
+    func makeNSView(context: Context) -> SnapSliderContainer {
+        let container = SnapSliderContainer()
+        let slider = container.slider
         slider.isContinuous = true
         slider.target = context.coordinator
         slider.action = #selector(Coordinator.moved(_:))
-        configure(slider)
+        configure(container)
         slider.value = value
-        return slider
+        return container
     }
 
-    func updateNSView(_ slider: SnapSlider, context: Context) {
+    func updateNSView(_ container: SnapSliderContainer, context: Context) {
         context.coordinator.parent = self
-        configure(slider)
+        configure(container)
+        let slider = container.slider
         // Compare with a tolerance: position ↔ value round trips aren't exact for mired.
         if abs(slider.value - value) > 1e-6 { slider.value = value }
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: SnapSlider, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? 200, height: nsView.intrinsicContentSize.height + (marks.isEmpty ? 0 : 6))
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: SnapSliderContainer, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 200, height: nsView.intrinsicContentSize.height)
     }
 
-    private func configure(_ slider: SnapSlider) {
+    private func configure(_ container: SnapSliderContainer) {
+        let slider = container.slider
         let mappingChanged = slider.range != range || slider.scale != scale
         let current = slider.value
         slider.range = range
         slider.scale = scale
         slider.step = step
-        slider.trackFillColor = NSColor(tint)
+        slider.trackFillColor = tint.map { NSColor($0) }
         if mappingChanged { slider.value = current } // keep the knob on the same value
-        if slider.marks != marks { slider.marks = marks }
+        if container.marks != marks { container.marks = marks }
+        if container.colourTemperatureStrip != colourTemperatureStrip {
+            container.colourTemperatureStrip = colourTemperatureStrip
+        }
+        container.needsDisplay = true // range or scale may have moved the marks
     }
 
     final class Coordinator: NSObject {
@@ -91,18 +101,9 @@ struct SnappingSlider: NSViewRepresentable {
 
 /// NSSlider working in track positions 0...1; `value` maps through `scale` onto `range`.
 final class SnapSlider: NSSlider {
-    var range: ClosedRange<Double> = 0...1 { didSet { if range != oldValue { marksView.needsDisplay = true } } }
-    var scale: SliderScale = .linear { didSet { if scale != oldValue { marksView.needsDisplay = true } } }
+    var range: ClosedRange<Double> = 0...1
+    var scale: SliderScale = .linear
     var step: Double = 1
-    var marks: [Double] = [] { didSet { marksView.needsDisplay = true } }
-
-    private lazy var marksView: MarksView = {
-        let v = MarksView()
-        v.slider = self
-        v.autoresizingMask = [.width, .height]
-        addSubview(v)
-        return v
-    }()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -115,11 +116,6 @@ final class SnapSlider: NSSlider {
     var value: Double {
         get { scale.value(at: doubleValue, in: range) }
         set { doubleValue = scale.position(of: min(max(newValue, range.lowerBound), range.upperBound), in: range) }
-    }
-
-    override func layout() {
-        super.layout()
-        marksView.frame = bounds
     }
 
     /// Nearest multiple of `step`, clamped so both ends stay reachable.
@@ -154,19 +150,67 @@ final class SnapSlider: NSSlider {
     }
 }
 
-private final class MarksView: NSView {
-    weak var slider: SnapSlider?
+/// The slider at its natural height, with the optional colour-temperature strip and marks drawn
+/// in their own space below it. (NSSlider centres its track in a taller frame, so drawing them
+/// inside the slider would collide with the knob.)
+final class SnapSliderContainer: NSView {
+    let slider = SnapSlider()
+    var marks: [Double] = [] { didSet { invalidateIntrinsicContentSize() } }
+    var colourTemperatureStrip = false { didSet { invalidateIntrinsicContentSize() } }
+
+    private static let stripSpace: CGFloat = 7 // 3 gap + 4 strip
+    private static let marksSpace: CGFloat = 6 // 2 gap + 4 mark
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addSubview(slider)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil } // clicks go to the slider
+
+    private var sliderHeight: CGFloat { max(slider.intrinsicContentSize.height, 16) }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric,
+               height: sliderHeight + (colourTemperatureStrip ? Self.stripSpace : 0) + (marks.isEmpty ? 0 : Self.marksSpace))
+    }
+
+    override func layout() {
+        super.layout()
+        slider.frame = NSRect(x: 0, y: 0, width: bounds.width, height: sliderHeight)
+        needsDisplay = true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let slider else { return }
+        var y = slider.frame.maxY
+
+        if colourTemperatureStrip {
+            // Sample along the track (not in kelvin) so colours line up with the knob on any scale.
+            let samples = 48
+            var colours: [NSColor] = []
+            var locations: [CGFloat] = [] // passed as a C array to NSGradient
+            for i in 0...samples {
+                let p = Double(i) / Double(samples)
+                colours.append(ColourTemperature.colour(kelvin: slider.scale.value(at: p, in: slider.range)))
+                locations.append(CGFloat(p))
+            }
+            let x0 = slider.knobCentreX(at: slider.range.lowerBound)
+            let x1 = slider.knobCentreX(at: slider.range.upperBound)
+            let bar = NSRect(x: x0 - 2, y: y + 3, width: x1 - x0 + 4, height: 4)
+            let path = NSBezierPath(roundedRect: bar, xRadius: 2, yRadius: 2)
+            NSGradient(colors: colours, atLocations: locations, colorSpace: .sRGB)?.draw(in: path, angle: 0)
+            NSColor.separatorColor.setStroke() // keeps the near-white cool end visible
+            path.lineWidth = 0.5
+            path.stroke()
+            y += Self.stripSpace
+        }
+
         NSColor.tertiaryLabelColor.setFill()
-        for mark in slider.marks where slider.range.contains(mark) {
+        for mark in marks where slider.range.contains(mark) {
             let x = slider.knobCentreX(at: mark)
-            NSBezierPath(roundedRect: NSRect(x: x - 1, y: bounds.maxY - 4, width: 2, height: 4),
-                         xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: NSRect(x: x - 1, y: y + 2, width: 2, height: 4), xRadius: 1, yRadius: 1).fill()
         }
     }
 }
