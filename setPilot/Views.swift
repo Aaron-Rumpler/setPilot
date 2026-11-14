@@ -46,7 +46,8 @@ struct ContentView: View {
                 ChannelSlider(label: "Cool W", tint: .cyan, range: 0...255, value: bind(\.c))
                 ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
             case .temp:
-                ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, snap: 50, value: bind(\.temp))
+                ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, step: 50,
+                              marks: [2200, 2400, 2700, 4200, 6500], value: bind(\.temp))
             case .scene:
                 Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                     ForEach(Scenes.all) { Text("\($0.name) (\($0.id))").tag($0.id) }
@@ -168,27 +169,20 @@ struct ChannelSlider: View {
     let label: String
     let tint: Color
     let range: ClosedRange<Double>
-    /// Slider granularity only; the field and stepper still work in steps of 1.
-    var snap: Double = 1
+    /// Slider snapping (drag, arrow keys, VoiceOver); the field and stepper still work in 1s.
+    var step: Double = 1
+    var marks: [Double] = []
     @Binding var value: Double
 
     var body: some View {
         HStack {
             Text(label).frame(width: 60, alignment: .leading)
-            // No `step:` — on macOS it draws a tick mark per step. Snap in the binding instead.
-            Slider(value: snapped, in: range).tint(tint)
+            SnappingSlider(value: $value, range: range, step: step, marks: marks, tint: tint)
             NumberField(value: $value, range: range)
                 .frame(width: 56)
             Stepper("", value: $value, in: range, step: 1)
                 .labelsHidden()
         }
-    }
-
-    private var snapped: Binding<Double> {
-        Binding(
-            get: { value },
-            set: { value = min(max(($0 / snap).rounded() * snap, range.lowerBound), range.upperBound) }
-        )
     }
 }
 
