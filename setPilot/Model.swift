@@ -5,18 +5,6 @@ enum Mode: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-enum Maintenance: String, Identifiable {
-    case reboot, reset
-    var id: Self { self }
-    var title: String { self == .reboot ? "Reboot" : "Factory reset" }
-    var message: String {
-        self == .reboot
-            ? "The bulb will restart."
-            : "The bulb forgets its Wi-Fi settings and must be paired again in the WiZ app."
-    }
-}
-
-/// Scene IDs from pywizlight (RGB bulb set: excludes Rhythm and the sync-box scenes).
 struct WizScene: Identifiable {
     let id: Int
     let name: String
@@ -180,9 +168,9 @@ final class Model {
     }
 
     /// Not retried: the bulb may go away before it answers.
-    func run(_ m: Maintenance) {
-        bulb.send(m.rawValue)
-        status = "Sent \(m.rawValue)"
+    func reboot() {
+        bulb.send("reboot")
+        status = "Sent reboot"
     }
 
     /// Coalesces slider drags into at most one setPilot per ~40 ms.

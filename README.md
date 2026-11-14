@@ -17,8 +17,8 @@ with raw RGBCW values.
 - **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
   follow changes made from the WiZ app or a remote.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; a Device section
-  shows the raw `getSystemConfig` / `getModelConfig` / `getUserConfig` / `getPower` results and
-  offers reboot and factory reset.
+  shows the MAC address, the raw `getSystemConfig` / `getModelConfig` / `getUserConfig` / `getPower`
+  results (in a popover), and a reboot button.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
 - Keyboard: arrow keys step sliders (50 K for temperature), ⌘R syncs.
 

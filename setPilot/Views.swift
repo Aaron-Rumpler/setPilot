@@ -4,9 +4,9 @@ import SwiftUI
 
 struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
-    @AppStorage("deviceExpanded") private var deviceExpanded = false
     @State private var model: Model
-    @State private var confirming: Maintenance?
+    @State private var confirmingReboot = false
+    @State private var showingConfig = false
 
     init(model: Model? = nil) {
         _model = State(initialValue: model ?? Model())
@@ -17,7 +17,7 @@ struct ContentView: View {
             bulbPanel
             lightPanel
             commandPanel
-            DisclosureGroup("Device", isExpanded: $deviceExpanded) { deviceSection }
+            devicePanel
         }
         .padding(20)
         .frame(width: 500)
@@ -28,14 +28,10 @@ struct ContentView: View {
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         .onAppear { if !ip.isEmpty { model.connect(ip) } }
-        .confirmationDialog(
-            confirming?.title ?? "",
-            isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
-            presenting: confirming
-        ) { m in
-            Button(m.title, role: .destructive) { model.run(m) }
-        } message: { m in
-            Text(m.message)
+        .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot) {
+            Button("Reboot", role: .destructive) { model.reboot() }
+        } message: {
+            Text("It will be unreachable for a few seconds while it restarts.")
         }
     }
 
@@ -238,40 +234,54 @@ struct ContentView: View {
 
     // MARK: Device
 
-    private var deviceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Button("Read Config") { model.readConfig() }
-                    .help("getSystemConfig, getModelConfig, getUserConfig, getPower")
-                Spacer()
-                Button("Reboot…") { confirming = .reboot }
-                Button("Factory Reset…") { confirming = .reset }
-            }
-            .disabled(model.link != .connected)
-            if let mac = model.mac {
+    private var devicePanel: some View {
+        GroupBox {
+            HStack(spacing: 8) {
                 LabeledContent("MAC address") {
-                    Text(mac).font(.callout.monospaced()).textSelection(.enabled)
+                    Text(model.mac ?? "—")
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
                 }
                 .font(.callout)
-            }
-            if !model.info.isEmpty {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(model.info.keys.sorted(), id: \.self) { key in
-                            Text(key).font(.caption.bold()).foregroundStyle(.secondary)
-                            Text(model.info[key] ?? "")
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize()
+                Spacer()
+                Button("Config…") {
+                    model.readConfig()
+                    showingConfig = true
                 }
-                .frame(height: 220)
-                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+                .help("Show getSystemConfig, getModelConfig, getUserConfig and getPower")
+                .popover(isPresented: $showingConfig, arrowEdge: .bottom) { configPopover }
+                Button("Reboot…") { confirmingReboot = true }
             }
+            .disabled(model.link != .connected)
+            .padding(6)
+        } label: {
+            Text("Device")
         }
-        .padding(.top, 8)
+    }
+
+    private var configPopover: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                if model.info.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Reading…").foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(model.info.keys.sorted(), id: \.self) { key in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(key).font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(model.info[key] ?? "")
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(width: 380, height: 360)
     }
 
     // MARK: Helpers
