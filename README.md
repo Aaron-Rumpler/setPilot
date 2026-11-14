@@ -22,21 +22,21 @@ multiple bulbs, dual-head and fan devices.
 
 ## Requirements
 
-macOS 14 or later, and Swift 5.9 or later (Xcode or the Command Line Tools).
+macOS 14 or later; Xcode 16 or later to build.
 
 ## Build and run
 
-```bash
-swift run
-```
-
-When run this way, macOS asks for Local Network access on behalf of your terminal.
-
-To build an ad-hoc-signed `setPilot.app` instead:
+Open `setPilot.xcodeproj` in Xcode and run. Or from the command line:
 
 ```bash
-./build-app.sh
+xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release build
+open build/Release/setPilot.app
 ```
+
+The project signs to run locally (ad hoc) by default; pick your team under Signing & Capabilities if
+you want it signed with your own certificate. The app is sandboxed with outgoing and incoming network
+access (the latter for live updates). The project uses Xcode 16's folder-synchronised groups, so any
+file added under `setPilot/` is picked up without editing the project.
 
 Every push is also built on GitHub Actions, which uploads a zipped `setPilot.app` as an artifact.
 It's ad-hoc signed, so after downloading it you'll need to clear the quarantine flag

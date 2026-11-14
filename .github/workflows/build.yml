@@ -11,11 +11,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
-        run: swift --version
-      - name: Build app bundle
-        run: ./build-app.sh
+        run: xcodebuild -version
+      - name: Build
+        run: |
+          xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            build
+      - name: Check signature and entitlements
+        run: |
+          codesign --verify --strict --verbose=2 build/Release/setPilot.app
+          codesign -d --entitlements - build/Release/setPilot.app
       - name: Zip
-        run: ditto -c -k --keepParent setPilot.app setPilot.zip
+        run: ditto -c -k --keepParent build/Release/setPilot.app setPilot.zip
       - uses: actions/upload-artifact@v4
         with:
           name: setPilot
