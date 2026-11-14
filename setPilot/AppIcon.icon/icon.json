@@ -20,13 +20,8 @@
       "layers" : [
         {
           "glass" : true,
-          "image-name" : "disc.png",
+          "image-name" : "disc.svg",
           "name" : "disc"
-        },
-        {
-          "glass" : false,
-          "image-name" : "glow.png",
-          "name" : "glow"
         }
       ],
       "shadow" : {

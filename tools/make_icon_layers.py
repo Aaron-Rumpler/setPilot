@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Generates the layer artwork for setPilot/AppIcon.icon (an Icon Composer package).
+"""Generates the disc artwork for setPilot/AppIcon.icon (an Icon Composer package).
 
-The background is the icon's own fill (see icon.json), so the system draws the exact macOS
-shape; only the disc (a Liquid Glass layer) and its glow are images. The disc is shaded with
-the same black-body colours as the app's Kelvin track: 2200 K bottom-left to 6500 K top-right.
+The background is the icon's own fill (see icon.json), so the system draws the exact macOS shape.
+The disc is a vector Liquid Glass layer: a circle whose gradient follows the black-body colours
+of the app's Kelvin track, 2200 K (bottom left) to 6500 K (top right), evenly in mireds.
 
-Requires Pillow. Run from the repository root: python3 tools/make_icon_layers.py
+Notes from testing with Xcode 26.6:
+- Untagged SVG colours are read as sRGB, matching the app's colours.
+- Adding "color-space-for-untagged-svg-colors" to icon.json crashes actool.
+- A layer "fill" gradient in icon.json allows only two colours, which can't follow the curve.
+
+Run from the repository root: python3 tools/make_icon_layers.py
 """
 import math
 from pathlib import Path
 
-from PIL import Image, ImageFilter
-
-OUT = Path("setPilot/AppIcon.icon/Assets")
-CANVAS = 1024          # Icon Composer canvas for iOS/macOS
-SS = 4                 # supersampling for smooth edges
-RADIUS = 300           # disc radius on the 1024 canvas
+OUT = Path("setPilot/AppIcon.icon/Assets/disc.svg")
+CENTRE, RADIUS, STOPS = 512, 300, 11  # on Icon Composer's 1024 × 1024 canvas
 
 
 def planck_srgb(t):
@@ -46,33 +47,24 @@ def mired_lerp(f):
     return 1e6 / (lo + (hi - lo) * f)
 
 
-def disc():
-    s, r = CANVAS * SS, RADIUS * SS
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    px = img.load()
-    c = s / 2
-    cache = {}
-    for yy in range(int(c - r), int(c + r) + 1):
-        for xx in range(int(c - r), int(c + r) + 1):
-            dx, dy = xx - c, yy - c
-            if dx * dx + dy * dy <= r * r:
-                f = min(max((dx - dy) / (2 * r * math.sqrt(2)) + 0.5, 0), 1)
-                k = round(f * 255)
-                if k not in cache:
-                    cache[k] = planck_srgb(mired_lerp(k / 255))
-                px[xx, yy] = cache[k] + (255,)
-    return img.resize((CANVAS, CANVAS), Image.LANCZOS)
-
-
-def glow(d):
-    g = d.resize((CANVAS, CANVAS)).filter(ImageFilter.GaussianBlur(CANVAS * 0.07))
-    g.putalpha(g.getchannel("A").point(lambda a: int(a * 0.8)))
-    return g
+def svg():
+    o = RADIUS / math.sqrt(2)  # gradient runs corner to corner across the disc's diagonal
+    stops = "\n".join(
+        '      <stop offset="%.1f" stop-color="#%02x%02x%02x"/>' % ((i / (STOPS - 1),) + planck_srgb(mired_lerp(i / (STOPS - 1))))
+        for i in range(STOPS))
+    return f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="blackbody" gradientUnits="userSpaceOnUse" x1="{CENTRE - o:.1f}" y1="{CENTRE + o:.1f}" x2="{CENTRE + o:.1f}" y2="{CENTRE - o:.1f}">
+{stops}
+    </linearGradient>
+  </defs>
+  <circle cx="{CENTRE}" cy="{CENTRE}" r="{RADIUS}" fill="url(#blackbody)"/>
+</svg>
+'''
 
 
 if __name__ == "__main__":
-    OUT.mkdir(parents=True, exist_ok=True)
-    d = disc()
-    d.save(OUT / "disc.png")
-    glow(d).save(OUT / "glow.png")
-    print("wrote", OUT / "disc.png", OUT / "glow.png")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(svg())
+    print("wrote", OUT)
