@@ -42,7 +42,12 @@ enum Scenes {
 @MainActor @Observable
 final class Model {
     var mode: Mode = .rgbcw
-    var r = 255.0, g = 0.0, b = 0.0, c = 0.0, w = 0.0
+    // One per line: @Observable can't expand multi-variable declarations.
+    var r = 255.0
+    var g = 0.0
+    var b = 0.0
+    var c = 0.0
+    var w = 0.0
     var dimming = 100.0
     var temp = 2700.0
     var sceneId = 1
