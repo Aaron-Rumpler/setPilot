@@ -49,7 +49,7 @@ struct ContentView: View {
                 ChannelSlider(label: "Warm W", tint: .orange, range: 0...255, value: bind(\.w))
             case .temp:
                 ChannelSlider(label: "Kelvin", tint: .orange, range: model.tempRange, step: 50,
-                              marks: [2200, 2400, 2700, 4200, 6500], value: bind(\.temp))
+                              marks: [2200, 2400, 2700, 4200, 6500], scale: .mired, value: bind(\.temp))
             case .scene:
                 Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                     ForEach(Scenes.all) { Text("\($0.name) (\($0.id))").tag($0.id) }
@@ -178,12 +178,13 @@ struct ChannelSlider: View {
     /// Slider snapping (drag, arrow keys, VoiceOver); the field and stepper still work in 1s.
     var step: Double = 1
     var marks: [Double] = []
+    var scale: SliderScale = .linear
     @Binding var value: Double
 
     var body: some View {
         HStack {
             Text(label).frame(width: 60, alignment: .leading)
-            SnappingSlider(value: $value, range: range, step: step, marks: marks, tint: tint)
+            SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale, tint: tint)
             NumberField(value: $value, range: range)
                 .frame(width: 56)
             Stepper("", value: $value, in: range, step: 1)
