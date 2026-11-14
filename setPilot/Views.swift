@@ -6,10 +6,13 @@ struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
     @State private var model: Model
     @State private var confirmingReboot = false
-    @State private var showingConfig = false
+    @State private var showingConfig: Bool
+    @State private var configHeight: CGFloat = 120
 
-    init(model: Model? = nil) {
+    /// `showingConfig` opens the configuration popover initially (for previews).
+    init(model: Model? = nil, showingConfig: Bool = false) {
         _model = State(initialValue: model ?? Model())
+        _showingConfig = State(initialValue: showingConfig)
     }
 
     var body: some View {
@@ -197,7 +200,7 @@ struct ContentView: View {
                     if model.lastSent.isEmpty {
                         Text("No command sent yet").foregroundStyle(.tertiary)
                     } else {
-                        Text("setPilot ").foregroundStyle(.secondary) + Text(model.lastSent)
+                        Text("setPilot ").foregroundStyle(.secondary) + Text(JSONHighlighter.highlight(model.lastSent))
                     }
                 }
                 .font(.system(.caption, design: .monospaced))
@@ -244,13 +247,17 @@ struct ContentView: View {
                 }
                 .font(.callout)
                 .fixedSize()
-                Spacer()
-                Button("Config…") {
+                Button {
                     model.readConfig()
                     showingConfig = true
+                } label: {
+                    Image(systemName: "info.circle")
                 }
-                .help("Show getSystemConfig, getModelConfig, getUserConfig and getPower")
+                .buttonStyle(.borderless)
+                .help("Device configuration")
+                .accessibilityLabel("Device configuration")
                 .popover(isPresented: $showingConfig, arrowEdge: .bottom) { configPopover }
+                Spacer()
                 Button("Reboot…") { confirmingReboot = true }
             }
             .disabled(model.link != .connected)
@@ -263,16 +270,17 @@ struct ContentView: View {
     private var configPopover: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
+                Text("Device Configuration").font(.headline)
                 if model.info.isEmpty {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text("Reading…").foregroundStyle(.secondary)
                     }
                 }
-                ForEach(model.info.keys.sorted(), id: \.self) { key in
+                ForEach(configOrder.filter { model.info[$0] != nil }, id: \.self) { key in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(key).font(.caption.bold()).foregroundStyle(.secondary)
-                        Text(model.info[key] ?? "")
+                        Text(JSONHighlighter.highlight(model.info[key] ?? ""))
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
@@ -280,9 +288,16 @@ struct ContentView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(GeometryReader { g in
+                Color.clear.onChange(of: g.size.height, initial: true) { _, h in configHeight = h }
+            })
         }
-        .frame(width: 380, height: 360)
+        // Hug the content; scroll only when it's taller than this.
+        .frame(width: 400, height: min(configHeight, 520))
     }
+
+    /// Identity first, then capabilities, settings and power.
+    private let configOrder = ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"]
 
     // MARK: Helpers
 
