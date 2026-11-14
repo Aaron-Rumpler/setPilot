@@ -132,8 +132,9 @@ struct ContentView: View {
                 Toggle("Power", isOn: Binding(get: { model.isOn ?? false }, set: { model.power($0) }))
                     .toggleStyle(.switch)
                     .controlSize(.small)
-                    .labelsHidden()
-                    .help("Power")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize() // the label wrapped on macOS 26 without this
             }
         } content: {
             VStack(alignment: .leading, spacing: 12) {
