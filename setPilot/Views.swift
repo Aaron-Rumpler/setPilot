@@ -1,5 +1,4 @@
 import AppKit
-import QuartzCore
 import SwiftUI
 
 struct ContentView: View {
@@ -18,12 +17,9 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(width: 500)
+        // A fixed size: with .windowResizability(.contentSize) the window's minimum and maximum
+        // are both this, so it opens at the right size, can't be resized, and follows the content.
         .fixedSize()
-        .background(GeometryReader { WindowSizer(size: $0.size) })
-        // Pin to the top and always match the window (min 0: never larger than it). Otherwise,
-        // while the window catches up with a new size, the hosting view centres the content,
-        // so it slides down (expand) or is clipped at the top (collapse).
-        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         .navigationTitle(model.currentName ?? "setPilot")
         .onAppear {
             // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
@@ -291,14 +287,6 @@ struct LightControls: View {
             }
             ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
 
-            if model.mode == .rgbcw && !compact {
-                Button("Set All Channels to 0") {
-                    model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
-                    model.changed()
-                }
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
         }
     }
 }
@@ -462,74 +450,5 @@ final class SelectAllTextField: NSTextField {
         let wasEditing = currentEditor() != nil
         super.mouseDown(with: event) // tracks until mouse-up, placing the caret
         if !wasEditing { currentEditor()?.selectAll(nil) }
-    }
-}
-
-/// Sizes the window to the (fixed-size) SwiftUI content, keeping its top edge in place.
-/// `.windowResizability(.contentSize)` alone limits the size but doesn't grow the window.
-/// Size changes after the window is shown are animated to run alongside SwiftUI's own
-/// animations (e.g. the Device section expanding), unless Reduce Motion is on.
-struct WindowSizer: NSViewRepresentable {
-    let size: CGSize
-
-    func makeNSView(context: Context) -> SizerView { SizerView() }
-
-    func updateNSView(_ view: SizerView, context: Context) {
-        view.target = size
-        view.apply()
-    }
-
-    final class SizerView: NSView {
-        var target: CGSize = .zero
-        private var animatingTo: NSRect?
-        private var hasSized = false
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            // The window always fits its content, so don't offer manual resizing.
-            window?.styleMask.remove(.resizable)
-            apply()
-        }
-
-        func apply() {
-            // Not during SwiftUI's update pass; the work reads current state when it runs.
-            DispatchQueue.main.async { [weak self] in self?.resize() }
-        }
-
-        private func resize() {
-            guard let window, let host = window.contentView, target.width > 0, target.height > 0 else { return }
-            let insets = host.safeAreaInsets // title bar, if the content view extends under it
-            let want = NSSize(width: target.width + insets.left + insets.right,
-                              height: target.height + insets.top + insets.bottom)
-            // Keep the top edge where it is (or where a running animation is taking it).
-            let top = (animatingTo ?? window.frame).maxY
-            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: want))
-            frame.origin = NSPoint(x: (animatingTo ?? window.frame).minX, y: top - frame.height)
-
-            // The first sizing (as the window appears) isn't animated.
-            let animate = hasSized && window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            hasSized = true
-
-            if let animatingTo, animatingTo.size == frame.size { return }
-            guard animatingTo != nil || frame.size != window.frame.size else { return }
-
-            if animate {
-                animatingTo = frame
-                NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.25
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    window.animator().setFrame(frame, display: true)
-                }, completionHandler: { [weak self] in
-                    guard let self, self.animatingTo == frame else { return }
-                    self.animatingTo = nil
-                })
-            } else {
-                animatingTo = nil
-                // Lay out before drawing, or the old layout shows for a frame at the new size.
-                window.setFrame(frame, display: false)
-                host.layoutSubtreeIfNeeded()
-                window.displayIfNeeded()
-            }
-        }
     }
 }
