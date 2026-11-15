@@ -10,7 +10,7 @@ Notes from testing with Xcode 26.6:
 - Adding "color-space-for-untagged-svg-colors" to icon.json crashes actool.
 - A layer "fill" gradient in icon.json allows only two colours, which can't follow the curve.
 
-Run from the repository root: python3 tools/make_icon_layers.py
+Run from the repository root: python3 tools/make_icon_layers.py [adapting white in kelvin, default 4500]
 """
 import math
 from pathlib import Path
@@ -19,7 +19,11 @@ OUT = Path("setPilot/AppIcon.icon/Assets/disc.svg")
 CENTRE, RADIUS, STOPS = 512, 300, 11  # on Icon Composer's 1024 × 1024 canvas
 
 
-ADAPTING_WHITE = 4500  # as ColourTemperature.adaptingWhite in the app
+import sys
+
+# As ColourTemperature.defaultAdaptingWhite in the app; override with an argument to experiment:
+#   python3 tools/make_icon_layers.py 4800
+ADAPTING_WHITE = float(sys.argv[1]) if len(sys.argv) > 1 else 4500
 
 CAT02 = ((0.7328, 0.4296, -0.1624), (-0.7036, 1.6975, 0.0061), (0.0030, 0.0136, 0.9834))
 CAT02_INV = ((1.096124, -0.278869, 0.182745), (0.454369, 0.473533, 0.072098), (-0.009628, -0.005698, 1.015326))

@@ -4,6 +4,8 @@ import SwiftUI
 
 struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
+    /// Read so the colour-temperature colours redraw when the testing setting changes.
+    @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @State private var model: Model
     @State private var confirmingReboot = false
     @State private var showingConfig: Bool
@@ -156,12 +158,15 @@ struct ContentView: View {
                     // The white channels in the colours of their LEDs (as on the Kelvin track)
                     ChannelSlider(label: "Cool white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 6500)),
                                   range: 0...255, value: bind(\.c))
+                        .id(adaptingWhite)
                     ChannelSlider(label: "Warm white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 2700)),
                                   range: 0...255, value: bind(\.w))
+                        .id(adaptingWhite)
                 case .temp:
                     ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
                                   marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
                                   value: bind(\.temp))
+                        .id(adaptingWhite) // rebuild the track when the adapting white changes
                 case .scene:
                     HStack(spacing: 8) {
                         Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)

@@ -7,8 +7,14 @@ enum ColourTemperature {
     /// against the display's D65 white makes 4200 K look clearly orange, which isn't how it looks
     /// in a room: your eyes adapt. Adapting to 4500 K matches observation of a WiZ bulb in
     /// daylight: the orange is just gone by 4200 K ("Daylight"), and 6500 K ("Cool White") looks
-    /// clearly cooler.
-    static let adaptingWhite = 4500.0
+    /// clearly cooler. Adjustable for testing in Settings (stored in user defaults).
+    static let defaultAdaptingWhite = 4500.0
+    static let adaptingWhiteKey = "adaptingWhite"
+
+    static var adaptingWhite: Double {
+        let v = UserDefaults.standard.double(forKey: adaptingWhiteKey)
+        return v > 0 ? v : defaultAdaptingWhite
+    }
 
     /// sRGB colour of a light at `kelvin` as seen by a viewer adapted to `adaptingWhite`, scaled so
     /// the brightest channel is full.
