@@ -1,12 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="199" y="220" width="26" height="326" rx="13" fill="#8e93a3" fill-opacity="0.35"/>
   <rect x="199" y="674" width="26" height="130" rx="13" fill="#ff383c"/>
-  <rect x="349" y="220" width="26" height="96" rx="13" fill="#8e93a3" fill-opacity="0.35"/>
   <rect x="349" y="444" width="26" height="360" rx="13" fill="#34c759"/>
-  <rect x="499" y="220" width="26" height="236" rx="13" fill="#8e93a3" fill-opacity="0.35"/>
   <rect x="499" y="584" width="26" height="220" rx="13" fill="#0088ff"/>
-  <rect x="649" y="220" width="26" height="16" rx="13" fill="#8e93a3" fill-opacity="0.35"/>
   <rect x="649" y="364" width="26" height="440" rx="13" fill="#bad6ff"/>
-  <rect x="799" y="220" width="26" height="396" rx="13" fill="#8e93a3" fill-opacity="0.35"/>
   <rect x="799" y="744" width="26" height="60" rx="13" fill="#ffc280"/>
 </svg>

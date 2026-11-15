@@ -85,15 +85,26 @@ def vertical(top, bottom):
             "orientation": {"start": {"x": 0.5, "y": 0}, "stop": {"x": 0.5, "y": 1}}}
 
 
-def tracks_svg():
-    """The groove above each knob and the coloured fill below it. Both stop at the knob's edge:
-    the knobs are translucent glass, so anything underneath would show through them."""
-    out, r = HDR, TRACK // 2
-    for x, y, c in zip(XS, LEVELS, CHANNELS):
-        gap = KNOB - 4  # tucks just under the knob's rim
-        out += f'  <rect x="{x - r}" y="{TOP}" width="{TRACK}" height="{y - gap - TOP}" rx="{r}" fill="#8e93a3" fill-opacity="0.35"/>\n'
-        out += f'  <rect x="{x - r}" y="{y + gap}" width="{TRACK}" height="{BOTTOM - y - gap}" rx="{r}" fill="{hexc(c)}"/>\n'
-    return out + "</svg>\n"
+# Grooves and fills stop at each knob's edge: the knobs are translucent glass, so anything
+# underneath would show through them.
+GAP = KNOB - 4  # tucks just under the knob's rim
+
+
+def grooves_svg():
+    """The empty part of each track, above the knob. Drawn opaque; the layer's opacity makes it
+    faint, which (unlike a translucent colour) survives the Tinted appearance's white fill."""
+    r = TRACK // 2
+    return HDR + "".join(
+        f'  <rect x="{x - r}" y="{TOP}" width="{TRACK}" height="{y - GAP - TOP}" rx="{r}" fill="#8e93a3"/>\n'
+        for x, y in zip(XS, LEVELS)) + "</svg>\n"
+
+
+def fills_svg():
+    """The filled part of each track, below the knob, in the channel's colour."""
+    r = TRACK // 2
+    return HDR + "".join(
+        f'  <rect x="{x - r}" y="{y + GAP}" width="{TRACK}" height="{BOTTOM - y - GAP}" rx="{r}" fill="{hexc(c)}"/>\n'
+        for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
 
 
 def knobs_svg():
@@ -118,7 +129,9 @@ def manifest():
              "lighting": "individual",
              "shadow": {"kind": "neutral", "opacity": 0.5},
              "translucency": {"enabled": True, "value": 0.1}},
-            {"layers": [{"glass": False, "image-name": "tracks.svg", "name": "tracks",
+            {"layers": [{"glass": False, "image-name": "fills.svg", "name": "fills",
+                         "fill-specializations": [TINTED_WHITE]},
+                        {"glass": False, "image-name": "grooves.svg", "name": "grooves", "opacity": 0.35,
                          "fill-specializations": [TINTED_WHITE]}],
              "shadow": {"kind": "none", "opacity": 0.5}},
         ],
@@ -131,7 +144,8 @@ if __name__ == "__main__":
     assets.mkdir(parents=True, exist_ok=True)
     for old in assets.iterdir():
         old.unlink()
-    (assets / "tracks.svg").write_text(tracks_svg())
+    (assets / "grooves.svg").write_text(grooves_svg())
+    (assets / "fills.svg").write_text(fills_svg())
     (assets / "knobs.svg").write_text(knobs_svg())
     (ICON / "icon.json").write_text(json.dumps(manifest(), indent=2).replace('": ', '" : ') + "\n")
     print("wrote", ICON, [hexc(c) for c in CHANNELS])

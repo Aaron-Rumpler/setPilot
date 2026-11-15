@@ -69,8 +69,22 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "tracks.svg",
-          "name" : "tracks",
+          "image-name" : "fills.svg",
+          "name" : "fills",
+          "fill-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "glass" : false,
+          "image-name" : "grooves.svg",
+          "name" : "grooves",
+          "opacity" : 0.35,
           "fill-specializations" : [
             {
               "appearance" : "tinted",
