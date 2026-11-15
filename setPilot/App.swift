@@ -86,8 +86,11 @@ struct SettingsView: View {
             Section("Colour temperature (testing)") {
                 LabeledContent("Adapted to") {
                     HStack {
-                        Slider(value: $adaptingWhite, in: 3000...7000, step: 50)
-                        Text("\(Int(adaptingWhite)) K").monospacedDigit().frame(width: 64, alignment: .trailing)
+                        // Snaps to 50 K in the binding: `step:` would draw a tick per step.
+                        Slider(value: Binding(get: { adaptingWhite },
+                                              set: { adaptingWhite = ($0 / 50).rounded() * 50 }),
+                               in: 3000...7000)
+                        Text(verbatim: "\(Int(adaptingWhite)) K").monospacedDigit().frame(width: 64, alignment: .trailing)
                         Stepper("", value: $adaptingWhite, in: 3000...7000, step: 50).labelsHidden()
                     }
                 }
@@ -99,14 +102,14 @@ struct SettingsView: View {
                                     .fill(Color(nsColor: ColourTemperature.colour(kelvin: k)))
                                     .frame(width: 44, height: 28)
                                     .id(adaptingWhite) // redraw when the setting changes
-                                Text("\(Int(k))").font(.caption2).foregroundStyle(.secondary)
+                                Text(verbatim: "\(Int(k))").font(.caption2).foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
                 HStack {
                     Spacer()
-                    Button("Reset to \(Int(ColourTemperature.defaultAdaptingWhite)) K") {
+                    Button("Reset to \(String(Int(ColourTemperature.defaultAdaptingWhite))) K") {
                         adaptingWhite = ColourTemperature.defaultAdaptingWhite
                     }
                 }
