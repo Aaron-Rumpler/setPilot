@@ -66,8 +66,16 @@ final class Model {
     var discovered: [DiscoveredBulb] = []
     var discovering = false
 
-    /// Set once the first view has started connecting (or searching) this launch.
+    /// Set once connecting (or the first-launch search) has started this launch.
     @ObservationIgnored var started = false
+
+    /// Connects to the saved bulb, once per launch. With no saved bulb this does nothing; the window
+    /// runs the first-launch search instead.
+    func startIfSaved() {
+        guard !started, let ip = UserDefaults.standard.string(forKey: "bulbIP"), !ip.isEmpty else { return }
+        started = true
+        connect(ip)
+    }
 
     private let bulb = Bulb()
     private let push = PushListener()

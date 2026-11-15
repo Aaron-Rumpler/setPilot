@@ -25,12 +25,14 @@ struct ContentView: View {
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         .onAppear {
-            // Once per launch (the window can be closed and reopened from the menu bar).
-            guard !model.started else { return }
-            model.started = true
-            // First launch (no saved bulb): search straight away, which also brings up the
-            // Local Network permission prompt.
-            if ip.isEmpty { find() } else { model.connect(ip) }
+            // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
+            // bulb): search straight away, which also brings up the Local Network permission prompt.
+            if ip.isEmpty, !model.started {
+                model.started = true
+                find()
+            } else {
+                model.startIfSaved()
+            }
         }
         .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot) {
             Button("Reboot", role: .destructive) { model.reboot() }

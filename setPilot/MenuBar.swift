@@ -6,6 +6,7 @@ struct MenuBarPanel: View {
     let model: Model
     @AppStorage("bulbIP") private var ip = ""
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -37,9 +38,13 @@ struct MenuBarPanel: View {
 
             Divider()
 
-            HStack {
+            HStack(spacing: 14) {
                 Button("Open setPilot") {
                     openWindow(id: "main")
+                    NSApp.activate()
+                }
+                Button("Settings…") {
+                    openSettings()
                     NSApp.activate()
                 }
                 Spacer()
@@ -49,11 +54,6 @@ struct MenuBarPanel: View {
         }
         .padding(14)
         .frame(width: 400)
-        .onAppear {
-            // If the app was opened without its window (e.g. restored hidden), still connect.
-            guard !model.started, !ip.isEmpty else { return }
-            model.started = true
-            model.connect(ip)
-        }
+        .onAppear { model.startIfSaved() }
     }
 }
