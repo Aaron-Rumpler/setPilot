@@ -66,6 +66,9 @@ final class Model {
     var discovered: [DiscoveredBulb] = []
     var discovering = false
 
+    /// Set once the first view has started connecting (or searching) this launch.
+    @ObservationIgnored var started = false
+
     private let bulb = Bulb()
     private let push = PushListener()
     @ObservationIgnored private var sendScheduled = false

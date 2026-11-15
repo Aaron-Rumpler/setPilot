@@ -4,16 +4,14 @@ import SwiftUI
 
 struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
-    /// Read so the colour-temperature colours redraw when the testing setting changes.
-    @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
-    @State private var model: Model
+    let model: Model
     @State private var confirmingReboot = false
     @State private var showingConfig: Bool
     @State private var configHeight: CGFloat = 120
 
     /// `showingConfig` opens the configuration popover initially (for previews).
-    init(model: Model? = nil, showingConfig: Bool = false) {
-        _model = State(initialValue: model ?? Model())
+    init(model: Model, showingConfig: Bool = false) {
+        self.model = model
         _showingConfig = State(initialValue: showingConfig)
     }
 
@@ -33,6 +31,9 @@ struct ContentView: View {
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         .onAppear {
+            // Once per launch (the window can be closed and reopened from the menu bar).
+            guard !model.started else { return }
+            model.started = true
             // First launch (no saved bulb): search straight away, which also brings up the
             // Local Network permission prompt.
             if ip.isEmpty { find() } else { model.connect(ip) }
@@ -69,9 +70,9 @@ struct ContentView: View {
                 }
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(linkColour)
+                        .fill(model.linkColour)
                         .frame(width: 8, height: 8)
-                    Text(linkText)
+                    Text(model.linkText)
                     if model.link == .connected {
                         Text("·").foregroundStyle(.tertiary)
                         Text(model.live ? "Live updates" : "No live updates")
@@ -108,24 +109,6 @@ struct ContentView: View {
         }
     }
 
-    private var linkColour: Color {
-        switch model.link {
-        case .none: .secondary.opacity(0.5)
-        case .connecting: .yellow
-        case .connected: .green
-        case .unreachable: .red
-        }
-    }
-
-    private var linkText: String {
-        switch model.link {
-        case .none: "Not connected"
-        case .connecting: "Connecting…"
-        case .connected: "Connected" + (model.rssi.map { " · \($0 < 0 ? "\u{2212}" : "")\(abs($0)) dBm" } ?? "")
-        case .unreachable: "No response"
-        }
-    }
-
     // MARK: Light
 
     private var lightPanel: some View {
@@ -135,7 +118,7 @@ struct ContentView: View {
                     .controlSize(.small)
                     .opacity(model.pending ? 1 : 0)
                     .help("Waiting for the bulb to confirm")
-                Toggle("Power", isOn: Binding(get: { model.isOn ?? false }, set: { model.power($0) }))
+                Toggle("Power", isOn: model.powerBinding)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .font(.callout)
@@ -143,60 +126,7 @@ struct ContentView: View {
                     .fixedSize() // the label wrapped on macOS 26 without this
             }
         } content: {
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .frame(maxWidth: .infinity) // centred
-
-                Divider()
-
-                switch model.mode {
-                case .rgbcw:
-                    ChannelSlider(label: "Red", tint: .red, range: 0...255, value: bind(\.r))
-                    ChannelSlider(label: "Green", tint: .green, range: 0...255, value: bind(\.g))
-                    ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: bind(\.b))
-                    // The white channels in the colours of their LEDs (as on the Kelvin track)
-                    ChannelSlider(label: "Cool white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 6500)),
-                                  range: 0...255, value: bind(\.c))
-                        .id(adaptingWhite)
-                    ChannelSlider(label: "Warm white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 2700)),
-                                  range: 0...255, value: bind(\.w))
-                        .id(adaptingWhite)
-                case .temp:
-                    ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
-                                  marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
-                                  value: bind(\.temp))
-                        .id(adaptingWhite) // rebuild the track when the adapting white changes
-                case .scene:
-                    HStack(spacing: 8) {
-                        Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
-                        Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
-                            ForEach(Scenes.all) { Text($0.name).tag($0.id) }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                        Text("ID \(model.sceneId)")
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    ChannelSlider(label: "Speed", range: 10...200, value: bind(\.speed))
-                }
-                ChannelSlider(label: "Dimming", range: model.minDimming...100, value: bind(\.dimming))
-
-                if model.mode == .rgbcw {
-                    Button("Set All Channels to 0") {
-                        model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
-                        model.changed()
-                    }
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
+            LightControls(model: model)
         }
         .disabled(model.link != .connected)
     }
@@ -335,18 +265,108 @@ struct ContentView: View {
         ip = found
         model.connect(found)
     }
+}
 
+/// The mode control and the current mode's sliders, plus Dimming. Shared by the window and the
+/// menu bar panel.
+struct LightControls: View {
+    let model: Model
+    var compact = false
+    /// Read so the colour-temperature colours redraw when the testing setting changes.
+    @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
+            Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
+                ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity) // centred
+
+            Divider()
+
+            switch model.mode {
+            case .rgbcw:
+                ChannelSlider(label: "Red", tint: .red, range: 0...255, value: model.binding(\.r))
+                ChannelSlider(label: "Green", tint: .green, range: 0...255, value: model.binding(\.g))
+                ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: model.binding(\.b))
+                // The white channels in the colours of their LEDs (as on the Kelvin track)
+                ChannelSlider(label: "Cool white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 6500)),
+                              range: 0...255, value: model.binding(\.c))
+                    .id(adaptingWhite)
+                ChannelSlider(label: "Warm white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 2700)),
+                              range: 0...255, value: model.binding(\.w))
+                    .id(adaptingWhite)
+            case .temp:
+                ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
+                              marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
+                              value: model.binding(\.temp))
+                    .id(adaptingWhite) // rebuild the track when the adapting white changes
+            case .scene:
+                HStack(spacing: 8) {
+                    Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+                    Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
+                        ForEach(Scenes.all) { Text($0.name).tag($0.id) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    Text("ID \(model.sceneId)")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
+            }
+            ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
+
+            if model.mode == .rgbcw && !compact {
+                Button("Set All Channels to 0") {
+                    model.r = 0; model.g = 0; model.b = 0; model.c = 0; model.w = 0
+                    model.changed()
+                }
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+}
+
+extension Model {
     /// Rounds to whole numbers and triggers a send only on user edits (not on syncs/pushes).
-    private func bind(_ kp: ReferenceWritableKeyPath<Model, Double>) -> Binding<Double> {
+    func binding(_ kp: ReferenceWritableKeyPath<Model, Double>) -> Binding<Double> {
         Binding(
-            get: { model[keyPath: kp] },
+            get: { self[keyPath: kp] },
             set: {
                 let v = $0.rounded()
-                guard v != model[keyPath: kp] else { return } // continuous sliders move in fractions
-                model[keyPath: kp] = v
-                model.changed()
+                guard v != self[keyPath: kp] else { return } // continuous sliders move in fractions
+                self[keyPath: kp] = v
+                self.changed()
             }
         )
+    }
+
+    var powerBinding: Binding<Bool> {
+        Binding(get: { self.isOn ?? false }, set: { self.power($0) })
+    }
+
+    var linkColour: Color {
+        switch link {
+        case .none: .secondary.opacity(0.5)
+        case .connecting: .yellow
+        case .connected: .green
+        case .unreachable: .red
+        }
+    }
+
+    var linkText: String {
+        switch link {
+        case .none: "Not connected"
+        case .connecting: "Connecting…"
+        case .connected: "Connected" + (rssi.map { " · \($0 < 0 ? "\u{2212}" : "")\(abs($0)) dBm" } ?? "")
+        case .unreachable: "No response"
+        }
     }
 }
 

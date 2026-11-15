@@ -4,16 +4,25 @@ import SwiftUI
 @main
 struct SetPilotApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+    /// One connection to the bulb, shared by the window and the menu bar panel.
+    @State private var model = Model()
 
     var body: some Scene {
-        Window("WiZ", id: "main") { ContentView() }
+        Window("WiZ", id: "main") { ContentView(model: model) }
             .windowResizability(.contentSize)
+        MenuBarExtra {
+            MenuBarPanel(model: model)
+        } label: {
+            Image(systemName: model.isOn == true ? "lightbulb.fill" : "lightbulb")
+        }
+        .menuBarExtraStyle(.window)
         Settings { AdaptationSettings() }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Keep running in the menu bar when the window is closed.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 /// Testing aid: the white the colour-temperature colours are adapted to (see ColourTemperature).
