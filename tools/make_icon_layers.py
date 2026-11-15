@@ -85,25 +85,21 @@ def vertical(top, bottom):
             "orientation": {"start": {"x": 0.5, "y": 0}, "stop": {"x": 0.5, "y": 1}}}
 
 
-# Grooves and fills stop at each knob's edge: the knobs are translucent glass, so anything
-# underneath would show through them.
-GAP = KNOB - 4  # tucks just under the knob's rim
-
-
 def grooves_svg():
-    """The empty part of each track, above the knob. Drawn opaque; the layer's opacity makes it
-    faint, which (unlike a translucent colour) survives the Tinted appearance's white fill."""
+    """The empty part of each track, from the top to the knob's centre. Drawn opaque; the layer's
+    opacity makes it faint, which (unlike a translucent colour) survives the Tinted appearance's
+    white fill."""
     r = TRACK // 2
     return HDR + "".join(
-        f'  <rect x="{x - r}" y="{TOP}" width="{TRACK}" height="{y - GAP - TOP}" rx="{r}" fill="#8e93a3"/>\n'
+        f'  <rect x="{x - r}" y="{TOP}" width="{TRACK}" height="{y - TOP}" rx="{r}" fill="#8e93a3"/>\n'
         for x, y in zip(XS, LEVELS)) + "</svg>\n"
 
 
 def fills_svg():
-    """The filled part of each track, below the knob, in the channel's colour."""
+    """The filled part of each track, from the knob's centre down, in the channel's colour."""
     r = TRACK // 2
     return HDR + "".join(
-        f'  <rect x="{x - r}" y="{y + GAP}" width="{TRACK}" height="{BOTTOM - y - GAP}" rx="{r}" fill="{hexc(c)}"/>\n'
+        f'  <rect x="{x - r}" y="{y}" width="{TRACK}" height="{BOTTOM - y}" rx="{r}" fill="{hexc(c)}"/>\n'
         for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
 
 
@@ -128,7 +124,8 @@ def manifest():
                          "fill-specializations": [TINTED_WHITE]}],
              "lighting": "individual",
              "shadow": {"kind": "neutral", "opacity": 0.5},
-             "translucency": {"enabled": True, "value": 0.1}},
+             # Opaque glass: the tracks run underneath and mustn't show through the knobs.
+             "translucency": {"enabled": False, "value": 0}},
             {"layers": [{"glass": False, "image-name": "fills.svg", "name": "fills",
                          "fill-specializations": [TINTED_WHITE]},
                         {"glass": False, "image-name": "grooves.svg", "name": "grooves", "opacity": 0.35,
