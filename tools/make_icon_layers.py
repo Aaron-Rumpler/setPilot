@@ -19,8 +19,19 @@ OUT = Path("setPilot/AppIcon.icon/Assets/disc.svg")
 CENTRE, RADIUS, STOPS = 512, 300, 11  # on Icon Composer's 1024 × 1024 canvas
 
 
-def planck_srgb(t):
-    """sRGB of the Planckian locus at t kelvin (Kim et al. 2002), max channel normalised."""
+ADAPTING_WHITE = 4500  # as ColourTemperature.adaptingWhite in the app
+
+CAT02 = ((0.7328, 0.4296, -0.1624), (-0.7036, 1.6975, 0.0061), (0.0030, 0.0136, 0.9834))
+CAT02_INV = ((1.096124, -0.278869, 0.182745), (0.454369, 0.473533, 0.072098), (-0.009628, -0.005698, 1.015326))
+D65 = (0.3127 / 0.3290, 1.0, (1 - 0.3127 - 0.3290) / 0.3290)
+
+
+def _mul(m, v):
+    return tuple(sum(m[i][j] * v[j] for j in range(3)) for i in range(3))
+
+
+def planck_xyz(t):
+    """XYZ (Y = 1) of the Planckian locus at t kelvin (Kim et al. 2002)."""
     if t <= 4000:
         x = -0.2661239e9 / t**3 - 0.2343589e6 / t**2 + 0.8776956e3 / t + 0.179910
     else:
@@ -31,7 +42,14 @@ def planck_srgb(t):
         y = -0.9549476 * x**3 - 1.37418593 * x**2 + 2.09137015 * x - 0.16748867
     else:
         y = 3.0817580 * x**3 - 5.87338670 * x**2 + 3.75112997 * x - 0.37001483
-    X, Y, Z = x / y, 1.0, (1 - x - y) / y
+    return (x / y, 1.0, (1 - x - y) / y)
+
+
+def planck_srgb(t):
+    """sRGB of a light at t kelvin for a viewer adapted to ADAPTING_WHITE (CAT02 von Kries),
+    max channel normalised. Same model as ColourTemperature.colour(kelvin:) in the app."""
+    s, a, w = _mul(CAT02, planck_xyz(t)), _mul(CAT02, planck_xyz(ADAPTING_WHITE)), _mul(CAT02, D65)
+    X, Y, Z = _mul(CAT02_INV, tuple(s[i] * w[i] / a[i] for i in range(3)))
     rgb = [3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z,
            -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z,
            0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z]

@@ -153,8 +153,11 @@ struct ContentView: View {
                     ChannelSlider(label: "Red", tint: .red, range: 0...255, value: bind(\.r))
                     ChannelSlider(label: "Green", tint: .green, range: 0...255, value: bind(\.g))
                     ChannelSlider(label: "Blue", tint: .blue, range: 0...255, value: bind(\.b))
-                    ChannelSlider(label: "Cool white", tint: .cyan, range: 0...255, value: bind(\.c))
-                    ChannelSlider(label: "Warm white", tint: .orange, range: 0...255, value: bind(\.w))
+                    // The white channels in the colours of their LEDs (as on the Kelvin track)
+                    ChannelSlider(label: "Cool white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 6500)),
+                                  range: 0...255, value: bind(\.c))
+                    ChannelSlider(label: "Warm white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 2700)),
+                                  range: 0...255, value: bind(\.w))
                 case .temp:
                     ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
                                   marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,

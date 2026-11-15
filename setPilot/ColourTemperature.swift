@@ -1,17 +1,48 @@
 import AppKit
 
-/// Display colour of a black-body (Planckian) radiator, for drawing colour-temperature scales.
+/// Display colour of a black-body (Planckian) light, for colour-temperature scales and the
+/// cool/warm white channels.
 enum ColourTemperature {
-    /// sRGB colour of the Planckian locus at `kelvin`, scaled so the brightest channel is full.
+    /// The white the viewer is taken to be adapted to. Rendering a light exactly as measured
+    /// against the display's D65 white makes 4200 K look clearly orange, which isn't how it looks
+    /// in a room: your eyes adapt. Adapting to 4500 K matches observation of a WiZ bulb in
+    /// daylight: the orange is just gone by 4200 K ("Daylight"), and 6500 K ("Cool White") looks
+    /// clearly cooler.
+    static let adaptingWhite = 4500.0
+
+    /// sRGB colour of a light at `kelvin` as seen by a viewer adapted to `adaptingWhite`, scaled so
+    /// the brightest channel is full.
     ///
-    /// Chromaticity uses the Kim et al. (2002) cubic-spline fit of the CIE 1931 2° Planckian
-    /// locus, valid for 1667–25000 K. Against direct integration of Planck's law with the CIE 1931
-    /// colour-matching functions it is within Δxy 0.0006 over 2000–7000 K, far below what's
-    /// visible. xyY → XYZ → linear sRGB (IEC 61966-2-1, D65) → sRGB transfer curve. No chromatic
-    /// adaptation, so colours are relative to the display's D65 white (6500 K is faintly pink,
-    /// as the locus passes just below D65). Everything above ~1900 K is inside the sRGB gamut;
-    /// below that, negative channels are clipped.
+    /// - Chromaticity: Kim et al. (2002) fit of the CIE 1931 2° Planckian locus, valid
+    ///   1667–25000 K; within Δxy 0.0006 of direct integration of Planck's law over 2000–7000 K.
+    /// - Adaptation: von Kries in CAT02 cone space (as in CIECAM02), mapping the adapting white to
+    ///   the display's D65 white.
+    /// - Output: linear sRGB (IEC 61966-2-1), negatives clipped, normalised, sRGB transfer curve.
     static func colour(kelvin: Double) -> NSColor {
+        let source = cat02(xyz(kelvin))
+        let from = cat02(xyz(adaptingWhite))
+        let to = cat02(d65)
+        let adapted = cat02Inverse((source.0 * to.0 / from.0, source.1 * to.1 / from.1, source.2 * to.2 / from.2))
+
+        let (X, Y, Z) = adapted
+        let r = max(3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z, 0)
+        let g = max(-0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z, 0)
+        let b = max(0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z, 0)
+        let peak = max(r, g, b)
+        func encode(_ c: Double) -> CGFloat {
+            let v = c / peak
+            return CGFloat(v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055)
+        }
+        return NSColor(srgbRed: encode(r), green: encode(g), blue: encode(b), alpha: 1)
+    }
+
+    private typealias Triple = (Double, Double, Double)
+
+    /// D65 white point (x 0.3127, y 0.3290) at Y = 1.
+    private static let d65: Triple = (0.3127 / 0.3290, 1, (1 - 0.3127 - 0.3290) / 0.3290)
+
+    /// XYZ (Y = 1) of the Planckian locus at `kelvin`.
+    private static func xyz(_ kelvin: Double) -> Triple {
         let t = min(max(kelvin, 1667), 25000)
         let x: Double
         if t <= 4000 {
@@ -27,18 +58,18 @@ enum ColourTemperature {
         } else {
             y = 3.0817580 * x * x * x - 5.87338670 * x * x + 3.75112997 * x - 0.37001483
         }
+        return (x / y, 1, (1 - x - y) / y)
+    }
 
-        // xyY (Y = 1) → XYZ → linear sRGB
-        let (X, Y, Z) = (x / y, 1.0, (1 - x - y) / y)
-        var r = 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z
-        var g = -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z
-        var b = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z
-        (r, g, b) = (max(r, 0), max(g, 0), max(b, 0))
-        let peak = max(r, g, b)
-        func encode(_ c: Double) -> CGFloat {
-            let v = c / peak
-            return CGFloat(v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055)
-        }
-        return NSColor(srgbRed: encode(r), green: encode(g), blue: encode(b), alpha: 1)
+    private static func cat02(_ v: Triple) -> Triple {
+        (0.7328 * v.0 + 0.4296 * v.1 - 0.1624 * v.2,
+         -0.7036 * v.0 + 1.6975 * v.1 + 0.0061 * v.2,
+         0.0030 * v.0 + 0.0136 * v.1 + 0.9834 * v.2)
+    }
+
+    private static func cat02Inverse(_ v: Triple) -> Triple {
+        (1.096124 * v.0 - 0.278869 * v.1 + 0.182745 * v.2,
+         0.454369 * v.0 + 0.473533 * v.1 + 0.072098 * v.2,
+         -0.009628 * v.0 - 0.005698 * v.1 + 1.015326 * v.2)
     }
 }
