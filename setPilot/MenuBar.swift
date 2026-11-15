@@ -48,7 +48,10 @@ struct MenuBarPanel: View {
                     NSApp.activate()
                 }
                 Spacer()
-                Button("Quit") { NSApp.terminate(nil) }
+                Button("Quit setPilot") {
+                    AppDelegate.reallyQuit = true
+                    NSApp.terminate(nil)
+                }
             }
             .buttonStyle(.borderless)
         }

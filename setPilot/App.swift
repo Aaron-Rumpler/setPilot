@@ -23,44 +23,72 @@ struct SetPilotApp: App {
     }
 }
 
-enum DockIcon {
-    static let key = "showInDock"
-
-    static var shown: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
-
-    @MainActor static func apply(_ show: Bool) {
-        NSApp.setActivationPolicy(show ? .regular : .accessory)
-        if !show { NSApp.activate() } // keep any open window in front after losing the Dock icon
-    }
-}
-
+/// The app lives in the menu bar. It has a Dock icon only while one of its windows is open, and
+/// quitting from the app menu (⌘Q) just closes the windows; the menu bar panel's Quit really quits.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchedAtLogin = false
+    /// Set by the menu bar panel's Quit button.
+    static var reallyQuit = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // macOS marks a login-item launch in the "open application" event's properties.
         let event = NSAppleEventManager.shared().currentAppleEvent
         launchedAtLogin = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
-        NSApp.setActivationPolicy(DockIcon.shown ? .regular : .accessory)
+        NSApp.setActivationPolicy(launchedAtLogin ? .accessory : .regular)
+
+        let centre = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didChangeOcclusionStateNotification,
+                     NSWindow.didMiniaturizeNotification, NSWindow.willCloseNotification] {
+            centre.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                // After the close/show has taken effect.
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateDockIcon() } }
+            }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard launchedAtLogin else { return }
         // Launched at login: just the menu bar item, no window.
         for delay in [0.0, 0.3] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                for window in NSApp.windows where window.canBecomeMain && window.isVisible { window.close() }
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { self.closeWindows() } }
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Really quit from the panel's Quit button, and when macOS quits apps for logout, restart or
+        // shut down (its quit event carries a reason, kAEQuitReason 'why?'). Any other quit, such as
+        // ⌘Q or the Dock icon's Quit, just closes the windows and leaves the menu bar item.
+        let quitReason: AEKeyword = 0x7768_793F // 'why?'
+        let systemQuit = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: quitReason) != nil
+        if Self.reallyQuit || systemQuit { return .terminateNow }
+        closeWindows()
+        return .terminateCancel
     }
 
     /// Keep running in the menu bar when the window is closed.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Our normal windows (the main window and Settings), not the menu bar panel.
+    private var appWindows: [NSWindow] {
+        NSApp.windows.filter { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }
+    }
+
+    private func closeWindows() {
+        appWindows.forEach { $0.close() }
+        updateDockIcon()
+    }
+
+    private func updateDockIcon() {
+        let want: NSApplication.ActivationPolicy = appWindows.isEmpty ? .accessory : .regular
+        guard NSApp.activationPolicy() != want else { return }
+        NSApp.setActivationPolicy(want)
+        if want == .regular { NSApp.activate() } // bring the window that just opened to the front
+    }
 }
 
 struct SettingsView: View {
-    @AppStorage(DockIcon.key) private var showInDock = true
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
@@ -68,8 +96,6 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("General") {
-                Toggle("Show in Dock", isOn: $showInDock)
-                    .onChange(of: showInDock) { _, show in DockIcon.apply(show) }
                 // A binding rather than onChange, so refreshing the status never re-registers.
                 Toggle("Open at login (menu bar only)",
                        isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) }))

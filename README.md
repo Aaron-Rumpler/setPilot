@@ -15,8 +15,8 @@ with raw RGBCW values.
   so warm whites get more room, and snaps to 50 K. **Scene** mode with speed.
 - **Menu bar item**: a lightbulb (filled when the bulb is on) with a panel holding the power switch
   and the same light controls as the window. The app keeps running in the menu bar when the window
-  is closed. Settings can hide the Dock icon (menu bar only) and open the app at login, in which
-  case only the menu bar item appears.
+  is closed: it has a Dock icon only while a window is open, ⌘Q just closes its windows, and the
+  panel's Quit button really quits. Settings can open it at login, menu bar only.
 - **Discovery** on every IPv4 interface's broadcast address, using the same `registration`
   broadcast as [pywizlight](https://github.com/sbidy/pywizlight). On first launch the app searches
   by itself, asking for Local Network access first.
