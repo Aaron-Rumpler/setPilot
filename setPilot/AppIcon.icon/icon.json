@@ -43,7 +43,15 @@
       "layers" : [
         {
           "glass" : true,
-          "image-name" : "knobs.svg",
+          "image-name-specializations" : [
+            {
+              "value" : "knobs.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "knobs-dark.svg"
+            }
+          ],
           "name" : "knobs",
           "fill-specializations" : [
             {
@@ -69,7 +77,15 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "fills.svg",
+          "image-name-specializations" : [
+            {
+              "value" : "fills.svg"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "fills-dark.svg"
+            }
+          ],
           "name" : "fills",
           "fill-specializations" : [
             {

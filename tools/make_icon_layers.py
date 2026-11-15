@@ -2,9 +2,10 @@
 
 Five slider tracks with glass knobs, one per bulb channel: red, green, blue, cool white and warm
 white, in the same colours as the app's sliders. Red, green and blue are the macOS 26 system
-colours (light appearance); the whites are the black-body colours of 6500 K and 2700 K rendered as
-in the app (CAT02, adapted to ADAPTING_WHITE). The background is the icon's own fill, light by
-default and dark in the Dark appearance, so the system draws the exact macOS shape.
+colours, in their light and dark versions for the icon's Default and Dark variants; the whites
+are the black-body colours of 6500 K and 2700 K rendered as in the app (CAT02, adapted to
+ADAPTING_WHITE). The background is the icon's own fill, light by default and dark in the Dark
+appearance, so the system draws the exact macOS shape.
 
 Notes from testing with Xcode 26.6:
 - Untagged SVG colours are read as sRGB.
@@ -66,7 +67,11 @@ HDR = '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBo
 
 # macOS 26 system colours (NSColor.systemRed/Green/Blue, light appearance), as the app's sliders
 RED, GREEN, BLUE = (255, 56, 60), (52, 199, 89), (0, 136, 255)
-CHANNELS = [RED, GREEN, BLUE, planck_srgb(6500), planck_srgb(2700)]
+# ...and their dark-appearance versions, for the icon's Dark variant (as the app's sliders in dark mode)
+RED_DARK, GREEN_DARK, BLUE_DARK = (255, 66, 69), (48, 209, 88), (0, 145, 255)
+COOL, WARM = planck_srgb(6500), planck_srgb(2700)  # the same in both appearances
+CHANNELS = [RED, GREEN, BLUE, COOL, WARM]
+CHANNELS_DARK = [RED_DARK, GREEN_DARK, BLUE_DARK, COOL, WARM]
 XS = [212, 362, 512, 662, 812]       # track centres on the 1024 canvas
 LEVELS = [610, 380, 520, 300, 680]   # knob centres
 TOP, BOTTOM, TRACK, KNOB = 220, 804, 26, 68
@@ -95,17 +100,17 @@ def grooves_svg():
         for x, y in zip(XS, LEVELS)) + "</svg>\n"
 
 
-def fills_svg():
+def fills_svg(channels=CHANNELS):
     """The filled part of each track, from the knob's centre down, in the channel's colour."""
     r = TRACK // 2
     return HDR + "".join(
         f'  <rect x="{x - r}" y="{y}" width="{TRACK}" height="{BOTTOM - y}" rx="{r}" fill="{hexc(c)}"/>\n'
-        for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
+        for x, y, c in zip(XS, LEVELS, channels)) + "</svg>\n"
 
 
-def knobs_svg():
+def knobs_svg(channels=CHANNELS):
     return HDR + "".join(f'  <circle cx="{x}" cy="{y}" r="{KNOB}" fill="{hexc(c)}"/>\n'
-                         for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
+                         for x, y, c in zip(XS, LEVELS, channels)) + "</svg>\n"
 
 
 # In the Tinted appearance (which the Clear style also uses) the system derives brightness from
@@ -116,6 +121,11 @@ TINTED_WHITE = {"appearance": "tinted", "value": {"solid": "extended-gray:1.0000
 TINTED_KNOBS = {"appearance": "tinted", "value": {"solid": "extended-gray:0.85000,1.00000"}}
 
 
+def by_appearance(name):
+    """The light image, with the dark-colour version in the Dark appearance."""
+    return [{"value": f"{name}.svg"}, {"appearance": "dark", "value": f"{name}-dark.svg"}]
+
+
 def manifest():
     return {
         "fill-specializations": [
@@ -123,13 +133,13 @@ def manifest():
             {"appearance": "dark", "value": vertical((52, 54, 62), (22, 23, 28))},
         ],
         "groups": [
-            {"layers": [{"glass": True, "image-name": "knobs.svg", "name": "knobs",
+            {"layers": [{"glass": True, "image-name-specializations": by_appearance("knobs"), "name": "knobs",
                          "fill-specializations": [TINTED_KNOBS]}],
              "lighting": "individual",
              "shadow": {"kind": "neutral", "opacity": 0.5},
              # Opaque glass: the tracks run underneath and mustn't show through the knobs.
              "translucency": {"enabled": False, "value": 0}},
-            {"layers": [{"glass": False, "image-name": "fills.svg", "name": "fills",
+            {"layers": [{"glass": False, "image-name-specializations": by_appearance("fills"), "name": "fills",
                          "fill-specializations": [TINTED_WHITE]},
                         {"glass": False, "image-name": "grooves.svg", "name": "grooves", "opacity": 0.35,
                          "fill-specializations": [TINTED_WHITE]}],
@@ -147,5 +157,7 @@ if __name__ == "__main__":
     (assets / "grooves.svg").write_text(grooves_svg())
     (assets / "fills.svg").write_text(fills_svg())
     (assets / "knobs.svg").write_text(knobs_svg())
+    (assets / "fills-dark.svg").write_text(fills_svg(CHANNELS_DARK))
+    (assets / "knobs-dark.svg").write_text(knobs_svg(CHANNELS_DARK))
     (ICON / "icon.json").write_text(json.dumps(manifest(), indent=2).replace('": ', '" : ') + "\n")
     print("wrote", ICON, [hexc(c) for c in CHANNELS])
