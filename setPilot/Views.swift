@@ -133,10 +133,15 @@ struct ContentView: View {
                     Label("Bulb confirmed", systemImage: "checkmark.circle.fill")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                } else if !model.status.isEmpty {
-                    Text(model.status)
+                } else {
+                    // Always one line, even when empty, so messages coming and going don't
+                    // resize the window.
+                    Text(model.status.isEmpty ? " " : model.status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(model.status)
                 }
             }
         }

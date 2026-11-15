@@ -39,7 +39,12 @@ enum Scenes {
 
 @MainActor @Observable
 final class Model {
-    var mode: Mode = .rgbcw
+    /// Remembered, so the window opens with the controls the bulb was last in and doesn't
+    /// change size when it first reports its state.
+    var mode: Mode = Mode(rawValue: UserDefaults.standard.string(forKey: Model.modeKey) ?? "") ?? .rgbcw {
+        didSet { if mode != oldValue { UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey) } }
+    }
+    static let modeKey = "mode"
     // One per line: @Observable can't expand multi-variable declarations.
     var r = 255.0
     var g = 0.0
