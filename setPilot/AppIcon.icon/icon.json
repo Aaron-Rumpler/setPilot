@@ -44,7 +44,15 @@
         {
           "glass" : true,
           "image-name" : "knobs.svg",
-          "name" : "knobs"
+          "name" : "knobs",
+          "fill-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ]
         }
       ],
       "lighting" : "individual",
@@ -62,7 +70,15 @@
         {
           "glass" : false,
           "image-name" : "tracks.svg",
-          "name" : "tracks"
+          "name" : "tracks",
+          "fill-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ]
         }
       ],
       "shadow" : {

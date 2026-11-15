@@ -86,16 +86,24 @@ def vertical(top, bottom):
 
 
 def tracks_svg():
-    out = HDR
+    """The groove above each knob and the coloured fill below it. Both stop at the knob's edge:
+    the knobs are translucent glass, so anything underneath would show through them."""
+    out, r = HDR, TRACK // 2
     for x, y, c in zip(XS, LEVELS, CHANNELS):
-        out += f'  <rect x="{x - TRACK // 2}" y="{TOP}" width="{TRACK}" height="{BOTTOM - TOP}" rx="{TRACK // 2}" fill="#8e93a3" fill-opacity="0.35"/>\n'
-        out += f'  <rect x="{x - TRACK // 2}" y="{y}" width="{TRACK}" height="{BOTTOM - y}" rx="{TRACK // 2}" fill="{hexc(c)}"/>\n'
+        gap = KNOB - 4  # tucks just under the knob's rim
+        out += f'  <rect x="{x - r}" y="{TOP}" width="{TRACK}" height="{y - gap - TOP}" rx="{r}" fill="#8e93a3" fill-opacity="0.35"/>\n'
+        out += f'  <rect x="{x - r}" y="{y + gap}" width="{TRACK}" height="{BOTTOM - y - gap}" rx="{r}" fill="{hexc(c)}"/>\n'
     return out + "</svg>\n"
 
 
 def knobs_svg():
     return HDR + "".join(f'  <circle cx="{x}" cy="{y}" r="{KNOB}" fill="{hexc(c)}"/>\n'
                          for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
+
+
+# In the Tinted appearance the system derives brightness from each colour, which left the red and
+# blue knobs dim; a uniform white fill keeps all five equal (the grooves keep their transparency).
+TINTED_WHITE = {"appearance": "tinted", "value": {"solid": "extended-gray:1.00000,1.00000"}}
 
 
 def manifest():
@@ -105,11 +113,13 @@ def manifest():
             {"appearance": "dark", "value": vertical((52, 54, 62), (22, 23, 28))},
         ],
         "groups": [
-            {"layers": [{"glass": True, "image-name": "knobs.svg", "name": "knobs"}],
+            {"layers": [{"glass": True, "image-name": "knobs.svg", "name": "knobs",
+                         "fill-specializations": [TINTED_WHITE]}],
              "lighting": "individual",
              "shadow": {"kind": "neutral", "opacity": 0.5},
              "translucency": {"enabled": True, "value": 0.1}},
-            {"layers": [{"glass": False, "image-name": "tracks.svg", "name": "tracks"}],
+            {"layers": [{"glass": False, "image-name": "tracks.svg", "name": "tracks",
+                         "fill-specializations": [TINTED_WHITE]}],
              "shadow": {"kind": "none", "opacity": 0.5}},
         ],
         "supported-platforms": {"squares": "shared"},
