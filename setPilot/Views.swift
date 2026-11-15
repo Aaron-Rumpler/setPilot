@@ -69,7 +69,7 @@ struct ContentView: View {
                     Text(model.linkText)
                     if model.link == .connected {
                         Text("·").foregroundStyle(.tertiary)
-                        Text(model.live ? "Live updates" : "No live updates")
+                        Text(!model.live ? "No live updates" : model.pushSeen ? "Live updates" : "Live updates (none yet)")
                             .foregroundStyle(.secondary)
                             .help(model.liveStatus)
                     }
@@ -423,9 +423,9 @@ struct NumberField: NSViewRepresentable {
         context.coordinator.parent = self
         // SwiftUI's .disabled doesn't reach AppKit views by itself.
         field.isEnabled = context.environment.isEnabled
-        // Only overwrite the text when the value really changed (slider, stepper, bulb),
-        // so an unrelated redraw doesn't clobber what you're typing.
-        if value != context.coordinator.shown {
+        // Only overwrite the text when the value really changed (slider, stepper, bulb), and
+        // never while you're typing a new one: a push from the bulb would wipe it.
+        if value != context.coordinator.shown && !context.coordinator.typing {
             field.stringValue = Self.format(value)
             context.coordinator.shown = value
         }
@@ -436,8 +436,12 @@ struct NumberField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: NumberField
         var shown: Double = .nan
+        /// Text has been typed since the field was last committed or updated.
+        var typing = false
 
         init(_ parent: NumberField) { self.parent = parent }
+
+        func controlTextDidChange(_ note: Notification) { typing = true }
 
         func controlTextDidEndEditing(_ note: Notification) {
             guard let field = note.object as? NSTextField else { return }
@@ -446,6 +450,7 @@ struct NumberField: NSViewRepresentable {
                 let clamped = min(max(v.rounded(), parent.range.lowerBound), parent.range.upperBound)
                 if clamped != parent.value { parent.value = clamped }
             }
+            typing = false
             field.stringValue = NumberField.format(parent.value)
             shown = parent.value
         }

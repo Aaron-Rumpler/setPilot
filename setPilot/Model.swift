@@ -67,8 +67,11 @@ final class Model {
     /// Controls are usable: the bulb answers and its on/off state is known (every setPilot carries
     /// it, and one without it would switch the bulb on).
     var canControl: Bool { link == .connected && isOn != nil }
-    /// Registered for, and receiving, syncPilot pushes.
-    var live = false
+    /// Registered for syncPilot pushes.
+    var live = false { didSet { if !live { pushSeen = false } } }
+    /// A push has arrived since connecting: registration alone doesn't show they get through
+    /// (a firewall can block port 38900).
+    var pushSeen = false
     var status = ""
     var liveStatus = "Live updates off"
     var lastSent = ""
@@ -225,6 +228,7 @@ final class Model {
         firmware = nil
         info = [:]
         live = false
+        pushSeen = false
         link = ip.trimmingCharacters(in: .whitespaces).isEmpty ? .none : .connecting
         status = ""
         bulb.send("getPilot", retry: true)
@@ -302,7 +306,9 @@ final class Model {
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
-                status = "\(label) is on the network but isn't answering yet"
+                // It answered the search, so try once more (a further failure doesn't search again).
+                status = "\(label) is on the network; trying again"
+                bulb.send("getPilot", retry: true)
             } else {
                 status = "Couldn't find \(label) on the network"
             }
@@ -509,9 +515,11 @@ final class Model {
             if let f = result["fwVersion"] as? String { firmware = f }
             info[method] = pretty(result)
         case "registration":
-            if result["success"] as? Bool == true, push.isRunning, !liveStatus.hasPrefix("Live updates on") {
-                liveStatus = "Live updates on"
+            if result["success"] as? Bool == true, push.isRunning, !live {
                 live = true
+                if !pushSeen {
+                    liveStatus = "Registered for live updates; the bulb sends one when its state changes"
+                }
             }
         default:
             status = "\(method) ok"
@@ -526,6 +534,7 @@ final class Model {
         let time = Date().formatted(date: .omitted, time: .standard)
         liveStatus = "Live updates on — last push \(time)"
         live = true
+        pushSeen = true
         // While a change is unconfirmed, pushes may describe the old state; the read-back settles it.
         if !pending { applyPilot(params) }
     }
@@ -552,9 +561,9 @@ final class Model {
     }
 
     private func applyLimits(_ result: [String: Any]) {
+        // Only the slider's range: changing `dimming` here would show a level the bulb isn't at.
         if let d = (result["minDimLevel"] as? NSNumber)?.doubleValue, d >= 1, d < 100 {
             minDimming = d
-            dimming = max(dimming, d)
         }
         // pywizlight: extRange (older firmware), else cctRange [min, …, max]
         if let range = (result["extRange"] ?? result["cctRange"]) as? [NSNumber],

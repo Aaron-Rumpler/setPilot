@@ -158,7 +158,10 @@ final class SnapSlider: NSSlider {
 
     override func accessibilityPerformIncrement() -> Bool { nudge(1); return true }
     override func accessibilityPerformDecrement() -> Bool { nudge(-1); return true }
+    // In the slider's units, not the 0...1 track positions it works in.
     override func accessibilityValue() -> Any? { NSNumber(value: value) }
+    override func accessibilityMinValue() -> Any? { NSNumber(value: range.lowerBound) }
+    override func accessibilityMaxValue() -> Any? { NSNumber(value: range.upperBound) }
 
     /// x of the knob's centre at `value`, in this view's coordinates.
     func knobCentreX(at value: Double) -> CGFloat {

@@ -50,7 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard launchedAtLogin else { return }
-        // Launched at login: just the menu bar item, no window.
+        // Launched at login: just the menu bar item, no window. Close it now, before it's drawn if
+        // possible, and again shortly after in case SwiftUI opens it late.
+        closeWindows()
         for delay in [0.0, 0.3] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { self.closeWindows() } }
         }

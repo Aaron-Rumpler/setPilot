@@ -26,10 +26,11 @@ with raw RGBCW values.
 - **Bulb names**: name bulbs from the picker (pencil) or the Device panel. Names are kept on this Mac,
   keyed by MAC address (the WiZ app's names are in WiZ's cloud, not on the bulb).
 - The chosen bulb is also remembered by MAC: a different bulb answering at the saved address is
-  ignored, and if the bulb's IP changes the app finds it again by MAC and reconnects (addresses
-  entered as DNS names are left to DNS).
+  ignored, and if the bulb stops answering (for example its IP changed) the app finds it again by
+  MAC and reconnects (addresses entered as DNS names are left to DNS).
 - **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
-  follow changes made from the WiZ app or a remote.
+  follow changes made from the WiZ app or a remote. The status shows "none yet" until the first
+  push arrives, since registering doesn't prove pushes get through a firewall.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
   shows the MAC address, module and firmware, the raw `getSystemConfig` / `getModelConfig` /
   `getUserConfig` / `getPower` results (in a popover from the ⓘ button), and a reboot button.
@@ -37,7 +38,8 @@ with raw RGBCW values.
 - Keyboard: arrow keys step sliders (50 K for temperature), ⌘R syncs.
 
 Not supported: signed requests (firmware that requires the `udp_signing_key` from the WiZ app),
-multiple bulbs, Rhythm and sync-box scenes, dual-head and fan devices.
+multiple bulbs, Rhythm and sync-box scenes (shown when the bulb is in one, but not settable),
+dual-head and fan devices.
 
 ## Colour temperature colours
 
