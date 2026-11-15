@@ -3,7 +3,7 @@ import QuartzCore
 import SwiftUI
 
 struct ContentView: View {
-    @AppStorage("bulbIP") private var ip = ""
+    @AppStorage(Model.addressKey) private var address = ""
     let model: Model
     @State private var confirmingReboot = false
     @State private var showingConfig = false
@@ -27,9 +27,13 @@ struct ContentView: View {
         .onAppear {
             // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
             // bulb): search straight away, which also brings up the Local Network permission prompt.
-            if ip.isEmpty, !model.started {
+            if address.isEmpty, !model.started {
                 model.started = true
-                find()
+                Task {
+                    // Pick a lone bulb automatically; with several, leave the choice to the picker.
+                    let found = await model.discover()
+                    if found.count == 1, address.isEmpty { model.choose(found[0].ip) }
+                }
             } else {
                 model.startIfSaved()
             }
@@ -56,14 +60,7 @@ struct ContentView: View {
             .help("Read the bulb's current state (⌘R)")
         } content: {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    TextField("IP address", text: $ip, prompt: Text("Bulb IP address"))
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { model.connect(ip) }
-                    Button("Connect") { model.connect(ip) }
-                        .disabled(ip.trimmingCharacters(in: .whitespaces).isEmpty)
-                    findButton
-                }
+                BulbPicker(model: model)
                 HStack(spacing: 6) {
                     Circle()
                         .fill(model.linkColour)
@@ -79,29 +76,6 @@ struct ContentView: View {
                 .font(.callout)
                 .padding(.leading, 2)
             }
-        }
-    }
-
-    @ViewBuilder private var findButton: some View {
-        if model.discovered.count > 1 && !model.discovering {
-            Menu("\(model.discovered.count) Found") {
-                ForEach(model.discovered) { d in
-                    Button("\(d.ip)  —  \(d.mac)") { use(d.ip) }
-                }
-                Divider()
-                Button("Search Again") { find() }
-            }
-            .fixedSize()
-        } else {
-            Button {
-                find()
-            } label: {
-                Text("Find")
-                    .opacity(model.discovering ? 0 : 1)
-                    .overlay { if model.discovering { ProgressView().controlSize(.small) } }
-            }
-            .disabled(model.discovering)
-            .help("Search every network interface for WiZ bulbs (5 s)")
         }
     }
 
@@ -248,19 +222,6 @@ struct ContentView: View {
 
     /// Identity first, then capabilities, settings and power.
     private let configOrder = ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"]
-
-    // MARK: Helpers
-
-    private func find() {
-        Task {
-            if let found = await model.find() { use(found) }
-        }
-    }
-
-    private func use(_ found: String) {
-        ip = found
-        model.connect(found)
-    }
 }
 
 /// The mode control and the current mode's sliders, plus Dimming. Shared by the window and the

@@ -5,6 +5,8 @@ import Network
 struct DiscoveredBulb: Identifiable, Hashable, Sendable {
     let ip: String
     let mac: String
+    /// Reverse-DNS name, once looked up (nil if there isn't one).
+    var name: String?
     var id: String { mac }
 }
 
@@ -36,7 +38,8 @@ enum Net {
     /// Without Local Network access every send fails (EHOSTUNREACH) and, unlike a Network.framework
     /// connection, doesn't reliably bring up the permission prompt; that case returns at once with
     /// `blocked` set (see `requestLocalNetworkAccess`).
-    static func discover(seconds: Double = 5) -> DiscoveryResult {
+    static func discover(seconds: Double = 5,
+                         onFound: @Sendable (DiscoveredBulb) -> Void = { _ in }) -> DiscoveryResult {
         let targets = broadcastAddresses()
         guard !targets.isEmpty else { return DiscoveryResult() }
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -83,7 +86,11 @@ enum Net {
                   let result = obj["result"] as? [String: Any],
                   let mac = result["mac"] as? String
             else { continue }
-            found[mac] = DiscoveredBulb(ip: string(from.sin_addr), mac: mac)
+            if found[mac] == nil {
+                let bulb = DiscoveredBulb(ip: string(from.sin_addr), mac: mac)
+                found[mac] = bulb
+                onFound(bulb)
+            }
         }
         return DiscoveryResult(bulbs: found.values.sorted { $0.ip.compare($1.ip, options: .numeric) == .orderedAscending })
     }
@@ -159,6 +166,38 @@ enum Net {
             if seen.insert(bcast.s_addr).inserted { out.append(bcast) }
         }
         return out
+    }
+
+    /// Reverse DNS for an IPv4 address (nil if it has no name). Blocking; call off the main thread.
+    static func reverseName(_ ip: String) -> String? {
+        var addr = in_addr()
+        guard inet_pton(AF_INET, ip, &addr) == 1 else { return nil }
+        let sin = sockaddrIn(addr, port: 0)
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let hostLen = socklen_t(host.count)
+        let rc = withUnsafePointer(to: sin) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &host, hostLen, nil, 0, NI_NAMEREQD)
+            }
+        }
+        guard rc == 0 else { return nil }
+        let name = String(cString: host)
+        return name.hasSuffix(".") ? String(name.dropLast()) : name
+    }
+
+    /// The IPv4 address for `host`: itself if it already is one, otherwise a DNS lookup. Blocking;
+    /// call off the main thread.
+    static func resolveIPv4(_ host: String) -> String? {
+        var addr = in_addr()
+        if inet_pton(AF_INET, host, &addr) == 1 { return host }
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_DGRAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else { return nil }
+        defer { freeaddrinfo(result) }
+        guard let sa = first.pointee.ai_addr else { return nil }
+        return string(sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr })
     }
 
     /// Local IPv4 address the OS would use to reach `ip` (pywizlight's trick: connect a UDP

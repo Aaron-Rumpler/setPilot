@@ -65,6 +65,11 @@ final class Model {
     var mismatch: String?
     var discovered: [DiscoveredBulb] = []
     var discovering = false
+    /// Why the last search found nothing (or is waiting for permission).
+    var discoveryNote: String?
+    /// The other form of the chosen bulb's address: its DNS name if an IP was chosen, or its IP if
+    /// a name was.
+    var addressDetail: String?
 
     /// Set once connecting (or the first-launch search) has started this launch.
     @ObservationIgnored var started = false
@@ -72,7 +77,7 @@ final class Model {
     /// Connects to the saved bulb, once per launch. With no saved bulb this does nothing; the window
     /// runs the first-launch search instead.
     func startIfSaved() {
-        guard !started, let ip = UserDefaults.standard.string(forKey: "bulbIP"), !ip.isEmpty else { return }
+        guard !started, let ip = UserDefaults.standard.string(forKey: Self.addressKey), !ip.isEmpty else { return }
         started = true
         connect(ip)
     }
@@ -110,7 +115,23 @@ final class Model {
 
     // MARK: Connection
 
+    /// The saved bulb address (IP or DNS name). Changed only by `choose`, never by discovery.
+    static let addressKey = "bulbIP"
+
+    /// The bulb the user picked or typed: saved, then connected to.
+    func choose(_ address: String) {
+        let a = address.trimmingCharacters(in: .whitespaces)
+        guard !a.isEmpty else { return }
+        UserDefaults.standard.set(a, forKey: Self.addressKey)
+        started = true
+        connect(a)
+    }
+
+    @ObservationIgnored private var connectGeneration = 0
+
     func connect(_ ip: String) {
+        connectGeneration += 1
+        let generation = connectGeneration
         bulb.connect(to: ip)
         verifyTask?.cancel()
         verifyingSeq = nil
@@ -127,7 +148,19 @@ final class Model {
         bulb.send("getPilot", retry: true)
         bulb.send("getModelConfig", retry: true)
         bulb.send("getSystemConfig", retry: true)
-        startLiveUpdates(ip)
+        addressDetail = nil
+        // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
+        // for live updates. Lookups block, so off the main thread.
+        let host = ip.trimmingCharacters(in: .whitespaces)
+        Task { [weak self] in
+            let (v4, name) = await Task.detached { () -> (String?, String?) in
+                let v4 = Net.resolveIPv4(host)
+                return (v4, v4.flatMap(Net.reverseName))
+            }.value
+            guard let self, self.connectGeneration == generation else { return } // a newer connect won
+            if let v4, v4 != host { self.addressDetail = v4 } else if let name, name != host { self.addressDetail = name }
+            self.startLiveUpdates(v4 ?? host)
+        }
     }
 
     /// pywizlight's push method: tell the bulb our IP every 20 s; it sends syncPilot to port 38900.
@@ -136,7 +169,7 @@ final class Model {
         push.startIfNeeded()
         guard push.isRunning else { return }
         guard let phoneIp = Net.sourceIP(toward: ip.trimmingCharacters(in: .whitespaces)) else {
-            liveStatus = "Live updates off — needs an IPv4 address to work out our local IP"
+            liveStatus = "Live updates off — couldn't find an IPv4 address for the bulb"
             return
         }
         liveStatus = "Registering for live updates…"
@@ -149,35 +182,51 @@ final class Model {
         }
     }
 
-    func find() async -> String? {
+    /// Searches for bulbs, filling `discovered` as they answer and adding DNS names as lookups
+    /// finish. Never changes the chosen bulb. Returns what it found.
+    @discardableResult
+    func discover() async -> [DiscoveredBulb] {
+        guard !discovering else { return discovered }
         discovering = true
         defer { discovering = false }
-        status = "Searching all interfaces…"
+        discovered = []
+        discoveryNote = nil
         if await Net.requestLocalNetworkAccess() == .denied {
-            status = Self.localNetworkHelp
-            return nil
+            discoveryNote = Self.localNetworkHelp
+            return []
         }
-        var result = await Task.detached { Net.discover() }.value
+        let onFound: @Sendable (DiscoveredBulb) -> Void = { bulb in
+            Task { @MainActor [weak self] in self?.addDiscovered(bulb) }
+        }
+        var result = await Task.detached { Net.discover(onFound: onFound) }.value
         // While the permission prompt is up (or unanswered), every broadcast is refused: wait for
         // an answer, retrying for up to a minute.
         var waited = 0
         while result.blocked && waited < 30 {
-            status = "Waiting for Local Network access: allow setPilot in the prompt"
+            discoveryNote = "Waiting for Local Network access: allow setPilot in the prompt"
             try? await Task.sleep(for: .seconds(2))
             waited += 1
             if waited % 5 == 0, await Net.requestLocalNetworkAccess() == .denied { break }
-            result = await Task.detached { Net.discover() }.value
+            result = await Task.detached { Net.discover(onFound: onFound) }.value
         }
         if result.blocked {
-            status = Self.localNetworkHelp
-            return nil
+            discoveryNote = Self.localNetworkHelp
+            return []
         }
-        let found = result.bulbs
-        discovered = found
-        switch found.count {
-        case 0: status = "No bulbs found"; return nil
-        case 1: status = ""; return found[0].ip
-        default: status = "\(found.count) bulbs found — pick one"; return nil
+        discoveryNote = result.bulbs.isEmpty ? "No bulbs found" : nil
+        for bulb in result.bulbs where !discovered.contains(where: { $0.mac == bulb.mac }) { addDiscovered(bulb) }
+        return discovered
+    }
+
+    private func addDiscovered(_ bulb: DiscoveredBulb) {
+        guard !discovered.contains(where: { $0.mac == bulb.mac }) else { return }
+        discovered.append(bulb)
+        discovered.sort { $0.ip.compare($1.ip, options: .numeric) == .orderedAscending }
+        let ip = bulb.ip
+        Task { [weak self] in
+            guard let name = await Task.detached(operation: { Net.reverseName(ip) }).value,
+                  let self, let i = self.discovered.firstIndex(where: { $0.mac == bulb.mac }) else { return }
+            self.discovered[i].name = name
         }
     }
 

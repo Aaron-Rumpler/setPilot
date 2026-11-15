@@ -17,9 +17,12 @@ with raw RGBCW values.
   and the same light controls as the window. The app keeps running in the menu bar when the window
   is closed: it has a Dock icon only while a window is open, ⌘Q just closes its windows, and the
   panel's Quit button really quits. Settings can open it at login, menu bar only.
-- **Discovery** on every IPv4 interface's broadcast address, using the same `registration`
-  broadcast as [pywizlight](https://github.com/sbidy/pywizlight). On first launch the app searches
-  by itself, asking for Local Network access first.
+- **Bulb picker** in the window and the menu bar panel: opening it searches every IPv4 interface's
+  broadcast address (the same `registration` broadcast as
+  [pywizlight](https://github.com/sbidy/pywizlight)) and lists the bulbs that answer with their IP,
+  reverse-DNS name and MAC; an IP address or DNS name can also be typed. The chosen bulb is
+  remembered and only changes when you choose another. On first launch the app searches by itself
+  (asking for Local Network access first) and picks the bulb if there's only one.
 - **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
   follow changes made from the WiZ app or a remote.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
@@ -91,8 +94,8 @@ xattr -dr com.apple.quarantine setPilot.app
 
 - Local Network access is required. If it was denied, turn it on in System Settings › Privacy &
   Security › Local Network.
-- Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac) and the bulb
-  entered as an IPv4 address.
+- Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen
+  by DNS name is resolved to its IPv4 address for them.
 - Setting R, G, B, C and W all to 0 makes the bulb return an error rather than turn off; use the
   power switch.
 
