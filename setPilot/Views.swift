@@ -6,14 +6,8 @@ struct ContentView: View {
     @AppStorage("bulbIP") private var ip = ""
     let model: Model
     @State private var confirmingReboot = false
-    @State private var showingConfig: Bool
+    @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
-
-    /// `showingConfig` opens the configuration popover initially (for previews).
-    init(model: Model, showingConfig: Bool = false) {
-        self.model = model
-        _showingConfig = State(initialValue: showingConfig)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
