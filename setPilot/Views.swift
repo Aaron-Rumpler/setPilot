@@ -151,7 +151,7 @@ struct ContentView: View {
                     if model.lastSent.isEmpty {
                         Text("Nothing sent yet").foregroundStyle(.tertiary)
                     } else {
-                        Text("setPilot ").foregroundStyle(.secondary) + Text(JSONHighlighter.highlight(model.lastSent))
+                        Text("\(Text("setPilot ").foregroundStyle(.secondary))\(Text(JSONHighlighter.highlight(model.lastSent)))")
                     }
                 }
                 .font(.system(.caption, design: .monospaced))
