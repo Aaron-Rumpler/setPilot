@@ -1,11 +1,20 @@
 import Darwin
 import Foundation
+import Network
 
 struct DiscoveredBulb: Identifiable, Hashable, Sendable {
     let ip: String
     let mac: String
     var id: String { mac }
 }
+
+struct DiscoveryResult: Sendable {
+    var bulbs: [DiscoveredBulb] = []
+    /// Every broadcast was refused (EHOSTUNREACH etc.): Local Network access isn't granted yet.
+    var blocked = false
+}
+
+enum LocalNetworkAccess: Sendable { case unknown, denied }
 
 /// BSD-socket helpers. Network.framework has no broadcast support, so discovery lives here.
 enum Net {
@@ -23,11 +32,15 @@ enum Net {
 
     /// Like pywizlight: broadcast registration to every IPv4 broadcast address once a second,
     /// collecting replies for `seconds`. Blocking; call off the main thread.
-    static func discover(seconds: Double = 5) -> [DiscoveredBulb] {
+    ///
+    /// Without Local Network access every send fails (EHOSTUNREACH) and, unlike a Network.framework
+    /// connection, doesn't reliably bring up the permission prompt; that case returns at once with
+    /// `blocked` set (see `requestLocalNetworkAccess`).
+    static func discover(seconds: Double = 5) -> DiscoveryResult {
         let targets = broadcastAddresses()
-        guard !targets.isEmpty else { return [] }
+        guard !targets.isEmpty else { return DiscoveryResult() }
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
-        guard fd >= 0 else { return [] }
+        guard fd >= 0 else { return DiscoveryResult() }
         defer { close(fd) }
 
         var yes: Int32 = 1
@@ -44,13 +57,19 @@ enum Net {
 
         while Date() < deadline {
             if Date() >= nextSend {
+                var sent = 0
+                var refused = 0
                 for target in targets {
                     let dst = sockaddrIn(target, port: port)
-                    _ = withUnsafePointer(to: dst) {
+                    let n = withUnsafePointer(to: dst) {
                         $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                             sendto(fd, msg, msg.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                         }
                     }
+                    if n >= 0 { sent += 1 } else if [EHOSTUNREACH, EPERM, EACCES].contains(errno) { refused += 1 }
+                }
+                if sent == 0 && refused == targets.count && found.isEmpty {
+                    return DiscoveryResult(blocked: true)
                 }
                 nextSend = Date().addingTimeInterval(1)
             }
@@ -66,7 +85,59 @@ enum Net {
             else { continue }
             found[mac] = DiscoveredBulb(ip: string(from.sin_addr), mac: mac)
         }
-        return found.values.sorted { $0.ip.compare($1.ip, options: .numeric) == .orderedAscending }
+        return DiscoveryResult(bulbs: found.values.sorted { $0.ip.compare($1.ip, options: .numeric) == .orderedAscending })
+    }
+
+    /// Brings up the Local Network permission prompt if it hasn't been answered, by sending one
+    /// unicast datagram (the harmless discovery message) through Network.framework to a host on
+    /// each local subnet; the BSD-socket broadcasts used for discovery don't reliably trigger it.
+    /// On macOS 15 and later, also reports whether access has been denied.
+    @MainActor
+    static func requestLocalNetworkAccess() async -> LocalNetworkAccess {
+        let message = Data(discoveryMessage.utf8)
+        let connections = localProbeTargets().compactMap { IPv4Address($0) }.map {
+            NWConnection(host: .ipv4($0), port: NWEndpoint.Port(rawValue: port)!, using: .udp)
+        }
+        for c in connections {
+            c.start(queue: .global())
+            c.send(content: message, completion: .idempotent)
+        }
+        try? await Task.sleep(for: .seconds(1))
+        var access = LocalNetworkAccess.unknown
+        if #available(macOS 15.0, *) {
+            if connections.contains(where: { $0.currentPath?.unsatisfiedReason == .localNetworkDenied }) {
+                access = .denied
+            }
+        }
+        connections.forEach { $0.cancel() }
+        return access
+    }
+
+    /// The first host address (network + 1, or + 2 if that's us) of each local IPv4 subnet.
+    static func localProbeTargets() -> [String] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+        var out: [String] = []
+        for p in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let ifa = p.pointee
+            let flags = Int32(bitPattern: ifa.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_RUNNING != 0,
+                  flags & IFF_LOOPBACK == 0, flags & IFF_BROADCAST != 0,
+                  let addr = ifa.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_INET),
+                  let mask = ifa.ifa_netmask
+            else { continue }
+            let own = UInt32(bigEndian: addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr })
+            let m = UInt32(bigEndian: mask.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr })
+            let network = own & m
+            var host = network + 1
+            if host == own { host += 1 }
+            guard host & ~m != ~m else { continue } // not the broadcast address (tiny subnets)
+            let target = in_addr(s_addr: host.bigEndian)
+            let s = string(target)
+            if !out.contains(s) { out.append(s) }
+        }
+        return out
     }
 
     /// Broadcast address of every up, non-loopback, broadcast-capable IPv4 interface.

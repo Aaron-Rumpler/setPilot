@@ -140,16 +140,38 @@ final class Model {
 
     func find() async -> String? {
         discovering = true
+        defer { discovering = false }
         status = "Searching all interfaces…"
-        let found = await Task.detached { Net.discover() }.value
-        discovering = false
+        if await Net.requestLocalNetworkAccess() == .denied {
+            status = Self.localNetworkHelp
+            return nil
+        }
+        var result = await Task.detached { Net.discover() }.value
+        // While the permission prompt is up (or unanswered), every broadcast is refused: wait for
+        // an answer, retrying for up to a minute.
+        var waited = 0
+        while result.blocked && waited < 30 {
+            status = "Waiting for Local Network access: allow setPilot in the prompt"
+            try? await Task.sleep(for: .seconds(2))
+            waited += 1
+            if waited % 5 == 0, await Net.requestLocalNetworkAccess() == .denied { break }
+            result = await Task.detached { Net.discover() }.value
+        }
+        if result.blocked {
+            status = Self.localNetworkHelp
+            return nil
+        }
+        let found = result.bulbs
         discovered = found
         switch found.count {
         case 0: status = "No bulbs found"; return nil
-        case 1: return found[0].ip
+        case 1: status = ""; return found[0].ip
         default: status = "\(found.count) bulbs found — pick one"; return nil
         }
     }
+
+    private static let localNetworkHelp =
+        "setPilot needs Local Network access to find bulbs: turn it on in System Settings › Privacy & Security › Local Network"
 
     // MARK: Commands
 

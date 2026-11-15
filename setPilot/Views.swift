@@ -32,7 +32,11 @@ struct ContentView: View {
         // while the window catches up with a new size, the hosting view centres the content,
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
-        .onAppear { if !ip.isEmpty { model.connect(ip) } }
+        .onAppear {
+            // First launch (no saved bulb): search straight away, which also brings up the
+            // Local Network permission prompt.
+            if ip.isEmpty { find() } else { model.connect(ip) }
+        }
         .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot) {
             Button("Reboot", role: .destructive) { model.reboot() }
         } message: {
