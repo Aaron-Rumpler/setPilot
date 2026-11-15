@@ -282,7 +282,7 @@ struct LightControls: View {
                     }
                     .labelsHidden()
                     .fixedSize()
-                    Text("ID \(model.sceneId)")
+                    Text(verbatim: "ID \(model.sceneId)") // verbatim: no "1,000"
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer()
