@@ -1,25 +1,22 @@
-#!/usr/bin/env python3
-"""Generates the disc artwork for setPilot/AppIcon.icon (an Icon Composer package).
+"""Generates setPilot/AppIcon.icon (an Icon Composer package): the "Channels" icon.
 
-The background is the icon's own fill (see icon.json), so the system draws the exact macOS shape.
-The disc is a vector Liquid Glass layer: a circle whose gradient follows the black-body colours
-of the app's Kelvin track, 2200 K (bottom left) to 6500 K (top right), evenly in mireds.
+Five slider tracks with glass knobs, one per bulb channel: red, green, blue, cool white and warm
+white, in the same colours as the app's sliders. Red, green and blue are the macOS 26 system
+colours (light appearance); the whites are the black-body colours of 6500 K and 2700 K rendered as
+in the app (CAT02, adapted to ADAPTING_WHITE). The background is the icon's own fill, light by
+default and dark in the Dark appearance, so the system draws the exact macOS shape.
 
 Notes from testing with Xcode 26.6:
-- Untagged SVG colours are read as sRGB, matching the app's colours.
+- Untagged SVG colours are read as sRGB.
 - Adding "color-space-for-untagged-svg-colors" to icon.json crashes actool.
-- A layer "fill" gradient in icon.json allows only two colours, which can't follow the curve.
+- A layer "fill" gradient in icon.json allows only two colours.
 
-Run from the repository root: python3 tools/make_icon_layers.py [adapting white in kelvin, default 4500]
+Run from the repository root:
+    python3 tools/make_icon_layers.py [adapting white in kelvin, default 4500]
 """
-import math
-from pathlib import Path
-
-OUT = Path("setPilot/AppIcon.icon/Assets/disc.svg")
-CENTRE, RADIUS, STOPS = 512, 300, 11  # on Icon Composer's 1024 × 1024 canvas
-
-
+import json
 import sys
+from pathlib import Path
 
 # As ColourTemperature.defaultAdaptingWhite in the app; override with an argument to experiment:
 #   python3 tools/make_icon_layers.py 4800
@@ -63,30 +60,68 @@ def planck_srgb(t):
     return tuple(round(255 * enc(c / peak)) for c in rgb)
 
 
-def mired_lerp(f):
-    """Temperature at fraction f between 2200 K and 6500 K, even in mireds (as the app's slider)."""
-    lo, hi = 1e6 / 2200, 1e6 / 6500
-    return 1e6 / (lo + (hi - lo) * f)
+
+ICON = Path("setPilot/AppIcon.icon")
+HDR = '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\n'
+
+# macOS 26 system colours (NSColor.systemRed/Green/Blue, light appearance), as the app's sliders
+RED, GREEN, BLUE = (255, 56, 60), (52, 199, 89), (0, 136, 255)
+CHANNELS = [RED, GREEN, BLUE, planck_srgb(6500), planck_srgb(2700)]
+XS = [212, 362, 512, 662, 812]       # track centres on the 1024 canvas
+LEVELS = [610, 380, 520, 300, 680]   # knob centres
+TOP, BOTTOM, TRACK, KNOB = 220, 804, 26, 68
 
 
-def svg():
-    o = RADIUS / math.sqrt(2)  # gradient runs corner to corner across the disc's diagonal
-    stops = "\n".join(
-        '      <stop offset="%.1f" stop-color="#%02x%02x%02x"/>' % ((i / (STOPS - 1),) + planck_srgb(mired_lerp(i / (STOPS - 1))))
-        for i in range(STOPS))
-    return f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="blackbody" gradientUnits="userSpaceOnUse" x1="{CENTRE - o:.1f}" y1="{CENTRE + o:.1f}" x2="{CENTRE + o:.1f}" y2="{CENTRE - o:.1f}">
-{stops}
-    </linearGradient>
-  </defs>
-  <circle cx="{CENTRE}" cy="{CENTRE}" r="{RADIUS}" fill="url(#blackbody)"/>
-</svg>
-'''
+def hexc(rgb):
+    return "#%02x%02x%02x" % tuple(rgb)
+
+
+def colour(rgb):
+    return "extended-srgb:" + ",".join(f"{c / 255:.5f}" for c in rgb) + ",1.00000"
+
+
+def vertical(top, bottom):
+    return {"linear-gradient": [colour(top), colour(bottom)],
+            "orientation": {"start": {"x": 0.5, "y": 0}, "stop": {"x": 0.5, "y": 1}}}
+
+
+def tracks_svg():
+    out = HDR
+    for x, y, c in zip(XS, LEVELS, CHANNELS):
+        out += f'  <rect x="{x - TRACK // 2}" y="{TOP}" width="{TRACK}" height="{BOTTOM - TOP}" rx="{TRACK // 2}" fill="#8e93a3" fill-opacity="0.35"/>\n'
+        out += f'  <rect x="{x - TRACK // 2}" y="{y}" width="{TRACK}" height="{BOTTOM - y}" rx="{TRACK // 2}" fill="{hexc(c)}"/>\n'
+    return out + "</svg>\n"
+
+
+def knobs_svg():
+    return HDR + "".join(f'  <circle cx="{x}" cy="{y}" r="{KNOB}" fill="{hexc(c)}"/>\n'
+                         for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
+
+
+def manifest():
+    return {
+        "fill-specializations": [
+            {"value": vertical((246, 246, 249), (218, 221, 228))},
+            {"appearance": "dark", "value": vertical((52, 54, 62), (22, 23, 28))},
+        ],
+        "groups": [
+            {"layers": [{"glass": True, "image-name": "knobs.svg", "name": "knobs"}],
+             "lighting": "individual",
+             "shadow": {"kind": "neutral", "opacity": 0.5},
+             "translucency": {"enabled": True, "value": 0.1}},
+            {"layers": [{"glass": False, "image-name": "tracks.svg", "name": "tracks"}],
+             "shadow": {"kind": "none", "opacity": 0.5}},
+        ],
+        "supported-platforms": {"squares": "shared"},
+    }
 
 
 if __name__ == "__main__":
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(svg())
-    print("wrote", OUT)
+    assets = ICON / "Assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    for old in assets.iterdir():
+        old.unlink()
+    (assets / "tracks.svg").write_text(tracks_svg())
+    (assets / "knobs.svg").write_text(knobs_svg())
+    (ICON / "icon.json").write_text(json.dumps(manifest(), indent=2).replace('": ', '" : ') + "\n")
+    print("wrote", ICON, [hexc(c) for c in CHANNELS])
