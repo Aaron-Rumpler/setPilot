@@ -61,6 +61,9 @@ final class Model {
     var lastSent = ""
     /// A setPilot hasn't been read back yet; the UI shows what was requested meanwhile.
     var pending = false
+    /// Changes made while the bulb is off. WiZ bulbs switch on for any setPilot, so these are
+    /// held back and sent together with "on" when the bulb is next switched on from here.
+    var changesHeld = false
     /// What the bulb reported differently from the last setPilot, if anything.
     var mismatch: String?
     var discovered: [DiscoveredBulb] = []
@@ -104,6 +107,7 @@ final class Model {
         verifyingSeq = nil
         pending = false
         mismatch = nil
+        changesHeld = false
         mac = nil
         module = nil
         firmware = nil
@@ -160,11 +164,28 @@ final class Model {
 
     func power(_ on: Bool) {
         isOn = on
-        bulb.send("setState", ["state": on], retry: true)
+        if on && changesHeld {
+            changesHeld = false
+            sendPilot(retry: true, turningOn: true) // the held changes, and "on", in one command
+        } else {
+            bulb.send("setState", ["state": on], retry: true)
+        }
     }
 
-    func setMode(_ m: Mode) { mode = m; sendPilot(retry: true) }
-    func setScene(_ id: Int) { sceneId = id; sendPilot(retry: true) }
+    func setMode(_ m: Mode) {
+        mode = m
+        if isOn == false { hold() } else { sendPilot(retry: true) }
+    }
+
+    func setScene(_ id: Int) {
+        sceneId = id
+        if isOn == false { hold() } else { sendPilot(retry: true) }
+    }
+
+    private func hold() {
+        changesHeld = true
+        status = "The bulb is off: changes will be sent when you turn it on"
+    }
 
     func readConfig() {
         for m in ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"] {
@@ -180,6 +201,7 @@ final class Model {
 
     /// Coalesces slider drags into at most one setPilot per ~40 ms.
     func changed() {
+        if isOn == false { hold(); return }
         guard !sendScheduled else { return }
         sendScheduled = true
         Task {
@@ -189,8 +211,9 @@ final class Model {
         }
     }
 
-    private func sendPilot(retry: Bool) {
+    private func sendPilot(retry: Bool, turningOn: Bool = false) {
         var p: [String: Any] = ["dimming": Int(dimming)]
+        if turningOn { p["state"] = true }
         switch mode {
         case .rgbcw:
             p["r"] = Int(r); p["g"] = Int(g); p["b"] = Int(b); p["c"] = Int(c); p["w"] = Int(w)
@@ -295,6 +318,12 @@ final class Model {
         if let m = p["mac"] as? String { mac = m }
         if let s = p["state"] as? Bool { isOn = s }
         if let v = num("rssi") { rssi = Int(v) }
+        if changesHeld {
+            // Keep the held edits while the bulb stays off; if it was switched on elsewhere,
+            // drop them and show what it's actually doing.
+            guard isOn == true else { return }
+            changesHeld = false
+        }
         if let d = num("dimming") { dimming = d }
         let scene = p["schdPsetId"] != nil ? 1000 : Int(num("sceneId") ?? 0)
         if scene != 0 {
