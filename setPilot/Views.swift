@@ -24,7 +24,7 @@ struct ContentView: View {
         // while the window catches up with a new size, the hosting view centres the content,
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
-        .navigationTitle(model.currentName ?? "WiZ")
+        .navigationTitle(model.currentName ?? "setPilot")
         .onAppear {
             // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
             // bulb): search straight away, which also brings up the Local Network permission prompt.
@@ -99,7 +99,7 @@ struct ContentView: View {
         } content: {
             LightControls(model: model)
         }
-        .disabled(model.link != .connected)
+        .disabled(!model.canControl)
     }
 
     // MARK: Last command
@@ -274,6 +274,11 @@ struct LightControls: View {
                     Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
                     Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
                         ForEach(Scenes.all) { Text($0.name).tag($0.id) }
+                        // What the bulb reported, if it isn't one you can choose (Rhythm, newer IDs)
+                        if !Scenes.isKnown(model.sceneId) {
+                            Divider()
+                            Text(Scenes.name(model.sceneId)).tag(model.sceneId)
+                        }
                     }
                     .labelsHidden()
                     .fixedSize()
@@ -382,12 +387,12 @@ struct ChannelSlider: View {
         HStack(spacing: 8) {
             Text(label).frame(width: Self.labelWidth, alignment: .leading)
             SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale,
-                           colourTemperatureStrip: colourTemperatureStrip, tint: tint)
+                           colourTemperatureStrip: colourTemperatureStrip, tint: tint, label: label)
                 // Centre the row on the track, not on the track plus the marks below it.
                 .alignmentGuide(VerticalAlignment.center) { _ in SnapSliderContainer.sliderHeight / 2 }
-            NumberField(value: $value, range: range)
+            NumberField(value: $value, range: range, label: label)
                 .frame(width: 56)
-            Stepper("", value: $value, in: range, step: 1)
+            Stepper(label, value: $value, in: range, step: 1)
                 .labelsHidden()
         }
     }
@@ -398,6 +403,7 @@ struct ChannelSlider: View {
 struct NumberField: NSViewRepresentable {
     @Binding var value: Double
     let range: ClosedRange<Double>
+    var label = ""
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -407,6 +413,7 @@ struct NumberField: NSViewRepresentable {
         field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         field.delegate = context.coordinator
+        field.setAccessibilityLabel(label)
         field.stringValue = Self.format(value)
         context.coordinator.shown = value
         return field
@@ -414,6 +421,8 @@ struct NumberField: NSViewRepresentable {
 
     func updateNSView(_ field: SelectAllTextField, context: Context) {
         context.coordinator.parent = self
+        // SwiftUI's .disabled doesn't reach AppKit views by itself.
+        field.isEnabled = context.environment.isEnabled
         // Only overwrite the text when the value really changed (slider, stepper, bulb),
         // so an unrelated redraw doesn't clobber what you're typing.
         if value != context.coordinator.shown {

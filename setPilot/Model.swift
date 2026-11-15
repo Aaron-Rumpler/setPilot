@@ -25,6 +25,16 @@ enum Scenes {
         for i in 1...10 { s[255 + i] = "Custom Mode \(i)" }
         return s.map { WizScene(id: $0.key, name: $0.value) }.sorted { $0.id < $1.id }
     }()
+
+    static func isKnown(_ id: Int) -> Bool { all.contains { $0.id == id } }
+
+    /// What the bulb may report that isn't a scene you can set: pywizlight's 1000 for Rhythm
+    /// (schdPsetId), or an ID newer than this list.
+    static func name(_ id: Int) -> String {
+        all.first { $0.id == id }?.name ?? (id == rhythm ? "Rhythm" : "Scene \(id)")
+    }
+
+    static let rhythm = 1000
 }
 
 @MainActor @Observable
@@ -54,6 +64,9 @@ final class Model {
     enum Link { case none, connecting, connected, unreachable }
     /// Whether the bulb has answered since the last Connect.
     var link: Link = .none
+    /// Controls are usable: the bulb answers and its on/off state is known (every setPilot carries
+    /// it, and one without it would switch the bulb on).
+    var canControl: Bool { link == .connected && isOn != nil }
     /// Registered for, and receiving, syncPilot pushes.
     var live = false
     var status = ""
@@ -91,21 +104,44 @@ final class Model {
     @ObservationIgnored private var verifyingSeq: Int?
     @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var registerTask: Task<Void, Never>?
+    @ObservationIgnored private var rebootTask: Task<Void, Never>?
+    /// The power state before the last setState, restored if the bulb never answers it.
+    @ObservationIgnored private var powerBefore: Bool?
+    /// A different bulb (MAC) answered at the address: ignore everything from it until the next connect.
+    @ObservationIgnored private var wrongBulb = false
+    @ObservationIgnored private var discoveryTask: Task<[DiscoveredBulb], Never>?
     private let phoneMac = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
 
     init() {
         bulb.onReply = { [weak self] in self?.handleReply($0) }
-        bulb.onError = { [weak self] message in
+        bulb.onError = { [weak self] method, message in
             guard let self else { return }
-            status = message
-            if link == .connecting && message.hasPrefix("getPilot") {
-                link = .unreachable
-                relocate()
+            if method == "registration" { // live updates only; not worth the status line
+                live = false
+                liveStatus = "Live updates off — \(message)"
+                return
             }
-            if message.hasPrefix("getPilot") || message.hasPrefix("setPilot") {
+            status = message
+            switch method {
+            case "getPilot"?:
+                // Connecting, or the bulb has gone away since: look for it at a new address.
+                if link == .connecting || link == .connected {
+                    link = .unreachable
+                    live = false
+                    status = "The bulb isn't answering"
+                    relocate()
+                }
+                pending = false
+                verifyingSeq = nil
+            case "setPilot"?:
                 // Couldn't confirm; stop showing the request as pending.
                 pending = false
                 verifyingSeq = nil
+            case "setState"?:
+                isOn = powerBefore
+                status = "The bulb didn't answer the power switch"
+            default:
+                break
             }
         }
         push.onMessage = { [weak self] in self?.handlePush($0) }
@@ -158,6 +194,9 @@ final class Model {
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespaces)
         guard !a.isEmpty else { return }
+        // Picking the bulb that's already connected changes nothing.
+        if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
+           mac == nil || mac?.lowercased() == chosenMAC { return }
         UserDefaults.standard.set(a, forKey: Self.addressKey)
         savedMAC = mac?.lowercased()
         started = true
@@ -171,13 +210,19 @@ final class Model {
         let generation = connectGeneration
         bulb.connect(to: ip)
         verifyTask?.cancel()
+        rebootTask?.cancel()
         verifyingSeq = nil
         pending = false
         mismatch = nil
+        wrongBulb = false
+        // Nothing carries over from the previous bulb.
+        isOn = nil
+        rssi = nil
+        minDimming = 10
+        tempRange = 2200...6500
         mac = nil
         module = nil
         firmware = nil
-        rssi = nil
         info = [:]
         live = false
         link = ip.trimmingCharacters(in: .whitespaces).isEmpty ? .none : .connecting
@@ -229,7 +274,9 @@ final class Model {
             return true
         }
         guard saved == m else {
+            wrongBulb = true
             link = .unreachable
+            live = false
             status = "A different bulb answered at this address"
             relocate()
             return false
@@ -252,8 +299,8 @@ final class Model {
             guard UserDefaults.standard.string(forKey: Self.addressKey) == address else { return } // user chose another
             if let bulb = found.first(where: { $0.mac.lowercased() == saved }), bulb.ip != address {
                 UserDefaults.standard.set(bulb.ip, forKey: Self.addressKey)
-                status = "\(label) moved to \(bulb.ip); reconnected"
                 connect(bulb.ip)
+                status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
                 status = "\(label) is on the network but isn't answering yet"
             } else {
@@ -263,10 +310,19 @@ final class Model {
     }
 
     /// Searches for bulbs, filling `discovered` as they answer and adding DNS names as lookups
-    /// finish. Never changes the chosen bulb. Returns what it found.
+    /// finish. Never changes the chosen bulb. Returns what it found; a call while a search is
+    /// running waits for that search.
     @discardableResult
     func discover() async -> [DiscoveredBulb] {
-        guard !discovering else { return discovered }
+        if let discoveryTask { return await discoveryTask.value }
+        let task = Task { await runDiscovery() }
+        discoveryTask = task
+        let found = await task.value
+        discoveryTask = nil
+        return found
+    }
+
+    private func runDiscovery() async -> [DiscoveredBulb] {
         discovering = true
         defer { discovering = false }
         discovered = []
@@ -322,6 +378,7 @@ final class Model {
     }
 
     func power(_ on: Bool) {
+        powerBefore = isOn
         isOn = on
         bulb.send("setState", ["state": on], retry: true)
     }
@@ -338,7 +395,14 @@ final class Model {
     /// Not retried: the bulb may go away before it answers.
     func reboot() {
         bulb.send("reboot")
-        status = "Sent reboot"
+        status = "Rebooting…"
+        // Read it back once it's had time to restart (retried for ~15 s more).
+        rebootTask?.cancel()
+        rebootTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            bulb.send("getPilot", retry: true)
+        }
     }
 
     /// Coalesces slider drags into at most one setPilot per ~40 ms.
@@ -363,7 +427,9 @@ final class Model {
         case .temp:
             p["temp"] = Int(temp)
         case .scene:
-            p["sceneId"] = sceneId; p["speed"] = Int(speed)
+            // Rhythm and unknown IDs (as reported by the bulb) can't be set; just send the rest.
+            if Scenes.isKnown(sceneId) { p["sceneId"] = sceneId }
+            p["speed"] = Int(speed)
         }
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
@@ -407,9 +473,10 @@ final class Model {
     // MARK: Incoming
 
     private func handleReply(_ reply: [String: Any]) {
+        guard !wrongBulb else { return }
         let method = reply["method"] as? String ?? "?"
-        link = .connected
         if let err = reply["error"] as? [String: Any] {
+            link = .connected
             let text = (err["code"] as? Int) == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
             if method.hasPrefix("get") && method != "getPilot" { info[method] = text }
             status = "\(method): \(text)"
@@ -417,6 +484,9 @@ final class Model {
         }
         guard let result = reply["result"] as? [String: Any] else { return }
         if let replyMAC = result["mac"] as? String, !isChosenBulb(replyMAC) { return }
+        // Back after not answering (e.g. the 20 s registration got through): re-read its state.
+        if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
+        link = .connected
         switch method {
         case "getPilot":
             if let seq = verifyingSeq {
@@ -466,7 +536,7 @@ final class Model {
         if let s = p["state"] as? Bool { isOn = s }
         if let v = num("rssi") { rssi = Int(v) }
         if let d = num("dimming") { dimming = d }
-        let scene = p["schdPsetId"] != nil ? 1000 : Int(num("sceneId") ?? 0)
+        let scene = p["schdPsetId"] != nil ? Scenes.rhythm : Int(num("sceneId") ?? 0)
         if scene != 0 {
             mode = .scene
             sceneId = scene

@@ -9,7 +9,7 @@ struct SetPilotApp: App {
     @State private var model = Model()
 
     var body: some Scene {
-        Window("WiZ", id: "main") { ContentView(model: model) }
+        Window("setPilot", id: "main") { ContentView(model: model) }
             .windowResizability(.contentSize)
         MenuBarExtra {
             MenuBarPanel(model: model)

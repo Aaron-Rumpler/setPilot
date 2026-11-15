@@ -24,13 +24,15 @@ struct MenuBarPanel: View {
                 Toggle("Power", isOn: model.powerBinding)
                     .toggleStyle(.switch)
                     .labelsHidden()
-                    .disabled(model.link != .connected)
+                    .disabled(!model.canControl)
             }
 
-            if model.link == .connected {
+            if model.canControl {
                 LightControls(model: model, compact: true)
             } else {
-                Text(ip.isEmpty ? "Choose a bulb above." : "Waiting for the bulb to answer.")
+                Text(ip.isEmpty ? "Choose a bulb above."
+                     : model.link == .unreachable ? (model.status.isEmpty ? "The bulb isn't answering." : model.status)
+                     : "Waiting for the bulb to answer.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

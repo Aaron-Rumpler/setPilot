@@ -45,6 +45,8 @@ struct SnappingSlider: NSViewRepresentable {
     var colourTemperatureStrip = false
     /// Track fill colour; nil for the system default.
     var tint: Color? = nil
+    /// For VoiceOver.
+    var label = ""
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -63,6 +65,11 @@ struct SnappingSlider: NSViewRepresentable {
         context.coordinator.parent = self
         configure(container)
         let slider = container.slider
+        // SwiftUI's .disabled doesn't reach AppKit views by itself.
+        if slider.isEnabled != context.environment.isEnabled {
+            slider.isEnabled = context.environment.isEnabled
+            container.needsDisplay = true
+        }
         // Compare with a tolerance: position ↔ value round trips aren't exact for mired.
         if abs(slider.value - value) > 1e-6 { slider.value = value }
     }
@@ -79,6 +86,7 @@ struct SnappingSlider: NSViewRepresentable {
         slider.scale = scale
         slider.step = step
         slider.trackFillColor = tint.map { NSColor($0) }
+        slider.setAccessibilityLabel(label)
         if mappingChanged { slider.value = current } // keep the knob on the same value
         if container.marks != marks { container.marks = marks }
         if let cell = slider.cell as? SnapSliderCell {
@@ -192,13 +200,14 @@ final class SnapSliderContainer: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let y = slider.frame.maxY
+        let alpha: CGFloat = slider.isEnabled ? 1 : 0.5
         let attributes: [NSAttributedString.Key: Any] = [
             .font: Self.labelFont,
-            .foregroundColor: NSColor.secondaryLabelColor,
+            .foregroundColor: NSColor.secondaryLabelColor.withAlphaComponent(alpha),
         ]
         for mark in marks where slider.range.contains(mark) {
             let x = slider.knobCentreX(at: mark)
-            NSColor.tertiaryLabelColor.setFill()
+            NSColor.tertiaryLabelColor.withAlphaComponent(alpha).setFill()
             NSBezierPath(roundedRect: NSRect(x: x - 0.75, y: y + 1, width: 1.5, height: 4), xRadius: 0.75, yRadius: 0.75).fill()
             let label = NSAttributedString(string: String(Int(mark)), attributes: attributes)
             let size = label.size()
@@ -219,7 +228,7 @@ final class SnapSliderCell: NSSliderCell {
         var locations: [CGFloat] = []
         for i in 0...samples {
             let p = Double(i) / Double(samples)
-            colours.append(barColour(p))
+            colours.append(barColour(p).withAlphaComponent(isEnabled ? 1 : 0.5))
             locations.append(CGFloat(p))
         }
         let r = rect.height > 6 ? rect.insetBy(dx: 0, dy: (rect.height - 6) / 2) : rect

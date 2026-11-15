@@ -8,7 +8,8 @@ final class Bulb {
     /// Replies seen per method; retry loops stop once this changes.
     private var replyCount: [String: Int] = [:]
     var onReply: (([String: Any]) -> Void)?
-    var onError: ((String) -> Void)?
+    /// The failed request's method (nil for the connection itself) and a message to show.
+    var onError: ((String?, String) -> Void)?
 
     func connect(to host: String) {
         conn?.cancel()
@@ -25,7 +26,7 @@ final class Bulb {
                     if let method = obj["method"] as? String { self.replyCount[method, default: 0] += 1 }
                     self.onReply?(obj)
                 }
-                if let error { self.onError?("Receive failed: \(error) — press Connect to retry") }
+                if let error { self.onError?(nil, "Lost the connection (\(error)): choose the bulb again to reconnect") }
             }
         }
         c.start(queue: DispatchQueue(label: "wiz.udp"))
@@ -41,7 +42,7 @@ final class Bulb {
         guard retry else {
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
                 guard let error else { return }
-                Task { @MainActor in self?.onError?("Send failed: \(error)") }
+                Task { @MainActor in self?.onError?(method, "\(method): couldn't send (\(error))") }
             })
             return
         }
@@ -56,7 +57,7 @@ final class Bulb {
                 wait = min(wait * 2, 3)
             }
             guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
-            self.onError?("\(method): no reply after 6 tries")
+            self.onError?(method, "\(method): no reply after 6 tries")
         }
     }
 
