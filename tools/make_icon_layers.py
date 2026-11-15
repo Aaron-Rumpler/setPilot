@@ -108,9 +108,12 @@ def knobs_svg():
                          for x, y, c in zip(XS, LEVELS, CHANNELS)) + "</svg>\n"
 
 
-# In the Tinted appearance the system derives brightness from each colour, which left the red and
-# blue knobs dim; a uniform white fill keeps all five equal (the grooves keep their transparency).
+# In the Tinted appearance (which the Clear style also uses) the system derives brightness from
+# each colour, which left the red and blue knobs dim; a uniform fill keeps all five equal (the
+# grooves keep their transparency). The knobs are a touch below white so the glass's bright rim
+# still shows against them.
 TINTED_WHITE = {"appearance": "tinted", "value": {"solid": "extended-gray:1.00000,1.00000"}}
+TINTED_KNOBS = {"appearance": "tinted", "value": {"solid": "extended-gray:0.85000,1.00000"}}
 
 
 def manifest():
@@ -121,7 +124,7 @@ def manifest():
         ],
         "groups": [
             {"layers": [{"glass": True, "image-name": "knobs.svg", "name": "knobs",
-                         "fill-specializations": [TINTED_WHITE]}],
+                         "fill-specializations": [TINTED_KNOBS]}],
              "lighting": "individual",
              "shadow": {"kind": "neutral", "opacity": 0.5},
              # Opaque glass: the tracks run underneath and mustn't show through the knobs.

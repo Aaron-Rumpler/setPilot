@@ -49,7 +49,7 @@
             {
               "appearance" : "tinted",
               "value" : {
-                "solid" : "extended-gray:1.00000,1.00000"
+                "solid" : "extended-gray:0.85000,1.00000"
               }
             }
           ]
