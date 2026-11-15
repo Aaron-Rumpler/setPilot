@@ -23,6 +23,11 @@ with raw RGBCW values.
   reverse-DNS name and MAC; an IP address or DNS name can also be typed. The chosen bulb is
   remembered and only changes when you choose another. On first launch the app searches by itself
   (asking for Local Network access first) and picks the bulb if there's only one.
+- **Bulb names**: name bulbs from the picker (pencil) or the Device panel. Names are kept on this Mac,
+  keyed by MAC address (the WiZ app's names are in WiZ's cloud, not on the bulb).
+- The chosen bulb is also remembered by MAC: a different bulb answering at the saved address is
+  ignored, and if the bulb's IP changes the app finds it again by MAC and reconnects (addresses
+  entered as DNS names are left to DNS).
 - **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
   follow changes made from the WiZ app or a remote.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel

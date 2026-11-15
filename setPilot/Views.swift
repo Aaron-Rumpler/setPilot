@@ -24,6 +24,7 @@ struct ContentView: View {
         // while the window catches up with a new size, the hosting view centres the content,
         // so it slides down (expand) or is clipped at the top (collapse).
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+        .navigationTitle(model.currentName ?? "WiZ")
         .onAppear {
             // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
             // bulb): search straight away, which also brings up the Local Network permission prompt.
@@ -32,7 +33,7 @@ struct ContentView: View {
                 Task {
                     // Pick a lone bulb automatically; with several, leave the choice to the picker.
                     let found = await model.discover()
-                    if found.count == 1, address.isEmpty { model.choose(found[0].ip) }
+                    if found.count == 1, address.isEmpty { model.choose(found[0].ip, mac: found[0].mac) }
                 }
             } else {
                 model.startIfSaved()
@@ -163,6 +164,13 @@ struct ContentView: View {
         } content: {
             HStack(alignment: .top) {
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
+                    GridRow {
+                        Text("Name").foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            deviceValue(model.currentName)
+                            if let mac = model.chosenMAC { RenameButton(model: model, mac: mac) }
+                        }
+                    }
                     GridRow {
                         Text("MAC address").foregroundStyle(.secondary)
                         deviceValue(model.mac, monospaced: true)

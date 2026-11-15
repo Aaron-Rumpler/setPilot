@@ -98,7 +98,10 @@ final class Model {
         bulb.onError = { [weak self] message in
             guard let self else { return }
             status = message
-            if link == .connecting && message.hasPrefix("getPilot") { link = .unreachable }
+            if link == .connecting && message.hasPrefix("getPilot") {
+                link = .unreachable
+                relocate()
+            }
             if message.hasPrefix("getPilot") || message.hasPrefix("setPilot") {
                 // Couldn't confirm; stop showing the request as pending.
                 pending = false
@@ -115,14 +118,48 @@ final class Model {
 
     // MARK: Connection
 
-    /// The saved bulb address (IP or DNS name). Changed only by `choose`, never by discovery.
+    /// The saved bulb address (IP or DNS name). Changed by `choose`, and by `relocate` when the
+    /// same bulb (same MAC) turns up at a new IP; never by discovery alone.
     static let addressKey = "bulbIP"
+    /// MAC of the chosen bulb: its identity, so a different bulb at the same address is never used.
+    static let macKey = "bulbMAC"
+    static let namesKey = "bulbNames"
 
-    /// The bulb the user picked or typed: saved, then connected to.
-    func choose(_ address: String) {
+    /// Names the user has given bulbs, keyed by lower-case MAC.
+    var names: [String: String] = UserDefaults.standard.dictionary(forKey: Model.namesKey) as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(names, forKey: Self.namesKey) }
+    }
+
+    func name(for mac: String?) -> String? {
+        guard let mac else { return nil }
+        return names[mac.lowercased()]
+    }
+
+    func rename(mac: String, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        names[mac.lowercased()] = n.isEmpty ? nil : n
+    }
+
+    private var savedMAC: String? {
+        get { UserDefaults.standard.string(forKey: Self.macKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.macKey) }
+    }
+
+    /// The chosen bulb's name, if it has one.
+    var currentName: String? { name(for: savedMAC ?? mac) }
+
+    /// The chosen bulb's MAC, once known.
+    var chosenMAC: String? { savedMAC ?? mac?.lowercased() }
+
+    @ObservationIgnored private var relocating = false
+
+    /// The bulb the user picked or typed: saved, then connected to. `mac` is known for a bulb
+    /// picked from discovery; for a typed address it's learnt from the bulb's first reply.
+    func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespaces)
         guard !a.isEmpty else { return }
         UserDefaults.standard.set(a, forKey: Self.addressKey)
+        savedMAC = mac?.lowercased()
         started = true
         connect(a)
     }
@@ -178,6 +215,49 @@ final class Model {
             while !Task.isCancelled {
                 self?.bulb.send("registration", params)
                 try? await Task.sleep(for: .seconds(20))
+            }
+        }
+    }
+
+    /// Whether a reply comes from the chosen bulb. Learns the MAC the first time (for a typed
+    /// address); a different MAC means another bulb now has the saved address, so its replies are
+    /// ignored and the chosen bulb is looked for elsewhere.
+    private func isChosenBulb(_ replyMAC: String) -> Bool {
+        let m = replyMAC.lowercased()
+        guard let saved = savedMAC else {
+            savedMAC = m
+            return true
+        }
+        guard saved == m else {
+            link = .unreachable
+            status = "A different bulb answered at this address"
+            relocate()
+            return false
+        }
+        return true
+    }
+
+    /// If the chosen bulb (known by MAC) isn't at its saved IP, search for it and reconnect at its
+    /// new address. Never switches to another bulb, and leaves DNS names alone.
+    private func relocate() {
+        guard !relocating, let saved = savedMAC,
+              let address = UserDefaults.standard.string(forKey: Self.addressKey),
+              Net.isIPv4(address) else { return }
+        relocating = true
+        Task {
+            defer { relocating = false }
+            let label = name(for: saved) ?? saved
+            status = "Looking for \(label) on the network…"
+            let found = await discover()
+            guard UserDefaults.standard.string(forKey: Self.addressKey) == address else { return } // user chose another
+            if let bulb = found.first(where: { $0.mac.lowercased() == saved }), bulb.ip != address {
+                UserDefaults.standard.set(bulb.ip, forKey: Self.addressKey)
+                status = "\(label) moved to \(bulb.ip); reconnected"
+                connect(bulb.ip)
+            } else if found.contains(where: { $0.mac.lowercased() == saved }) {
+                status = "\(label) is on the network but isn't answering yet"
+            } else {
+                status = "Couldn't find \(label) on the network"
             }
         }
     }
@@ -336,6 +416,7 @@ final class Model {
             return
         }
         guard let result = reply["result"] as? [String: Any] else { return }
+        if let replyMAC = result["mac"] as? String, !isChosenBulb(replyMAC) { return }
         switch method {
         case "getPilot":
             if let seq = verifyingSeq {

@@ -168,6 +168,11 @@ enum Net {
         return out
     }
 
+    static func isIPv4(_ s: String) -> Bool {
+        var addr = in_addr()
+        return inet_pton(AF_INET, s, &addr) == 1
+    }
+
     /// Reverse DNS for an IPv4 address (nil if it has no name). Blocking; call off the main thread.
     static func reverseName(_ ip: String) -> String? {
         var addr = in_addr()
