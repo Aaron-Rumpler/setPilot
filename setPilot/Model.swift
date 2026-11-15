@@ -243,14 +243,17 @@ final class Model {
         // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
         // for live updates. Lookups block, so off the main thread.
         let host = ip.trimmingCharacters(in: .whitespaces)
+        // Live updates start as soon as there's an address; the reverse lookup can take a long time
+        // (e.g. no PTR record), so it doesn't hold them up.
         Task { [weak self] in
-            let (v4, name) = await Task.detached { () -> (String?, String?) in
-                let v4 = Net.resolveIPv4(host)
-                return (v4, v4.flatMap(Net.reverseName))
-            }.value
+            let v4 = await Task.detached { Net.resolveIPv4(host) }.value
             guard let self, self.connectGeneration == generation else { return } // a newer connect won
-            if let v4, v4 != host { self.addressDetail = v4 } else if let name, name != host { self.addressDetail = name }
+            if let v4, v4 != host { self.addressDetail = v4 }
             self.startLiveUpdates(v4 ?? host)
+            guard let v4, v4 == host else { return } // a DNS name was given: its IP is the detail
+            let name = await Task.detached { Net.reverseName(v4) }.value
+            guard self.connectGeneration == generation, let name, name != host else { return }
+            self.addressDetail = name
         }
     }
 
