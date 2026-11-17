@@ -300,7 +300,7 @@ extension Model {
     /// Rounds to whole numbers and triggers a send only on user edits (not on syncs/pushes).
     func binding(_ kp: ReferenceWritableKeyPath<Model, Double>) -> Binding<Double> {
         let field: PilotField = kp == \.dimming ? .dimming : kp == \.speed ? .speed : .colour
-        Binding(
+        return Binding(
             get: { self[keyPath: kp] },
             set: {
                 let v = $0.rounded()
