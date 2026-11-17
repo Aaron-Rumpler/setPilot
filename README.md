@@ -9,11 +9,14 @@ with raw RGBCW values.
   **dimming**, sent as raw `setPilot` values. The last payload sent is shown, syntax-highlighted,
   with a button to copy it as JSON.
 - Every change is read back from the bulb; values it ignored or adjusted are flagged.
-- Changes never switch the bulb on or off: every `setPilot` carries the bulb's current `state`, and
-  only the power switch changes it.
+- Each `setPilot` carries only what changed (moving Dimming sends just `dimming`; a colour sends
+  only its non-zero channels, since missing ones are 0). The bulb ignores some requests with extra
+  parameters, and this doesn't undo changes made meanwhile by other apps.
+- Changes never switch the bulb on or off: a `setPilot` to a bulb that's off carries
+  `"state": false` (one without `state` switches it on), and only the power switch changes it.
 - **Temperature** mode: the slider's track shows the colour of each temperature, uses a mired scale
   so warm whites get more room, and snaps to 50 K. **Scene** mode with speed.
-- **Menu bar item**: a lightbulb (filled when the bulb is on) with a panel holding the power switch
+- **Menu bar item**: a lightbulb (lit inside when the bulb is on) with a panel holding the power switch
   and the same light controls as the window. The app keeps running in the menu bar when the window
   is closed: it has a Dock icon only while a window is open, ⌘Q just closes its windows, and the
   panel's Quit button really quits. Settings can open it at login, menu bar only.
@@ -103,6 +106,8 @@ xattr -dr com.apple.quarantine setPilot.app
   Security › Local Network.
 - Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen
   by DNS name is resolved to its IPv4 address for them.
+- R, G, B, C and W don't correspond directly to LED drive: the firmware remaps them (with a white
+  LED lit they act more like proportions), and dimming is applied separately.
 - Setting R, G, B, C and W all to 0 makes the bulb return an error rather than turn off; use the
   power switch.
 
@@ -111,5 +116,5 @@ xattr -dr com.apple.quarantine setPilot.app
 JSON over UDP port 38899, e.g.:
 
 ```json
-{"method":"setPilot","params":{"r":255,"g":0,"b":0,"c":0,"w":0,"dimming":100,"state":true}}
+{"method":"setPilot","params":{"r":255,"w":128}}
 ```

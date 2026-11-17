@@ -1,5 +1,8 @@
 import Foundation
 
+/// What a setPilot can change, as the controls see it.
+enum PilotField { case colour, dimming, speed }
+
 enum Mode: String, CaseIterable, Identifiable {
     case rgbcw = "RGBCW", temp = "Temperature", scene = "Scene"
     var id: Self { self }
@@ -69,8 +72,8 @@ final class Model {
     enum Link { case none, connecting, connected, unreachable }
     /// Whether the bulb has answered since the last Connect.
     var link: Link = .none
-    /// Controls are usable: the bulb answers and its on/off state is known (every setPilot carries
-    /// it, and one without it would switch the bulb on).
+    /// Controls are usable: the bulb answers and its on/off state is known (a setPilot to a bulb
+    /// that's off has to say so, or it switches on).
     var canControl: Bool { link == .connected && isOn != nil }
     /// Registered for syncPilot pushes.
     var live = false { didSet { if !live { pushSeen = false } } }
@@ -106,6 +109,8 @@ final class Model {
     private let bulb = Bulb()
     private let push = PushListener()
     @ObservationIgnored private var sendScheduled = false
+    /// What has changed since the last setPilot (coalesced slider moves).
+    @ObservationIgnored private var unsent: Set<PilotField> = []
     @ObservationIgnored private var lastPilot: [String: Int] = [:]
     @ObservationIgnored private var lastState: Bool?
     @ObservationIgnored private var sendSeq = 0
@@ -397,8 +402,8 @@ final class Model {
         bulb.send("setState", ["state": on], retry: true)
     }
 
-    func setMode(_ m: Mode) { mode = m; sendPilot(retry: true) }
-    func setScene(_ id: Int) { sceneId = id; sendPilot(retry: true) }
+    func setMode(_ m: Mode) { mode = m; sendPilot([.colour], retry: true) }
+    func setScene(_ id: Int) { sceneId = id; sendPilot([.colour], retry: true) }
 
     func readConfig() {
         for m in ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"] {
@@ -420,36 +425,49 @@ final class Model {
     }
 
     /// Coalesces slider drags into at most one setPilot per ~40 ms.
-    func changed() {
+    func changed(_ field: PilotField) {
+        unsent.insert(field)
         guard !sendScheduled else { return }
         sendScheduled = true
         Task {
             try? await Task.sleep(for: .milliseconds(40))
             sendScheduled = false
-            sendPilot(retry: false)
+            sendPilot([], retry: false)
         }
     }
 
-    private func sendPilot(retry: Bool) {
-        var p: [String: Any] = ["dimming": Int(dimming)]
-        // setPilot also sets on/off, and a bulb that's sent one without "state" switches on.
-        // Always pass the current state, so only the power switch changes it.
-        if let isOn { p["state"] = isOn }
-        switch mode {
-        case .rgbcw:
-            p["r"] = Int(r); p["g"] = Int(g); p["b"] = Int(b); p["c"] = Int(c); p["w"] = Int(w)
-        case .temp:
-            p["temp"] = Int(temp)
-        case .scene:
-            // Rhythm and unknown IDs (as reported by the bulb) can't be set; just send the rest.
-            if Scenes.isKnown(sceneId) { p["sceneId"] = sceneId }
-            p["speed"] = Int(speed)
+    /// Sends only what changed: the bulb ignores some requests with extra (if consistent)
+    /// parameters, and leaving the rest out doesn't undo concurrent changes from other apps.
+    private func sendPilot(_ fields: Set<PilotField>, retry: Bool) {
+        let fields = unsent.union(fields)
+        unsent = []
+        var p: [String: Any] = [:]
+        var expect: [String: Int] = [:] // what the read-back should show
+        if fields.contains(.dimming) { p["dimming"] = Int(dimming) }
+        if fields.contains(.colour) {
+            switch mode {
+            case .rgbcw:
+                // Channels left out are 0. All five 0 is sent as such, for the bulb to refuse.
+                let channels = ["r": r, "g": g, "b": b, "c": c, "w": w].mapValues { Int($0) }
+                expect.merge(channels) { $1 }
+                let lit = channels.filter { $0.value != 0 }
+                p.merge(lit.isEmpty ? channels : lit) { $1 }
+            case .temp:
+                p["temp"] = Int(temp)
+            case .scene:
+                // Rhythm and unknown IDs (as reported by the bulb) can't be set.
+                if Scenes.isKnown(sceneId) { p["sceneId"] = sceneId }
+            }
         }
+        if fields.contains(.speed), mode == .scene { p["speed"] = Int(speed) }
+        guard !p.isEmpty else { return }
+        // A setPilot without "state" switches the bulb on: say so only when it's off.
+        if isOn == false { p["state"] = false }
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
-        lastPilot = p.filter { $0.key != "state" }.compactMapValues { $0 as? Int }
-        lastState = p["state"] as? Bool
+        lastPilot = p.filter { $0.key != "state" }.compactMapValues { $0 as? Int }.merging(expect) { $1 }
+        lastState = isOn
         sendSeq += 1
         pending = true
         bulb.send("setPilot", p, retry: retry)
