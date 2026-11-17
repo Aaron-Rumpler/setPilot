@@ -14,12 +14,25 @@ struct SetPilotApp: App {
         MenuBarExtra {
             MenuBarPanel(model: model)
         } label: {
-            Image(systemName: model.isOn == true ? "lightbulb.fill" : "lightbulb")
+            MenuBarIcon(isOn: model.isOn == true)
                 // The label exists from launch, even when no window opens (launched at login).
                 .onAppear { model.startIfSaved() }
         }
         .menuBarExtraStyle(.window)
         Settings { SettingsView() }
+    }
+}
+
+/// The menu bar bulb, lit when the bulb is on: its inside is the light colour (white in a dark
+/// menu bar, clear in a light one) when on and the dark colour when off. The symbol is a template
+/// drawn in the menu bar's foreground colour, so which symbol that takes depends on the appearance.
+private struct MenuBarIcon: View {
+    let isOn: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Image(systemName: isOn == (colorScheme == .dark) ? "lightbulb.fill" : "lightbulb")
+            .accessibilityLabel(isOn ? "setPilot, bulb on" : "setPilot, bulb off")
     }
 }
 
