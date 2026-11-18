@@ -146,7 +146,9 @@ struct IntSliderRow: View {
                 .frame(width: 100, alignment: .leading)
             Slider(value: Binding(
                 get: { Double(value) },
-                set: { value = Int(($0 / Double(step)).rounded()) * step }
+                // Snapped to `step`, but kept in range: a range that doesn't start on a multiple of
+                // the step (a scale from 1543 K, say) would otherwise snap past its ends.
+                set: { value = min(max(Int(($0 / Double(step)).rounded()) * step, range.lowerBound), range.upperBound) }
             ), in: Double(range.lowerBound)...Double(range.upperBound))
             .tint(tint)
             .accessibilityLabel(label)

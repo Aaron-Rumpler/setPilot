@@ -164,7 +164,7 @@ struct RootView: View {
                 if model.lastSent.isEmpty {
                     Text("Nothing sent yet").foregroundStyle(.tertiary)
                 } else {
-                    Text("\(Text("setPilot ").foregroundStyle(.secondary))\(Text(JSONHighlighter.highlight(model.lastSent)))")
+                    Text("\(Text(model.lastMethod + " ").foregroundStyle(.secondary))\(Text(JSONHighlighter.highlight(model.lastSent)))")
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                 }
@@ -178,7 +178,7 @@ struct RootView: View {
             }
             .contextMenu {
                 Button {
-                    UIPasteboard.general.string = #"{"method":"setPilot","params":\#(model.lastSent)}"#
+                    UIPasteboard.general.string = model.lastCommandJSON
                 } label: {
                     Label("Copy JSON", systemImage: "doc.on.doc")
                 }

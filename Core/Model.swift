@@ -68,7 +68,11 @@ final class Model {
     var pushSeen = false
     var status = ""
     var liveStatus = "Live updates off"
+    /// The last command's params as JSON, and its method (setPilot, or setState for the power switch).
     var lastSent = ""
+    var lastMethod = "setPilot"
+    /// The last command as a whole request, for copying.
+    var lastCommandJSON: String { #"{"method":"\#(lastMethod)","params":\#(lastSent)}"# }
     /// A setPilot hasn't been read back yet; the UI shows what was requested meanwhile.
     var pending = false
     /// What the bulb reported differently from the last setPilot, if anything.
@@ -240,7 +244,7 @@ final class Model {
     /// The bulb the user picked or typed: saved, then connected to. `mac` is known for a bulb
     /// picked from discovery; for a typed address it's learnt from the bulb's first reply.
     func choose(_ address: String, mac: String? = nil) {
-        let a = address.trimmingCharacters(in: .whitespaces)
+        let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
@@ -279,7 +283,7 @@ final class Model {
         info = [:]
         live = false
         pushSeen = false
-        link = ip.trimmingCharacters(in: .whitespaces).isEmpty ? .none : .connecting
+        link = ip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .none : .connecting
         status = ""
         bulb.send("getPilot", retry: true)
         bulb.send("getModelConfig", retry: true)
@@ -288,7 +292,7 @@ final class Model {
         addressDetail = nil
         // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
         // for live updates. Lookups block, so off the main thread.
-        let host = ip.trimmingCharacters(in: .whitespaces)
+        let host = ip.trimmingCharacters(in: .whitespacesAndNewlines)
         // Live updates start as soon as there's an address; the reverse lookup can take a long time
         // (e.g. no PTR record), so it doesn't hold them up.
         Task { [weak self] in
@@ -453,6 +457,8 @@ final class Model {
     func power(_ on: Bool) {
         powerBefore = isOn
         isOn = on
+        lastMethod = "setState"
+        lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
         bulb.send("setState", ["state": on], retry: true)
     }
 
@@ -461,13 +467,19 @@ final class Model {
         if m == .custom, let range = activeScale?.range {
             customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
         }
-        // A scene that can't be sent (Rhythm, or a deleted custom scene): start with the first one.
-        if m == .scene, !Scenes.isKnown(sceneId), !(sceneId == Scenes.inlineCustom && customSceneId.flatMap(library.customScene) != nil) {
-            sceneId = Scenes.all[0].id
-            customSceneId = nil
-        }
+        if m == .scene { useSendableScene() }
         sendPilot([.colour], retry: true)
     }
+
+    /// A scene that can't be sent (Rhythm, a newer ID, or a deleted custom scene): start with the
+    /// first one instead, so switching to Scene mode always sends something.
+    private func useSendableScene() {
+        guard !Scenes.isKnown(sceneId),
+              !(sceneId == Scenes.inlineCustom && customSceneId.flatMap(library.customScene) != nil) else { return }
+        sceneId = Scenes.all[0].id
+        customSceneId = nil
+    }
+
     func setScene(_ id: Int) {
         customSceneId = nil
         sceneId = id
@@ -559,7 +571,18 @@ final class Model {
             if !p.isEmpty, isOn == false { p["state"] = false }
         }
         let speedParams: [String: Any]? = speed.map { ["speed": $0] }
-        let shown = p.isEmpty ? (speedParams ?? [:]) : p
+        // What goes out first: the setPilot, else speed on its own, else setState to switch on.
+        let shown: [String: Any]
+        if !p.isEmpty {
+            shown = p
+            lastMethod = "setPilot"
+        } else if let speedParams {
+            shown = speedParams
+            lastMethod = "setPilot"
+        } else {
+            shown = ["state": true]
+            lastMethod = "setState"
+        }
         if let data = try? JSONSerialization.data(withJSONObject: shown, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
@@ -742,6 +765,7 @@ final class Model {
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
+        lastMethod = "setPilot"
         lastPilot = [:] // the result depends on the bulb's level; just read it back
         lastState = isOn
         sendSeq += 1
@@ -760,6 +784,8 @@ final class Model {
         sceneId = v.sceneId
         speed = v.speed
         dimming = v.dimming
+        // The watch switching to Scene mode sends the last scene, which may be one that can't be set.
+        if mode == .scene, fields.contains(.colour) { useSendableScene() }
         sendPilot(Set(fields), retry: true)
     }
 
@@ -928,6 +954,8 @@ final class Model {
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
             info[method] = pretty(result)
+        case "setState":
+            status = isOn == false ? "Switched off" : "Switched on"
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {
                 live = true

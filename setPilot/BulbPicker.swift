@@ -85,7 +85,7 @@ struct BulbChooser: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(useTyped)
                 Button("Connect", action: useTyped)
-                    .disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(14)
@@ -136,14 +136,15 @@ struct BulbChooser: View {
     private func useTyped() { pick(typed, mac: nil) }
 
     private func pick(_ choice: String, mac: String?) {
-        let a = choice.trimmingCharacters(in: .whitespaces)
+        let a = choice.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
         model.choose(a, mac: mac)
         onPick()
     }
 }
 
-/// A pencil button that names a bulb (by MAC). Names are kept on this Mac.
+/// A pencil button that names a bulb (by MAC). Names are kept on this Mac (and synced through
+/// iCloud in builds with it).
 struct RenameButton: View {
     let model: Model
     let mac: String
@@ -167,7 +168,9 @@ struct RenameButton: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("MAC address \(mac). The name is kept on this Mac.")
+            Text("MAC address \(mac). " + (CloudSync.isEnabled
+                 ? "The name syncs to your other devices through iCloud."
+                 : "The name is kept on this Mac."))
         }
     }
 }

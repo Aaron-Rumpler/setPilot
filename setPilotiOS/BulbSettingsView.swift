@@ -20,7 +20,7 @@ struct BulbSettingsView: View {
                     .submitLabel(.go)
                     .onSubmit(connect)
                 Button(saved.isEmpty ? "Connect" : "Connect to This Bulb", action: connect)
-                    .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty
+                    .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                               || (address == saved && model.link == .connected))
             } header: {
                 Text("Bulb")
@@ -33,7 +33,8 @@ struct BulbSettingsView: View {
                     ForEach(model.namedBulbs) { bulb in
                         Button {
                             address = bulb.address
-                            connect()
+                            // With its MAC, so a different bulb that now has the address isn't used.
+                            use(bulb.address, mac: bulb.mac)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 1) {
@@ -115,6 +116,8 @@ struct BulbSettingsView: View {
             name = model.currentName ?? ""
             if saved.isEmpty { focused = true }
         }
+        // A typed address's MAC (and so its name) is only known once the bulb answers.
+        .onChange(of: model.chosenMAC) { name = model.currentName ?? "" }
         .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot, titleVisibility: .visible) {
             Button("Reboot", role: .destructive) { model.reboot() }
         } message: {
@@ -122,11 +125,13 @@ struct BulbSettingsView: View {
         }
     }
 
-    private func connect() {
-        let a = address.trimmingCharacters(in: .whitespaces)
+    private func connect() { use(address, mac: nil) }
+
+    private func use(_ typedAddress: String, mac: String?) {
+        let a = typedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
         focused = false
-        model.choose(a)
+        model.choose(a, mac: mac)
         name = model.currentName ?? ""
     }
 }

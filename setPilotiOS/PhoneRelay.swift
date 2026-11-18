@@ -205,9 +205,9 @@ extension PhoneRelay: WCSessionDelegate {
             // changes from elsewhere reach the watch while the app stays awake.
             self.model?.ensureLive()
             let snapshot = await self.run(command)
-            if case .savePreset = command { self.updateContext() }
+            // The presets changed: the watch's copy for when the iPhone is out of reach.
             switch command {
-            case .deletePreset, .renamePreset, .updatePreset: self.updateContext()
+            case .savePreset, .deletePreset, .renamePreset, .updatePreset: self.updateContext()
             default: break
             }
             var response: [String: Any] = [:]

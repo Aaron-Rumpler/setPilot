@@ -27,7 +27,8 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   remembered and only changes when you choose another. On first launch the app searches by itself
   (asking for Local Network access first) and picks the bulb if there's only one.
 - **Bulb names**: name bulbs from the picker (pencil) or the Device panel. Names are kept on this Mac,
-  keyed by MAC address (the WiZ app's names are in WiZ's cloud, not on the bulb).
+  keyed by MAC address, and sync through iCloud in builds with it (the WiZ app's names are in WiZ's
+  cloud, not on the bulb).
 - The chosen bulb is also remembered by MAC: a different bulb answering at the saved address is
   ignored, and if the bulb stops answering (for example its IP changed) the app finds it again by
   MAC and reconnects (addresses entered as DNS names are left to DNS).

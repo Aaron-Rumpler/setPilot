@@ -26,6 +26,8 @@ struct ComposeView: View {
     @State private var w = 0
     @State private var temp = 2700
     @State private var customKelvin = 2700
+    /// The scale for Custom CCT, chosen here: picking one mustn't change the bulb until Send.
+    @State private var scaleID: UUID?
     @State private var scene = SceneChoice.builtin(1)
     @State private var includeDimming = true
     @State private var dimming = 100
@@ -115,9 +117,15 @@ struct ComposeView: View {
                          range: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound), step: 50,
                          tint: ColourTemperature.color(kelvin: Double(temp)))
         case .custom:
-            if let scale = model.activeScale, let range = scale.range {
-                Picker("Scale", selection: model.scaleChoice) {
-                    ForEach(model.library.scales(for: model.chosenMAC)) { Text($0.name).tag(Optional($0.id)) }
+            if let scale, let range = scale.range {
+                let scales = model.library.scales(for: model.chosenMAC).filter { $0.range != nil }
+                Picker("Scale", selection: Binding(get: { scale.id }, set: { id in
+                    scaleID = id
+                    if let r = scales.first(where: { $0.id == id })?.range {
+                        customKelvin = min(max(customKelvin, r.lowerBound), r.upperBound)
+                    }
+                })) {
+                    ForEach(scales) { Text($0.name).tag($0.id) }
                 }
                 IntSliderRow(label: "Kelvin", value: $customKelvin, range: range, step: 10,
                              tint: ColourTemperature.color(kelvin: Double(customKelvin)))
@@ -141,7 +149,7 @@ struct ComposeView: View {
             switch kind {
             case .rgbcw: ch.colour = .rgbcw(r: r, g: g, b: b, c: c, w: w)
             case .temp: ch.colour = .temp(temp)
-            case .custom: ch.colour = model.activeScale.map { .customCCT(scale: $0.id, kelvin: customKelvin) }
+            case .custom: ch.colour = scale.map { .customCCT(scale: $0.id, kelvin: customKelvin) }
             case .scene:
                 switch scene {
                 case .builtin(let id): ch.colour = .scene(id: id, speed: nil)
@@ -157,6 +165,12 @@ struct ComposeView: View {
         }
         ch.fade = fadeChoice.trans(setting: Model.fade, custom: fade)
         return ch
+    }
+
+    /// The chosen scale (while it still exists), else the one Custom CCT uses.
+    private var scale: CCTScale? {
+        let scales = model.library.scales(for: model.chosenMAC)
+        return scales.first { $0.id == scaleID } ?? model.activeScale
     }
 
     private var hasChange: Bool { change.colour != nil || change.dimming != nil || change.power != nil }
@@ -177,8 +191,12 @@ struct ComposeView: View {
         case nil: break
         }
         if let d = ch.dimming { parts.append("\"dimming\":\(d)") }
-        if ch.power == false || (ch.power == nil && model.isOn == false) { parts.append("\"state\":false") }
+        // As Model.send: a fade only goes with a change or with switching on, never alone when
+        // switching off.
         if let f = ch.fade, !parts.isEmpty || ch.power == true { parts.append("\"trans\":\(f)") }
+        if parts.isEmpty && ch.power == true { return "setState {\"state\":true}" }
+        if ch.power == false || (ch.power == nil && model.isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
+        if parts.isEmpty { return "Nothing to send" }
         return "setPilot {" + parts.joined(separator: ",") + "}"
     }
 
@@ -187,6 +205,7 @@ struct ComposeView: View {
         r = Int(model.r); g = Int(model.g); b = Int(model.b); c = Int(model.c); w = Int(model.w)
         temp = Int(model.temp)
         customKelvin = Int(model.customKelvin)
+        scaleID = model.activeScale?.id
         if let range = model.activeScale?.range { customKelvin = min(max(customKelvin, range.lowerBound), range.upperBound) }
         dimming = Int(model.dimming)
         scene = model.sceneChoice.wrappedValue

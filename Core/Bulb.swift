@@ -23,7 +23,7 @@ final class Bulb {
         conn?.cancel()
         conn = nil
         replyCount = [:]
-        let host = host.trimmingCharacters(in: .whitespaces)
+        let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !host.isEmpty else { return }
         let c = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: Net.port)!, using: .udp)
         conn = c

@@ -30,7 +30,13 @@ enum QuickBulb {
     static func send(_ host: String, _ method: String, _ params: [String: Any]) async throws -> [String: Any] {
         let data = try JSONSerialization.data(withJSONObject: ["method": method, "params": params])
         for _ in 0..<3 {
-            if let reply = await attempt(host, data) { return reply }
+            guard let reply = await attempt(host, data) else { continue }
+            // An answer, but a refusal (a parameter this firmware doesn't take, say): no use retrying.
+            if let error = reply["error"] as? [String: Any] {
+                let message = error["message"] as? String ?? (error["code"] as? Int).map { "error \($0)" } ?? "an error"
+                throw WidgetError(localizedStringResource: "The bulb refused \(method): \(message)")
+            }
+            return reply
         }
         throw WidgetError(localizedStringResource: "The bulb didn't answer.")
     }

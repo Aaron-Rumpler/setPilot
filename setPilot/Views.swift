@@ -133,20 +133,20 @@ struct ContentView: View {
             Button {
                 let pb = NSPasteboard.general
                 pb.clearContents()
-                pb.setString(#"{"method":"setPilot","params":\#(model.lastSent)}"#, forType: .string)
+                pb.setString(model.lastCommandJSON, forType: .string)
             } label: {
                 Label("Copy JSON", systemImage: "doc.on.doc")
             }
             .buttonStyle(.borderless)
             .disabled(model.lastSent.isEmpty)
-            .help("Copy the full setPilot request as JSON")
+            .help("Copy the full request as JSON")
         } content: {
             VStack(alignment: .leading, spacing: 8) {
                 Group {
                     if model.lastSent.isEmpty {
                         Text("Nothing sent yet").foregroundStyle(.tertiary)
                     } else {
-                        Text("\(Text("setPilot ").foregroundStyle(.secondary))\(Text(JSONHighlighter.highlight(model.lastSent)))")
+                        Text("\(Text(model.lastMethod + " ").foregroundStyle(.secondary))\(Text(JSONHighlighter.highlight(model.lastSent)))")
                     }
                 }
                 .font(.system(.caption, design: .monospaced))

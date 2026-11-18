@@ -264,8 +264,9 @@ struct CCTScale: Codable, Hashable, Identifiable, Sendable {
 
     /// The firmware's interpolation: clamp to the table, take the first point at or
     /// above `kelvin`, and step each channel from the one before with C integer division.
-    func channels(at kelvin: Int) -> Channels? {
-        let pts = sorted
+    func channels(at kelvin: Int) -> Channels? { Self.channels(at: kelvin, sorted: sorted) }
+
+    private static func channels(at kelvin: Int, sorted pts: [Point]) -> Channels? {
         guard let first = pts.first, let last = pts.last else { return nil }
         let t = min(max(kelvin, first.kelvin), last.kelvin)
         guard pts.count > 1, let i = pts.indices.dropFirst().first(where: { pts[$0].kelvin >= t }) else {
@@ -280,9 +281,10 @@ struct CCTScale: Codable, Hashable, Identifiable, Sendable {
     /// The kelvin value that gives exactly these channels, nearest to `near`; nil if none does.
     func kelvin(matching ch: Channels, near: Int) -> Int? {
         guard let range else { return nil }
-        if range.contains(near), channels(at: near) == ch { return near }
+        let pts = sorted // once, not for each of the thousands of kelvin values tried
+        if range.contains(near), Self.channels(at: near, sorted: pts) == ch { return near }
         var best: Int?
-        for k in range where channels(at: k) == ch {
+        for k in range where Self.channels(at: k, sorted: pts) == ch {
             if best == nil || abs(k - near) < abs(best! - near) { best = k }
         }
         return best

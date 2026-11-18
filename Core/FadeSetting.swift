@@ -36,6 +36,7 @@ struct FadeSetting: View {
         switch (model.fadeIn, model.fadeOut) {
         case let (i?, o?): "\(i) ms on, \(o) ms off"
         case let (i?, nil): "\(i) ms"
+        case let (nil, o?): "\(o) ms off"
         default: model.link == .connected ? "Not reported" : "—"
         }
     }
