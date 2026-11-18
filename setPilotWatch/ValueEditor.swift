@@ -96,11 +96,17 @@ struct NumberPad: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(text.isEmpty ? "\(Int(range.lowerBound))–\(Int(range.upperBound))" : text + unit)
+            // Also a text field: tapping it opens the system's input, which offers a number pad
+            // for telephone-number fields where watchOS supports one (it hasn't always worked).
+            TextField("\(Int(range.lowerBound))–\(Int(range.upperBound))", text: $text)
+                .textContentType(.telephoneNumber)
+                .multilineTextAlignment(.center)
                 .font(.title3.monospacedDigit())
-                .foregroundStyle(text.isEmpty ? Color.secondary : valid ? Color.primary : Color.orange)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .foregroundStyle(valid || text.isEmpty ? Color.primary : Color.orange)
+                .onChange(of: text) { _, new in
+                    let digits = String(new.filter(\.isNumber).prefix(6))
+                    if digits != new { text = digits }
+                }
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 ForEach([["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]], id: \.self) { row in
                     GridRow { ForEach(row, id: \.self) { key($0) } }

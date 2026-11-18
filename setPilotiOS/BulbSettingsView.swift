@@ -102,6 +102,8 @@ struct BulbSettingsView: View {
                 Text("How long each change takes to fade in (setPilot's trans). Turning off always uses the bulb's own fade-out.")
             }
 
+            CloudSyncSection()
+
             Section {
                 NavigationLink("Shortcuts and Siri") { ShortcutsHelpView() }
             }

@@ -69,6 +69,8 @@ enum WatchCommand: Codable, Sendable {
     case playCustom(UUID)
     case savePreset(name: String)
     case compose(LightChange)
+    case renamePreset(UUID, name: String)
+    case updatePreset(UUID)
     case useScale(UUID)
     case chooseBulb(address: String, mac: String?)
     case deletePreset(UUID)

@@ -138,6 +138,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            CloudSyncSection()
+
             // Testing aid: the white the colour-temperature colours are adapted to.
             Section("Colour temperature (testing)") {
                 LabeledContent("Adapted to") {

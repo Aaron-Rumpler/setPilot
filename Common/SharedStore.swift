@@ -6,7 +6,12 @@ import Foundation
 /// back to the process's own defaults, and widgets just show nothing useful.
 enum SharedStore {
     static let group = "group.nz.aaronrumpler.setPilot"
+    #if WIZ_APP_GROUPS
     static let defaults = UserDefaults(suiteName: group) ?? .standard
+    #else
+    // Built without App Groups (Account.xcconfig): nothing is shared, widgets show placeholders.
+    static let defaults = UserDefaults.standard
+    #endif
 
     static let snapshotKey = "shared.snapshot"
     static let presetsKey = "shared.presets"

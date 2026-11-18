@@ -40,6 +40,9 @@ final class PhoneRelay: NSObject {
         case .deletePreset(let id):
             model.library.presets.removeAll { $0.id == id }
             return model.snapshot
+        case let .renamePreset(id, name):
+            model.renamePreset(id, to: name)
+            return model.snapshot
         case let .chooseBulb(address, mac):
             model.choose(address, mac: mac)
             _ = await model.waitUntilControllable(timeout: 4)
@@ -67,7 +70,9 @@ final class PhoneRelay: NSObject {
             model.send(change)
         case .useScale(let id):
             model.useScale(id)
-        case .state, .savePreset, .deletePreset, .chooseBulb:
+        case .updatePreset(let id):
+            model.updatePreset(id)
+        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset:
             break
         }
         await model.waitUntilSettled()
@@ -196,9 +201,15 @@ extension PhoneRelay: WCSessionDelegate {
         }
         let reply = UncheckedSendable(replyHandler)
         Task { @MainActor in
+            // Woken for this, perhaps from the background: get live updates going again, so
+            // changes from elsewhere reach the watch while the app stays awake.
+            self.model?.ensureLive()
             let snapshot = await self.run(command)
             if case .savePreset = command { self.updateContext() }
-            if case .deletePreset = command { self.updateContext() }
+            switch command {
+            case .deletePreset, .renamePreset, .updatePreset: self.updateContext()
+            default: break
+            }
             var response: [String: Any] = [:]
             if let data = try? JSONEncoder().encode(snapshot) { response[WatchKey.snapshot] = data }
             reply.value(response)

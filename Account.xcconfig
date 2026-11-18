@@ -1,0 +1,18 @@
+// Capabilities that depend on your Apple developer account. Change these to match it, then
+// rebuild. Every target uses this file (it's the project's base configuration).
+//
+// App Groups: lets the iPhone and watch widgets read the apps' data. Free (personal team)
+// accounts appear to be able to use them, but that isn't certain; if Xcode won't sign the
+// iPhone or watch targets with them, set this to NO. Without them the apps work fully, and the
+// widgets and complications just have nothing to show.
+WIZ_APP_GROUPS = YES
+
+// iCloud: syncs presets, custom scenes, CCT scales and bulb names between your Mac and iPhone
+// (the watch gets them from the iPhone). Needs a paid developer account.
+WIZ_ICLOUD = NO
+
+// Derived from the two above; no need to edit.
+WIZ_ENTITLEMENTS = Entitlements/groups-$(WIZ_APP_GROUPS)_icloud-$(WIZ_ICLOUD)
+WIZ_FLAG_GROUPS_YES = WIZ_APP_GROUPS
+WIZ_FLAG_ICLOUD_YES = WIZ_ICLOUD
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(WIZ_FLAG_GROUPS_$(WIZ_APP_GROUPS)) $(WIZ_FLAG_ICLOUD_$(WIZ_ICLOUD))

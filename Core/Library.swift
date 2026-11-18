@@ -1,6 +1,7 @@
 import Foundation
 
-/// Presets and custom scenes, kept on this device (as JSON in user defaults).
+/// Presets, custom scenes and CCT scales, kept on this device (as JSON in user defaults) and,
+/// in builds with iCloud, synced through it.
 @MainActor @Observable
 final class Library {
     static let presetsKey = "presets"
@@ -21,6 +22,30 @@ final class Library {
         customScenes = Self.load(Self.customScenesKey) ?? []
         cctScales = Self.load(Self.cctScalesKey) ?? [:]
         activeCCTScale = Self.load(Self.activeCCTScaleKey) ?? [:]
+        syncWithCloud()
+    }
+
+    /// Set while taking a value from iCloud, so it isn't sent straight back.
+    @ObservationIgnored private var fromCloud = false
+
+    private func syncWithCloud() {
+        let d = UserDefaults.standard
+        let cloud = CloudSync.shared
+        cloud.register(Self.presetsKey, local: d.data(forKey: Self.presetsKey)) { [weak self] data in
+            self?.takeFromCloud { if let v = try? JSONDecoder().decode([Preset].self, from: data) { $0.presets = v } }
+        }
+        cloud.register(Self.customScenesKey, local: d.data(forKey: Self.customScenesKey)) { [weak self] data in
+            self?.takeFromCloud { if let v = try? JSONDecoder().decode([CustomScene].self, from: data) { $0.customScenes = v } }
+        }
+        cloud.register(Self.cctScalesKey, local: d.data(forKey: Self.cctScalesKey)) { [weak self] data in
+            self?.takeFromCloud { if let v = try? JSONDecoder().decode([String: [CCTScale]].self, from: data) { $0.cctScales = v } }
+        }
+    }
+
+    private func takeFromCloud(_ change: (Library) -> Void) {
+        fromCloud = true
+        change(self)
+        fromCloud = false
     }
 
     func scales(for mac: String?) -> [CCTScale] {
@@ -89,7 +114,9 @@ final class Library {
     }
 
     private func save<T: Encodable>(_ value: T, _ key: String) {
-        if let data = try? JSONEncoder().encode(value) { UserDefaults.standard.set(data, forKey: key) }
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+        if !fromCloud, key != Self.activeCCTScaleKey { CloudSync.shared.put(key, data) }
     }
 
     private static func load<T: Decodable>(_ key: String) -> T? {

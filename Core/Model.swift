@@ -112,6 +112,13 @@ final class Model {
     private let phoneMac = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
 
     init() {
+        // Bulb names sync through iCloud too (in builds with it), keyed by MAC.
+        CloudSync.shared.register(Self.namesKey, local: try? JSONEncoder().encode(names)) { [weak self] data in
+            guard let self, let v = try? JSONDecoder().decode([String: String].self, from: data) else { return }
+            namesFromCloud = true
+            names = v
+            namesFromCloud = false
+        }
         bulb.onReply = { [weak self] in self?.handleReply($0) }
         bulb.onError = { [weak self] method, message in
             guard let self else { return }
@@ -200,8 +207,12 @@ final class Model {
 
     /// Names the user has given bulbs, keyed by lower-case MAC.
     var names: [String: String] = UserDefaults.standard.dictionary(forKey: Model.namesKey) as? [String: String] ?? [:] {
-        didSet { UserDefaults.standard.set(names, forKey: Self.namesKey) }
+        didSet {
+            UserDefaults.standard.set(names, forKey: Self.namesKey)
+            if !namesFromCloud, let d = try? JSONEncoder().encode(names) { CloudSync.shared.put(Self.namesKey, d) }
+        }
     }
+    @ObservationIgnored private var namesFromCloud = false
 
     func name(for mac: String?) -> String? {
         guard let mac else { return nil }
@@ -294,6 +305,8 @@ final class Model {
 
     /// pywizlight's push method: tell the bulb our IP every 20 s; it sends syncPilot to port 38900.
     private func startLiveUpdates(_ ip: String) {
+        liveHost = ip
+        lastRegistration = .now
         registerTask?.cancel()
         push.startIfNeeded()
         guard push.isRunning else { return }
@@ -305,6 +318,7 @@ final class Model {
         let params: [String: Any] = ["phoneIp": phoneIp, "register": true, "phoneMac": phoneMac]
         registerTask = Task { [weak self] in
             while !Task.isCancelled {
+                self?.lastRegistration = .now
                 self?.bulb.send("registration", params)
                 try? await Task.sleep(for: .seconds(20))
             }
@@ -803,10 +817,40 @@ final class Model {
         if !push.isRunning || link != .connected { connect(a) } else { sync() }
     }
 
+    @ObservationIgnored private var liveHost: String?
+    @ObservationIgnored private var lastRegistration = Date.distantPast
+
+    /// Woken in the background (by the watch, Shortcuts or a widget): iOS suspends the app's
+    /// sockets and timers in between, so make sure it's connected and registered for pushes again,
+    /// so changes made elsewhere reach it (and the watch) while it's awake.
+    func ensureLive() {
+        guard started, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else {
+            startIfSaved()
+            return
+        }
+        if !push.isRunning || link == .unreachable || link == .none {
+            connect(a)
+        } else if let liveHost, Date.now.timeIntervalSince(lastRegistration) > 15 {
+            startLiveUpdates(liveHost)
+        }
+    }
+
+    /// Updates a preset to the light as it is now.
+    func updatePreset(_ id: UUID) {
+        guard let colour = currentColour, let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
+        library.presets[i].colour = colour
+        library.presets[i].dimming = Int(dimming)
+    }
+
+    func renamePreset(_ id: UUID, to name: String) {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty, let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
+        library.presets[i].name = n
+    }
+
     /// Connects to the saved bulb if needed and waits until it can be controlled (or `timeout`).
     func waitUntilControllable(timeout: Double = 4) async -> Bool {
-        startIfSaved()
-        if link == .unreachable { sync() }
+        ensureLive()
         let end = Date().addingTimeInterval(timeout)
         while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         return canControl

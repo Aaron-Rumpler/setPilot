@@ -21,6 +21,8 @@ struct SetPilotWatchApp: App {
 /// The main screen: power and the presets, with everything else a level down.
 struct PresetsView: View {
     let link: PhoneLink
+    /// The preset whose edit screen is open (swipe a preset, then Edit).
+    @State private var editing: Preset?
 
     var body: some View {
         NavigationStack {
@@ -37,7 +39,7 @@ struct PresetsView: View {
                 }
                 Section("Presets") {
                     if link.presets.isEmpty {
-                        Text("Save presets here or in setPilot on your iPhone.")
+                        Text("Save presets here or in setPilot on your iPhone. Swipe one to edit it.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -52,6 +54,10 @@ struct PresetsView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                        }
+                        .swipeActions {
+                            Button { editing = preset } label: { Label("Edit", systemImage: "pencil") }
+                                .tint(.blue)
                         }
                     }
                 }
@@ -94,6 +100,7 @@ struct PresetsView: View {
                 }
             }
             .navigationTitle("setPilot")
+            .navigationDestination(item: $editing) { preset in PresetEditView(link: link, presetID: preset.id) }
             .task { await link.poll() } // live updates while the app is open
         }
     }
@@ -212,5 +219,48 @@ struct BulbsView: View {
                 .listRowBackground(Color.clear)
         }
         .navigationTitle("Bulb")
+    }
+}
+
+/// One preset: apply, rename, update to the current light, delete.
+struct PresetEditView: View {
+    let link: PhoneLink
+    let presetID: UUID
+    @State private var name = ""
+    @State private var confirmingUpdate = false
+    @State private var confirmingDelete = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let preset = link.presets.first { $0.id == presetID }
+        List {
+            if let preset {
+                Button { link.send(.applyPreset(preset.id)) } label: { Label("Apply", systemImage: "play.fill") }
+                TextField("Name", text: $name)
+                    .onSubmit {
+                        let n = name.trimmingCharacters(in: .whitespaces)
+                        if !n.isEmpty, n != preset.name { link.send(.renamePreset(preset.id, name: n)) }
+                    }
+                Button { confirmingUpdate = true } label: {
+                    Label("Update to Current Light", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(link.snapshot?.canControl != true)
+                Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
+            } else {
+                Text("This preset has been deleted.").foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle(preset?.name ?? "Preset")
+        .onAppear { name = preset?.name ?? "" }
+        .confirmationDialog("Replace “\(preset?.name ?? "")” with the current light?", isPresented: $confirmingUpdate,
+                            titleVisibility: .visible) {
+            Button("Update") { link.send(.updatePreset(presetID)) }
+        }
+        .confirmationDialog("Delete “\(preset?.name ?? "")”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                link.send(.deletePreset(presetID))
+                dismiss()
+            }
+        }
     }
 }
