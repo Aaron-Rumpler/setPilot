@@ -9,14 +9,7 @@ extension Model {
         var scale = defaultScale ?? CCTScale(name: "Scale", points: [
             .init(kelvin: 2700, w: 255), .init(kelvin: 6500, c: 255),
         ])
-        let taken = Set(library.scales(for: mac).map(\.name))
-        var name = defaultScale == nil ? "Scale" : "Bulb default"
-        if taken.contains(name) {
-            var i = 2
-            while taken.contains("\(name) \(i)") { i += 1 }
-            name = "\(name) \(i)"
-        }
-        scale.name = name
+        scale.name = uniqueScaleName(defaultScale == nil ? "Scale" : "Bulb default", for: mac)
         library.updateScale(scale, for: mac)
         library.setActiveScale(scale.id, for: mac)
         return scale
@@ -26,10 +19,19 @@ extension Model {
         guard let mac = chosenMAC else { return nil }
         var copy = scale
         copy.id = UUID()
-        copy.name = scale.name + " copy"
+        copy.name = uniqueScaleName(scale.name + " copy", for: mac)
         copy.points = scale.points.map { var p = $0; p.id = UUID(); return p }
         library.updateScale(copy, for: mac)
         return copy
+    }
+
+    /// `base`, or "base 2" and so on if this bulb already has a scale of that name.
+    private func uniqueScaleName(_ base: String, for mac: String) -> String {
+        let taken = Set(library.scales(for: mac).map(\.name))
+        guard taken.contains(base) else { return base }
+        var i = 2
+        while taken.contains("\(base) \(i)") { i += 1 }
+        return "\(base) \(i)"
     }
 
     /// The scale in use, as a picker selection.

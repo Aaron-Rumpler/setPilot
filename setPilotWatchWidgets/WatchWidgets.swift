@@ -177,7 +177,7 @@ struct PresetView: View {
 
     var body: some View {
         let name = entry.preset?.name ?? "Preset"
-        let colour = entry.preset?.colour.swatch?.color ?? .gray
+        let colour = entry.preset.flatMap { SharedStore.swatch($0.colour) }?.color ?? .gray
         switch family {
         case .accessoryCircular:
             ZStack {

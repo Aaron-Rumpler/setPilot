@@ -52,8 +52,9 @@ final class CloudSync {
         ) { note in
             let keys = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? []
             MainActor.assumeIsolated {
+                // The shared store, not the captured one: it isn't Sendable.
                 for key in keys {
-                    if let data = store.data(forKey: key) { CloudSync.shared.handlers[key]?(data) }
+                    if let data = NSUbiquitousKeyValueStore.default.data(forKey: key) { CloudSync.shared.handlers[key]?(data) }
                 }
             }
         }

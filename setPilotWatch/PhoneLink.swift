@@ -119,6 +119,8 @@ final class PhoneLink: NSObject {
         if let d = context[WatchKey.customScenes] as? Data, let s = try? decoder.decode([CustomSceneSummary].self, from: d) {
             scenes = s
             defaults.set(d, forKey: WatchKey.customScenes)
+            SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
+            WidgetCenter.shared.reloadAllTimelines()
         }
         if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
             apply(s)

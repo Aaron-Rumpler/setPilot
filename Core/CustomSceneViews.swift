@@ -29,7 +29,7 @@ struct CustomSceneEditor: View {
                 ForEach(binding.steps) { $step in
                     let i = binding.wrappedValue.steps.firstIndex { $0.id == step.id } ?? 0
                     Section {
-                        StepEditor(step: $step)
+                        StepEditor(step: $step, kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound))
                     } header: {
                         HStack {
                             Text("Step \(i + 1)")
@@ -99,6 +99,8 @@ struct CustomSceneEditor: View {
 /// One keyframe: colour (RGBCW or a temperature), level, hold and fade.
 struct StepEditor: View {
     @Binding var step: CustomScene.Step
+    /// The bulb's colour-temperature range (from getModelConfig; 2200–6500 K until it's known).
+    var kelvinRange = 2200...6500
 
     var body: some View {
         HStack {
@@ -115,7 +117,8 @@ struct StepEditor: View {
                 .accessibilityHidden(true)
         }
         if step.useTemp {
-            IntSliderRow(label: "Kelvin", value: $step.temp, range: 2200...6500, step: 50)
+            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange, step: 50,
+                         tint: ColourTemperature.color(kelvin: Double(step.temp)))
         } else {
             IntSliderRow(label: "Red", value: $step.r, range: 0...255, tint: .red)
             IntSliderRow(label: "Green", value: $step.g, range: 0...255, tint: .green)

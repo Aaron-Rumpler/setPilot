@@ -146,6 +146,7 @@ final class PhoneRelay: NSObject {
     private func publishLibrary() {
         guard let model else { return }
         SharedStore.save(model.library.presets, SharedStore.presetsKey)
+        SharedStore.save(model.library.summaries, SharedStore.customScenesKey) // for custom scene swatches
         var params: [String: Data] = [:]
         for preset in model.library.presets {
             if let p = model.pilotParams(for: preset), let d = try? JSONSerialization.data(withJSONObject: p) {

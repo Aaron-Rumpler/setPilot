@@ -17,6 +17,7 @@ enum SharedStore {
     static let presetsKey = "shared.presets"
     static let presetParamsKey = "shared.presetParams"
     static let addressKey = "shared.address"
+    static let customScenesKey = "shared.customScenes"
 
     static func save<T: Encodable>(_ value: T, _ key: String) {
         if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
@@ -29,4 +30,11 @@ enum SharedStore {
 
     static var snapshot: LightSnapshot? { load(snapshotKey) }
     static var presets: [Preset] { load(presetsKey) ?? [] }
+    static var customScenes: [CustomSceneSummary] { load(customScenesKey) ?? [] }
+
+    /// A preset's swatch, with custom scenes looked up in the shared summaries.
+    static func swatch(_ colour: LightColour) -> RGB? {
+        if case let .custom(id, _) = colour { return customScenes.first { $0.id == id }?.swatch }
+        return colour.swatch
+    }
 }

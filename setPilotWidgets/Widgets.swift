@@ -148,7 +148,7 @@ struct PresetsWidgetView: View {
     private func tile(_ preset: Preset) -> some View {
         VStack(spacing: 2) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill((preset.colour.swatch?.color ?? .gray).gradient)
+                .fill((SharedStore.swatch(preset.colour)?.color ?? .gray).gradient)
                 .overlay {
                     if preset.colour.isScene {
                         Image(systemName: "sparkles").font(.caption2.weight(.bold)).foregroundStyle(.white)
