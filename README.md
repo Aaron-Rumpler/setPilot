@@ -74,15 +74,37 @@ The iPhone app doesn't search the network: broadcasting needs Apple's multicast 
 accounts only), and probing every address on a network isn't acceptable on networks you don't own.
 Enter the bulb's IP address or DNS name; a DNS name keeps working if the address changes.
 
-The Watch app's main screen is the presets (tap to apply), with power above them; Controls has
-everything else (mode, channels, temperature, scene, speed, brightness, using the Digital Crown),
-and custom scenes can be played. watchOS doesn't let apps send UDP (only while streaming audio), so
+The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to switch between.
+
+**Widgets** (iPhone): a Presets widget for the Home Screen (tap a preset; power and brighter/dimmer
+on the larger sizes), a Lock Screen bulb status, and Control Center controls for power and for a
+preset of your choice. Their actions run in the app in the background on its connection to the
+bulb (if the system runs them in the widget extension instead, it sends the request itself).
+
+The Watch app's main screen is power and the presets (tap to apply). Below them:
+- **Controls**: mode, channels, temperature, Custom CCT (and which scale), scene (the bulb's and
+  your custom scenes) and speed, brightness, brighter/dimmer. Each value opens an editor: the
+  Digital Crown moves it one step per detent (1, or 10 K for temperatures, with a haptic tick), −
+  and + do the same, and a keypad enters an exact number.
+- **Compose**: a change with its own fade time, sent in one go.
+- **Custom Scenes** to play, **Save Current Light** as a preset, and **Bulb** to switch between the
+  iPhone's bulbs.
+- Read-back mismatches ("Bulb didn't apply: …") show as on the iPhone.
+- While it's open it asks the iPhone for the state every 4 seconds, and the iPhone sends changes
+  as they happen while it's running.
+
+**Complications and Smart Stack** (watch): the bulb's status, a preset (tap to apply; pick from the
+suggestions when adding it), and power (tap to switch). They open the app to act, since watch
+widgets can't reach the iPhone themselves. watchOS doesn't let apps send UDP (only while streaming audio), so
 the watch sends every command to the iPhone app over WatchConnectivity, which talks to the bulb and
 replies with its state. The iPhone has to be in Bluetooth or Wi-Fi range of the watch; the iPhone
 app doesn't need to be open. The presets and last state are cached on the watch for when it isn't.
 
-Both run on iOS 26 and watchOS 26 and work with a free Apple developer account (no paid-only
-capabilities; free signing lasts 7 days, so reinstall from Xcode weekly).
+Both run on iOS 26 and watchOS 26. The widgets share data with their apps through an App Group
+(`group.nz.aaronrumpler.setPilot`), which every target that uses it needs in Signing &
+Capabilities; free signing lasts 7 days, so reinstall from Xcode weekly. If your team can't use
+App Groups, remove the capability from the four iOS and watch targets: the apps still work, the
+widgets just show nothing.
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
 back, so writing one could overwrite a scene the WiZ app stored), signed requests (firmware that requires the `udp_signing_key` from the WiZ app),
