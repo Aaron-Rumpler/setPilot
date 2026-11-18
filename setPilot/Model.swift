@@ -436,22 +436,19 @@ final class Model {
         }
     }
 
-    /// Sends only what changed: the bulb ignores some requests with extra (if consistent)
-    /// parameters, and leaving the rest out doesn't undo concurrent changes from other apps.
+    /// Sends only what changed (a whole colour, dimming or speed): the firmware ignores some valid
+    /// parameters when they're combined with others, and leaving the rest out doesn't undo
+    /// concurrent changes from other apps.
     private func sendPilot(_ fields: Set<PilotField>, retry: Bool) {
         let fields = unsent.union(fields)
         unsent = []
         var p: [String: Any] = [:]
-        var expect: [String: Int] = [:] // what the read-back should show
         if fields.contains(.dimming) { p["dimming"] = Int(dimming) }
         if fields.contains(.colour) {
             switch mode {
             case .rgbcw:
-                // Channels left out are 0. All five 0 is sent as such, for the bulb to refuse.
-                let channels = ["r": r, "g": g, "b": b, "c": c, "w": w].mapValues { Int($0) }
-                expect.merge(channels) { $1 }
-                let lit = channels.filter { $0.value != 0 }
-                p.merge(lit.isEmpty ? channels : lit) { $1 }
+                // All five, zeros included: the colour is one setting.
+                p.merge(["r": r, "g": g, "b": b, "c": c, "w": w].mapValues { Int($0) }) { $1 }
             case .temp:
                 p["temp"] = Int(temp)
             case .scene:
@@ -466,7 +463,7 @@ final class Model {
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
-        lastPilot = p.filter { $0.key != "state" }.compactMapValues { $0 as? Int }.merging(expect) { $1 }
+        lastPilot = p.filter { $0.key != "state" }.compactMapValues { $0 as? Int }
         lastState = isOn
         sendSeq += 1
         pending = true

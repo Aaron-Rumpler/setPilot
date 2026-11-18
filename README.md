@@ -9,9 +9,9 @@ with raw RGBCW values.
   **dimming**, sent as raw `setPilot` values. The last payload sent is shown, syntax-highlighted,
   with a button to copy it as JSON.
 - Every change is read back from the bulb; values it ignored or adjusted are flagged.
-- Each `setPilot` carries only what changed (moving Dimming sends just `dimming`; a colour sends
-  only its non-zero channels, since missing ones are 0). The bulb ignores some requests with extra
-  parameters, and this doesn't undo changes made meanwhile by other apps.
+- Each `setPilot` carries only what changed: the colour (all five channels, the temperature or the
+  scene), dimming or speed. The firmware ignores some valid parameters when they're combined with
+  others, and this doesn't undo changes made meanwhile by other apps.
 - Changes never switch the bulb on or off: a `setPilot` to a bulb that's off carries
   `"state": false` (one without `state` switches it on), and only the power switch changes it.
 - **Temperature** mode: the slider's track shows the colour of each temperature, uses a mired scale
@@ -116,5 +116,5 @@ xattr -dr com.apple.quarantine setPilot.app
 JSON over UDP port 38899, e.g.:
 
 ```json
-{"method":"setPilot","params":{"r":255,"w":128}}
+{"method":"setPilot","params":{"r":255,"g":0,"b":0,"c":0,"w":128}}
 ```
