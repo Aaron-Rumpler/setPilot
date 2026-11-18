@@ -1,0 +1,256 @@
+import AppIntents
+import SwiftUI
+import WidgetKit
+
+@main
+struct SetPilotWidgets: WidgetBundle {
+    var body: some Widget {
+        PresetsWidget()
+        StatusWidget()
+        PowerControl()
+        PresetControl()
+    }
+}
+
+// MARK: Timeline
+
+struct BulbEntry: TimelineEntry {
+    let date: Date
+    let snapshot: LightSnapshot?
+    let presets: [Preset]
+
+    static let sample = BulbEntry(date: .now, snapshot: {
+        var s = LightSnapshot()
+        s.link = .connected
+        s.bulbName = "Lounge lamp"
+        s.isOn = true
+        s.dimming = 60
+        return s
+    }(), presets: [
+        Preset(name: "Reading", colour: .temp(4200), dimming: 100),
+        Preset(name: "Evening", colour: .temp(2700), dimming: 60),
+        Preset(name: "Movie", colour: .rgbcw(r: 255, g: 60, b: 0, c: 0, w: 40), dimming: 30),
+        Preset(name: "Night", colour: .rgbcw(r: 255, g: 0, b: 0, c: 0, w: 10), dimming: 10),
+    ])
+}
+
+/// The app reloads the widgets when the state or presets change; nothing changes by itself.
+struct BulbProvider: TimelineProvider {
+    func placeholder(in context: Context) -> BulbEntry { .sample }
+
+    func getSnapshot(in context: Context, completion: @escaping (BulbEntry) -> Void) {
+        completion(context.isPreview ? .sample : current)
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<BulbEntry>) -> Void) {
+        completion(Timeline(entries: [current], policy: .never))
+    }
+
+    private var current: BulbEntry {
+        BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: SharedStore.presets)
+    }
+}
+
+// MARK: Presets (Home Screen)
+
+struct PresetsWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "presets", provider: BulbProvider()) { entry in
+            PresetsWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Presets")
+        .description("Your setPilot presets, with the bulb's power and brightness.")
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    }
+}
+
+struct PresetsWidgetView: View {
+    let entry: BulbEntry
+    @Environment(\.widgetFamily) private var family
+
+    private var count: Int {
+        switch family {
+        case .systemSmall: 4
+        case .systemMedium: 6
+        default: 12
+        }
+    }
+
+    private var columns: Int { family == .systemSmall ? 2 : 3 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header
+            if entry.presets.isEmpty {
+                Text("Save presets in setPilot.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            } else {
+                Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                    ForEach(rows, id: \.first?.id) { row in
+                        GridRow {
+                            ForEach(row) { preset in
+                                Button(intent: ApplyPresetWidgetIntent(preset: PresetEntity(preset))) {
+                                    tile(preset)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var rows: [[Preset]] {
+        let shown = Array(entry.presets.prefix(count))
+        return stride(from: 0, to: shown.count, by: columns).map { Array(shown[$0..<min($0 + columns, shown.count)]) }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(entry.snapshot?.bulbName ?? "setPilot")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(statusText(entry.snapshot))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if family != .systemSmall {
+                Button(intent: DimStepIntent(step: -10)) { Image(systemName: "sun.min") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dimmer")
+                Button(intent: DimStepIntent(step: 10)) { Image(systemName: "sun.max.fill") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Brighter")
+            }
+            Toggle(isOn: entry.snapshot?.isOn ?? false, intent: powerIntent) {
+                Image(systemName: entry.snapshot?.isOn == true ? "lightbulb.fill" : "lightbulb")
+            }
+            .toggleStyle(.button)
+            .labelStyle(.iconOnly)
+            .accessibilityLabel("Power")
+        }
+    }
+
+    private var powerIntent: PowerToggleIntent {
+        var i = PowerToggleIntent()
+        i.value = !(entry.snapshot?.isOn ?? false)
+        return i
+    }
+
+    private func tile(_ preset: Preset) -> some View {
+        VStack(spacing: 2) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill((preset.colour.swatch?.color ?? .gray).gradient)
+                .overlay {
+                    if preset.colour.isScene {
+                        Image(systemName: "sparkles").font(.caption2.weight(.bold)).foregroundStyle(.white)
+                    }
+                }
+            Text(preset.name)
+                .font(.caption2)
+                .lineLimit(1)
+        }
+    }
+}
+
+func statusText(_ s: LightSnapshot?) -> String {
+    guard let s else { return "Open setPilot" }
+    switch s.link {
+    case .none: return "No bulb chosen"
+    case .connecting: return "Connecting…"
+    case .unreachable: return "Not answering"
+    case .connected: return s.isOn == true ? "On · \(Int(s.dimming))%" : "Off"
+    }
+}
+
+// MARK: Status (Lock Screen)
+
+struct StatusWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "status", provider: BulbProvider()) { entry in
+            StatusWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Bulb")
+        .description("Whether the bulb is on, and how bright.")
+        .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+struct StatusWidgetView: View {
+    let entry: BulbEntry
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        let s = entry.snapshot
+        let on = s?.isOn == true
+        switch family {
+        case .accessoryCircular:
+            Gauge(value: on ? (s?.dimming ?? 0) : 0, in: 0...100) {
+                Image(systemName: on ? "lightbulb.fill" : "lightbulb")
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+        case .accessoryInline:
+            Label(statusText(s), systemImage: on ? "lightbulb.fill" : "lightbulb")
+        default:
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(s?.bulbName ?? "setPilot").font(.headline).lineLimit(1)
+                    Text(statusText(s)).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Toggle(isOn: on, intent: {
+                    var i = PowerToggleIntent()
+                    i.value = !on
+                    return i
+                }()) {
+                    Image(systemName: on ? "lightbulb.fill" : "lightbulb")
+                }
+                .toggleStyle(.button)
+                .labelStyle(.iconOnly)
+                .accessibilityLabel("Power")
+            }
+        }
+    }
+}
+
+// MARK: Control Center
+
+struct PowerControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "power", provider: PowerValueProvider()) { isOn in
+            ControlWidgetToggle("Bulb", isOn: isOn, action: PowerToggleIntent()) { on in
+                Label(on ? "On" : "Off", systemImage: on ? "lightbulb.fill" : "lightbulb")
+            }
+        }
+        .displayName("Bulb Power")
+        .description("Switches the setPilot bulb on or off.")
+    }
+}
+
+struct PowerValueProvider: ControlValueProvider {
+    var previewValue: Bool { true }
+
+    func currentValue() async throws -> Bool { SharedStore.snapshot?.isOn ?? false }
+}
+
+struct PresetControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        AppIntentControlConfiguration(kind: "preset", intent: PresetControlConfiguration.self) { config in
+            ControlWidgetButton(action: ApplyPresetWidgetIntent(preset: config.preset)) {
+                Label(config.preset?.name ?? "Preset", systemImage: "square.grid.2x2")
+            }
+        }
+        .displayName("Preset")
+        .description("Applies one of your setPilot presets.")
+        .promptsForUserConfiguration()
+    }
+}

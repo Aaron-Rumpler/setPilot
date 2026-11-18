@@ -4,33 +4,6 @@ import AppIntents
 // a Shortcuts control). They run in the app's own process, in the background, so they use the
 // same connection to the bulb as the app.
 
-struct PresetEntity: AppEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Preset"
-    static let defaultQuery = PresetQuery()
-
-    var id: UUID
-    var name: String
-
-    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
-
-    init(_ preset: Preset) {
-        id = preset.id
-        name = preset.name
-    }
-}
-
-struct PresetQuery: EntityQuery {
-    @MainActor
-    func entities(for identifiers: [UUID]) async throws -> [PresetEntity] {
-        Shared.model.library.presets.filter { identifiers.contains($0.id) }.map(PresetEntity.init)
-    }
-
-    @MainActor
-    func suggestedEntities() async throws -> [PresetEntity] {
-        Shared.model.library.presets.map(PresetEntity.init)
-    }
-}
-
 struct WizIntentError: Error, CustomLocalizedStringResourceConvertible {
     let localizedStringResource: LocalizedStringResource
 

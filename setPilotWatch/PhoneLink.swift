@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 /// The watch end of the link: sends commands to setPilot on the iPhone, which talks to the bulb,
 /// and keeps the iPhone's presets, custom scene names and state (cached for when it's out of reach).
@@ -31,27 +32,31 @@ final class PhoneLink: NSObject {
         WCSession.default.activate()
     }
 
-    /// Sends a command; the reply updates `snapshot`. Errors show in `error`.
-    func send(_ command: WatchCommand) {
+    /// Sends a command; the reply updates `snapshot`. Errors show in `error`, unless `quiet`
+    /// (background refreshes).
+    func send(_ command: WatchCommand, quiet: Bool = false) {
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else {
-            error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+            if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
             return
         }
         guard let data = try? JSONEncoder().encode(command) else { return }
-        busy = true
-        error = nil
+        if !quiet {
+            busy = true
+            error = nil
+        }
         session.sendMessage([WatchKey.command: data], replyHandler: { reply in
             let snapshot = (reply[WatchKey.snapshot] as? Data).flatMap { try? JSONDecoder().decode(LightSnapshot.self, from: $0) }
             let message = reply[WatchKey.error] as? String
             Task { @MainActor in
-                self.busy = false
+                if !quiet { self.busy = false }
                 if let snapshot { self.apply(snapshot) }
-                if let message { self.error = message }
+                if let message, !quiet { self.error = message }
             }
         }, errorHandler: { error in
             let text = error.localizedDescription
             Task { @MainActor in
+                guard !quiet else { return }
                 self.busy = false
                 self.error = "Your iPhone didn't answer: \(text)"
             }
@@ -61,12 +66,43 @@ final class PhoneLink: NSObject {
     /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach.
     func refresh() {
         guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }
-        send(.state)
+        send(.state, quiet: true)
     }
 
     private func apply(_ s: LightSnapshot) {
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
+        // For the complications: reloaded only when something they show changes.
+        SharedStore.save(s, SharedStore.snapshotKey)
+        let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.bulbName ?? "")"
+        if key != widgetKey {
+            widgetKey = key
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    private var widgetKey: String?
+
+    /// While the app is on screen: ask for the state every few seconds, for changes made
+    /// elsewhere (the iPhone also sends changes as they happen while it's running).
+    func poll() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(4))
+            if !busy { refresh() }
+        }
+    }
+
+    /// Links from the complications.
+    func open(_ url: URL) {
+        guard url.scheme == "setpilot" else { return }
+        switch url.host() {
+        case "preset":
+            if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
+        case "power":
+            send(.power(!(snapshot?.isOn ?? false)))
+        default:
+            refresh()
+        }
     }
 
     private func applyContext(_ context: [String: Any]) {
@@ -74,6 +110,8 @@ final class PhoneLink: NSObject {
         if let d = context[WatchKey.presets] as? Data, let p = try? decoder.decode([Preset].self, from: d) {
             presets = p
             defaults.set(d, forKey: WatchKey.presets)
+            SharedStore.save(p, SharedStore.presetsKey)
+            WidgetCenter.shared.reloadAllTimelines()
         }
         if let d = context[WatchKey.customScenes] as? Data, let s = try? decoder.decode([CustomSceneSummary].self, from: d) {
             scenes = s

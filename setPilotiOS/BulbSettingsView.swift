@@ -28,6 +28,35 @@ struct BulbSettingsView: View {
                 Text("setPilot doesn't search your network on iPhone. Enter the bulb's IP address (the Mac app and your router show it) or its DNS name. A name keeps working if the bulb's address changes.")
             }
 
+            if model.knownBulbs.count > 1 || (model.knownBulbs.first.map { $0.address != saved } ?? false) {
+                Section {
+                    ForEach(model.namedBulbs) { bulb in
+                        Button {
+                            address = bulb.address
+                            connect()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(bulb.name ?? bulb.address).foregroundStyle(.primary)
+                                    if bulb.name != nil {
+                                        Text(bulb.address).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if bulb.address == saved { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                            }
+                        }
+                        .swipeActions {
+                            Button("Forget", role: .destructive) { model.forgetBulb(bulb) }
+                        }
+                    }
+                } header: {
+                    Text("Your Bulbs")
+                } footer: {
+                    Text("Bulbs you've used. Tap one to switch to it; the watch can switch too.")
+                }
+            }
+
             if !saved.isEmpty {
                 Section("Status") {
                     LabeledContent("Connection") {

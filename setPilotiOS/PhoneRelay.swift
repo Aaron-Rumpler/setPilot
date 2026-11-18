@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import WatchConnectivity
+import WidgetKit
 
 /// The iPhone end of the watch link. The watch can't talk to the bulb itself (watchOS only allows
 /// low-level networking while streaming audio), so it sends commands here; this runs them on the
@@ -17,10 +18,11 @@ final class PhoneRelay: NSObject {
     func start(model: Model) {
         guard self.model == nil else { return }
         self.model = model
+        observeState()
+        publishLibrary()
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
-        observeState()
     }
 
     // MARK: Commands
@@ -37,6 +39,10 @@ final class PhoneRelay: NSObject {
             return model.snapshot
         case .deletePreset(let id):
             model.library.presets.removeAll { $0.id == id }
+            return model.snapshot
+        case let .chooseBulb(address, mac):
+            model.choose(address, mac: mac)
+            _ = await model.waitUntilControllable(timeout: 4)
             return model.snapshot
         default:
             break
@@ -57,7 +63,11 @@ final class PhoneRelay: NSObject {
             model.adjustDimming(by: delta)
         case .playCustom(let id):
             if let scene = model.library.customScene(id) { model.playCustom(scene, switchOn: true) }
-        case .state, .savePreset, .deletePreset:
+        case .compose(let change):
+            model.send(change)
+        case .useScale(let id):
+            model.useScale(id)
+        case .state, .savePreset, .deletePreset, .chooseBulb:
             break
         }
         await model.waitUntilSettled()
@@ -85,8 +95,10 @@ final class PhoneRelay: NSObject {
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             pushScheduled = false
-            guard WCSession.isSupported(), let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
+            guard let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
             lastSnapshot = snapshot
+            publishState(snapshot)
+            guard WCSession.isSupported() else { return }
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
             if session.isReachable, let data = try? JSONEncoder().encode(snapshot) {
@@ -104,9 +116,44 @@ final class PhoneRelay: NSObject {
         Task {
             try? await Task.sleep(for: .milliseconds(500))
             contextScheduled = false
+            publishLibrary()
             updateContext()
             SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
         }
+    }
+
+    // MARK: Widgets and controls
+
+    private var widgetKey: String?
+
+    /// Keeps the state widgets show, reloading them when something they show changes (they have
+    /// a reload budget, so not on every slider step).
+    private func publishState(_ s: LightSnapshot) {
+        SharedStore.save(s, SharedStore.snapshotKey)
+        SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
+        let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
+        guard key != widgetKey else { return }
+        widgetKey = key
+        reloadWidgets()
+    }
+
+    /// The presets for widgets and controls, each with its setPilot ready to send.
+    private func publishLibrary() {
+        guard let model else { return }
+        SharedStore.save(model.library.presets, SharedStore.presetsKey)
+        var params: [String: Data] = [:]
+        for preset in model.library.presets {
+            if let p = model.pilotParams(for: preset), let d = try? JSONSerialization.data(withJSONObject: p) {
+                params[preset.id.uuidString] = d
+            }
+        }
+        SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
+        reloadWidgets()
+    }
+
+    private func reloadWidgets() {
+        WidgetCenter.shared.reloadAllTimelines()
+        ControlCenter.shared.reloadAllControls()
     }
 
     /// The application context holds what the watch should show even when the iPhone isn't

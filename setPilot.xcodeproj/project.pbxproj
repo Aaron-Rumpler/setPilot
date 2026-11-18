@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A1C0DE00000000000009C02 /* setPilotWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A006 /* setPilotWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5A1C0DE00000000000009C03 /* setPilotWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5A1C0DE00000000000009C01 /* setPilot.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A005 /* setPilot.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -17,6 +19,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A1C0DE0000000000000E003;
 			remoteInfo = "setPilot Watch";
+		};
+		5A1C0DE00000000000009A02 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1C0DE0000000000000E000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1C0DE0000000000000E004;
+			remoteInfo = "setPilot Widgets";
+		};
+		5A1C0DE00000000000009A03 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1C0DE0000000000000E000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1C0DE0000000000000E005;
+			remoteInfo = "setPilot Watch Widgets";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -32,6 +48,28 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C015 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5A1C0DE00000000000009C02 /* setPilotWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C024 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5A1C0DE00000000000009C03 /* setPilotWatchWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +78,8 @@
 		5A1C0DE0000000000000A003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5A1C0DE0000000000000A004 /* setPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = setPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A005 /* setPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = setPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1C0DE0000000000000A006 /* setPilotWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -68,6 +108,21 @@
 			path = setPilotWatch;
 			sourceTree = "<group>";
 		};
+		5A1C0DE0000000000000B006 /* WidgetShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WidgetShared;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B007 /* setPilotWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = setPilotWidgets;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B008 /* setPilotWatchWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = setPilotWatchWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +147,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C032 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C042 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -101,6 +170,9 @@
 				5A1C0DE0000000000000B001 /* setPilot */,
 				5A1C0DE0000000000000B004 /* setPilotiOS */,
 				5A1C0DE0000000000000B005 /* setPilotWatch */,
+				5A1C0DE0000000000000B007 /* setPilotWidgets */,
+				5A1C0DE0000000000000B008 /* setPilotWatchWidgets */,
+				5A1C0DE0000000000000B006 /* WidgetShared */,
 				5A1C0DE0000000000000B002 /* Core */,
 				5A1C0DE0000000000000B003 /* Common */,
 				5A1C0DE0000000000000A003 /* Info.plist */,
@@ -115,6 +187,8 @@
 				5A1C0DE0000000000000A001 /* setPilot.app */,
 				5A1C0DE0000000000000A004 /* setPilot.app */,
 				5A1C0DE0000000000000A005 /* setPilot.app */,
+				5A1C0DE0000000000000A006 /* setPilotWidgets.appex */,
+				5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -154,14 +228,17 @@
 				5A1C0DE0000000000000C012 /* Frameworks */,
 				5A1C0DE0000000000000C013 /* Resources */,
 				5A1C0DE0000000000000C014 /* Embed Watch Content */,
+				5A1C0DE0000000000000C015 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				5A1C0DE00000000000009B01 /* PBXTargetDependency */,
+				5A1C0DE00000000000009B02 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5A1C0DE0000000000000B004 /* setPilotiOS */,
+				5A1C0DE0000000000000B006 /* WidgetShared */,
 				5A1C0DE0000000000000B002 /* Core */,
 				5A1C0DE0000000000000B003 /* Common */,
 			);
@@ -179,10 +256,12 @@
 				5A1C0DE0000000000000C021 /* Sources */,
 				5A1C0DE0000000000000C022 /* Frameworks */,
 				5A1C0DE0000000000000C023 /* Resources */,
+				5A1C0DE0000000000000C024 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5A1C0DE00000000000009B03 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5A1C0DE0000000000000B005 /* setPilotWatch */,
@@ -194,6 +273,53 @@
 			productName = setPilot;
 			productReference = 5A1C0DE0000000000000A005 /* setPilot.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5A1C0DE0000000000000E004 /* setPilot Widgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F005 /* Build configuration list for PBXNativeTarget "setPilot Widgets" */;
+			buildPhases = (
+				5A1C0DE0000000000000C031 /* Sources */,
+				5A1C0DE0000000000000C032 /* Frameworks */,
+				5A1C0DE0000000000000C033 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B007 /* setPilotWidgets */,
+				5A1C0DE0000000000000B006 /* WidgetShared */,
+				5A1C0DE0000000000000B003 /* Common */,
+			);
+			name = "setPilot Widgets";
+			packageProductDependencies = (
+			);
+			productName = setPilotWidgets;
+			productReference = 5A1C0DE0000000000000A006 /* setPilotWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		5A1C0DE0000000000000E005 /* setPilot Watch Widgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F006 /* Build configuration list for PBXNativeTarget "setPilot Watch Widgets" */;
+			buildPhases = (
+				5A1C0DE0000000000000C041 /* Sources */,
+				5A1C0DE0000000000000C042 /* Frameworks */,
+				5A1C0DE0000000000000C043 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B008 /* setPilotWatchWidgets */,
+				5A1C0DE0000000000000B003 /* Common */,
+			);
+			name = "setPilot Watch Widgets";
+			packageProductDependencies = (
+			);
+			productName = setPilotWatchWidgets;
+			productReference = 5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -212,6 +338,12 @@
 						CreatedOnToolsVersion = 26.0;
 					};
 					5A1C0DE0000000000000E003 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					5A1C0DE0000000000000E004 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					5A1C0DE0000000000000E005 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
@@ -233,6 +365,8 @@
 				5A1C0DE0000000000000E001 /* setPilot */,
 				5A1C0DE0000000000000E002 /* setPilot iOS */,
 				5A1C0DE0000000000000E003 /* setPilot Watch */,
+				5A1C0DE0000000000000E004 /* setPilot Widgets */,
+				5A1C0DE0000000000000E005 /* setPilot Watch Widgets */,
 			);
 		};
 /* End PBXProject section */
@@ -253,6 +387,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1C0DE0000000000000C023 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C033 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C043 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -283,6 +431,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C041 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -290,6 +452,16 @@
 			isa = PBXTargetDependency;
 			target = 5A1C0DE0000000000000E003 /* setPilot Watch */;
 			targetProxy = 5A1C0DE00000000000009A01 /* PBXContainerItemProxy */;
+		};
+		5A1C0DE00000000000009B02 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1C0DE0000000000000E004 /* setPilot Widgets */;
+			targetProxy = 5A1C0DE00000000000009A02 /* PBXContainerItemProxy */;
+		};
+		5A1C0DE00000000000009B03 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1C0DE0000000000000E005 /* setPilot Watch Widgets */;
+			targetProxy = 5A1C0DE00000000000009A03 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -409,6 +581,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot;
 				PRODUCT_NAME = setPilot;
 				SDKROOT = iphoneos;
+				CODE_SIGN_ENTITLEMENTS = setPilotiOS.entitlements;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -437,6 +610,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot;
 				PRODUCT_NAME = setPilot;
 				SDKROOT = iphoneos;
+				CODE_SIGN_ENTITLEMENTS = setPilotiOS.entitlements;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -460,6 +634,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp;
+				CODE_SIGN_ENTITLEMENTS = setPilotWatch.entitlements;
 				PRODUCT_NAME = setPilot;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -487,7 +662,114 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp;
+				CODE_SIGN_ENTITLEMENTS = setPilotWatch.entitlements;
 				PRODUCT_NAME = setPilot;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		5A1C0DE00000000000005001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = setPilotWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.Widgets;
+				PRODUCT_NAME = setPilotWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000005002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = setPilotWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.Widgets;
+				PRODUCT_NAME = setPilotWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		5A1C0DE00000000000006001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = setPilotWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp.Widgets;
+				PRODUCT_NAME = setPilotWatchWidgets;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000006002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = setPilotWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp.Widgets;
+				PRODUCT_NAME = setPilotWatchWidgets;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -532,6 +814,24 @@
 			buildConfigurations = (
 				5A1C0DE00000000000004001 /* Debug */,
 				5A1C0DE00000000000004002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F005 /* Build configuration list for PBXNativeTarget "setPilot Widgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000005001 /* Debug */,
+				5A1C0DE00000000000005002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F006 /* Build configuration list for PBXNativeTarget "setPilot Watch Widgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000006001 /* Debug */,
+				5A1C0DE00000000000006002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

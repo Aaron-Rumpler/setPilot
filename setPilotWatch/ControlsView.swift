@@ -1,7 +1,14 @@
 import SwiftUI
 
-/// Everything the iPhone app can set: mode, channels or temperature, scene and speed, brightness.
-/// Sliders take the Digital Crown; changes go to the iPhone once you pause.
+/// A scene in the watch's picker: one of the bulb's or one of setPilot's.
+enum WatchScene: Hashable {
+    case builtin(Int)
+    case custom(UUID)
+}
+
+/// Everything the iPhone app can set: mode, channels, temperatures, scales, scenes and speed,
+/// brightness. Each value opens an editor (Digital Crown, − and +, or the keypad); changes go to
+/// the iPhone once you pause.
 struct ControlsView: View {
     let link: PhoneLink
     /// What's being edited; follows the bulb when nothing's waiting to be sent.
@@ -13,6 +20,7 @@ struct ControlsView: View {
         let s = link.snapshot
         List {
             if let s, s.canControl, let v = values {
+                if let mismatch = s.mismatch { MismatchText(text: mismatch) }
                 Section {
                     HStack {
                         Button { link.send(.dimDelta(-10)) } label: { Image(systemName: "sun.min") }
@@ -20,48 +28,17 @@ struct ControlsView: View {
                         Button { link.send(.dimDelta(10)) } label: { Image(systemName: "sun.max.fill") }
                             .accessibilityLabel("Brighter")
                     }
-                    WatchSlider(label: "Brightness", value: binding(\.dimming, .dimming),
-                                range: s.minDimming...100, step: 5, unit: "%")
+                    ValueRow(label: "Brightness", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
                 Section {
                     Picker("Mode", selection: Binding(get: { v.mode }, set: { mode in
                         update { $0.mode = mode }
                         queue(.colour, now: true)
                     })) {
-                        // Custom CCT only if the bulb has a scale (set up on the iPhone)
-                        ForEach(Mode.allCases.filter { $0 != .custom || s.cctScaleName != nil }) { Text($0.rawValue).tag($0) }
+                        // Custom CCT only if the bulb has a scale (set up on the iPhone or Mac)
+                        ForEach(Mode.allCases.filter { $0 != .custom || !(s.scales ?? []).isEmpty }) { Text($0.rawValue).tag($0) }
                     }
-                    switch v.mode {
-                    case .rgbcw:
-                        WatchSlider(label: "Red", value: binding(\.r, .colour), range: 0...255, step: 5, tint: .red)
-                        WatchSlider(label: "Green", value: binding(\.g, .colour), range: 0...255, step: 5, tint: .green)
-                        WatchSlider(label: "Blue", value: binding(\.b, .colour), range: 0...255, step: 5, tint: .blue)
-                        WatchSlider(label: "Cool white", value: binding(\.c, .colour), range: 0...255, step: 5,
-                                    tint: ColourTemperature.color(kelvin: 6500))
-                        WatchSlider(label: "Warm white", value: binding(\.w, .colour), range: 0...255, step: 5,
-                                    tint: ColourTemperature.color(kelvin: 2700))
-                    case .temp:
-                        WatchSlider(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax,
-                                    step: 100, tint: ColourTemperature.color(kelvin: v.temp), unit: " K")
-                    case .custom:
-                        if let name = s.cctScaleName, s.customMin < s.customMax {
-                            WatchSlider(label: name, value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
-                                        step: 50, tint: ColourTemperature.color(kelvin: v.customKelvin), unit: " K")
-                        } else {
-                            Text("Set up a CCT scale in setPilot on your iPhone.").foregroundStyle(.secondary)
-                        }
-                    case .scene:
-                        Picker("Scene", selection: Binding(get: { v.sceneId }, set: { id in
-                            update { $0.sceneId = id }
-                            queue(.colour, now: true)
-                        })) {
-                            ForEach(Scenes.all) { Text($0.name).tag($0.id) }
-                            if !Scenes.isKnown(v.sceneId) {
-                                Text(sceneName(v.sceneId, s)).tag(v.sceneId)
-                            }
-                        }
-                        WatchSlider(label: "Speed", value: binding(\.speed, .speed), range: 10...200, step: 10)
-                    }
+                    modeControls(s, v)
                 }
                 Section {
                     Button { link.send(.sync) } label: { Label("Read from Bulb", systemImage: "arrow.clockwise") }
@@ -78,11 +55,54 @@ struct ControlsView: View {
         .onDisappear { flush() }
     }
 
-    private func sceneName(_ id: Int, _ s: LightSnapshot) -> String {
-        if id == Scenes.inlineCustom, let c = s.customScene, let scene = link.scenes.first(where: { $0.id == c }) {
-            return scene.name
+    @ViewBuilder private func modeControls(_ s: LightSnapshot, _ v: LightValues) -> some View {
+        switch v.mode {
+        case .rgbcw:
+            ValueRow(label: "Red", value: binding(\.r, .colour), range: 0...255, tint: .red)
+            ValueRow(label: "Green", value: binding(\.g, .colour), range: 0...255, tint: .green)
+            ValueRow(label: "Blue", value: binding(\.b, .colour), range: 0...255, tint: .blue)
+            ValueRow(label: "Cool white", value: binding(\.c, .colour), range: 0...255,
+                     tint: ColourTemperature.color(kelvin: 6500))
+            ValueRow(label: "Warm white", value: binding(\.w, .colour), range: 0...255,
+                     tint: ColourTemperature.color(kelvin: 2700))
+        case .temp:
+            ValueRow(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax, step: 10, unit: " K",
+                     tint: ColourTemperature.color(kelvin: v.temp))
+        case .custom:
+            if let scales = s.scales, !scales.isEmpty {
+                Picker("Scale", selection: Binding(get: { s.activeScale ?? scales[0].id }, set: { link.send(.useScale($0)) })) {
+                    ForEach(scales) { Text($0.name).tag($0.id) }
+                }
+                if s.customMin < s.customMax {
+                    ValueRow(label: "Kelvin", value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
+                             step: 10, unit: " K", tint: ColourTemperature.color(kelvin: v.customKelvin))
+                }
+            } else {
+                Text("Set up a CCT scale in setPilot on your iPhone or Mac.").foregroundStyle(.secondary)
+            }
+        case .scene:
+            Picker("Scene", selection: Binding(get: { currentScene(s, v) }, set: { choice in
+                switch choice {
+                case .builtin(let id):
+                    update { $0.sceneId = id }
+                    queue(.colour, now: true)
+                case .custom(let id):
+                    link.send(.playCustom(id))
+                }
+            })) {
+                ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
+                ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
+                if !Scenes.isKnown(v.sceneId) && currentScene(s, v) == .builtin(v.sceneId) {
+                    Text(Scenes.name(v.sceneId)).tag(WatchScene.builtin(v.sceneId))
+                }
+            }
+            ValueRow(label: "Speed", value: binding(\.speed, .speed), range: 10...200)
         }
-        return Scenes.name(id)
+    }
+
+    private func currentScene(_ s: LightSnapshot, _ v: LightValues) -> WatchScene {
+        if v.sceneId == Scenes.inlineCustom, let c = s.customScene, link.scenes.contains(where: { $0.id == c }) { return .custom(c) }
+        return .builtin(v.sceneId)
     }
 
     /// Takes the bulb's values, unless an edit is waiting to go.
@@ -126,24 +146,146 @@ struct ControlsView: View {
     }
 }
 
-/// A Crown-driven slider with its label and value.
-struct WatchSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    var step: Double = 1
-    var tint: Color? = nil
-    var unit = ""
+/// Prepares a change (any of colour, brightness and power, with its own fade time) and sends it
+/// in one go.
+struct WatchComposeView: View {
+    let link: PhoneLink
+    @Environment(\.dismiss) private var dismiss
+
+    private enum Kind: String, CaseIterable, Identifiable {
+        case rgbcw = "RGBCW", temp = "Temperature", custom = "Custom CCT", scene = "Scene"
+        var id: Self { self }
+    }
+
+    private enum Power: String, CaseIterable, Identifiable {
+        case leave = "Leave", on = "On", off = "Off"
+        var id: Self { self }
+    }
+
+    @State private var includeColour = true
+    @State private var kind = Kind.temp
+    @State private var r = 255.0
+    @State private var g = 0.0
+    @State private var b = 0.0
+    @State private var c = 0.0
+    @State private var w = 0.0
+    @State private var temp = 2700.0
+    @State private var customKelvin = 2700.0
+    @State private var scene = WatchScene.builtin(1)
+    @State private var includeDimming = true
+    @State private var dimming = 100.0
+    @State private var power = Power.leave
+    @State private var useFade = true
+    @State private var fade = 10_000.0
+    @State private var loaded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label).font(.footnote)
-                Spacer()
-                Text(verbatim: "\(Int(value))\(unit)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+        let s = link.snapshot
+        List {
+            Section {
+                Toggle("Colour", isOn: $includeColour)
+                if includeColour, let s {
+                    Picker("Kind", selection: $kind) {
+                        ForEach(Kind.allCases.filter { $0 != .custom || s.activeScale != nil }) { Text($0.rawValue).tag($0) }
+                    }
+                    switch kind {
+                    case .rgbcw:
+                        ValueRow(label: "Red", value: $r, range: 0...255, tint: .red)
+                        ValueRow(label: "Green", value: $g, range: 0...255, tint: .green)
+                        ValueRow(label: "Blue", value: $b, range: 0...255, tint: .blue)
+                        ValueRow(label: "Cool white", value: $c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
+                        ValueRow(label: "Warm white", value: $w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
+                    case .temp:
+                        ValueRow(label: "Kelvin", value: $temp, range: s.tempMin...s.tempMax, step: 10, unit: " K",
+                                 tint: ColourTemperature.color(kelvin: temp))
+                    case .custom:
+                        if s.customMin < s.customMax {
+                            ValueRow(label: s.scales?.first { $0.id == s.activeScale }?.name ?? "Kelvin", value: $customKelvin,
+                                     range: s.customMin...s.customMax, step: 10, unit: " K",
+                                     tint: ColourTemperature.color(kelvin: customKelvin))
+                        }
+                    case .scene:
+                        Picker("Scene", selection: $scene) {
+                            ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
+                            ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
+                        }
+                    }
+                }
             }
-            Slider(value: $value, in: range, step: step) { Text(label) }
-                .tint(tint)
+            Section {
+                Toggle("Brightness", isOn: $includeDimming)
+                if includeDimming {
+                    ValueRow(label: "Dimming", value: $dimming, range: (s?.minDimming ?? 10)...100, unit: "%")
+                }
+            }
+            Section {
+                Picker("Power", selection: $power) {
+                    ForEach(Power.allCases) { Text($0.rawValue).tag($0) }
+                }
+            }
+            Section {
+                Toggle("Fade", isOn: $useFade)
+                if useFade {
+                    ValueRow(label: "Fade time", value: $fade, range: 0...60_000, step: 100, unit: " ms")
+                }
+            } footer: {
+                if power == .off { Text("Turning off uses the bulb's own fade-out.") }
+            }
+            Section {
+                Button {
+                    link.send(.compose(change(s)))
+                    dismiss()
+                } label: {
+                    Label("Send", systemImage: "paperplane.fill")
+                }
+                .disabled(s?.canControl != true)
+            }
+        }
+        .navigationTitle("Compose")
+        .onAppear { if !loaded { load() } }
+    }
+
+    private func change(_ s: LightSnapshot?) -> LightChange {
+        var ch = LightChange()
+        if includeColour {
+            switch kind {
+            case .rgbcw: ch.colour = .rgbcw(r: Int(r), g: Int(g), b: Int(b), c: Int(c), w: Int(w))
+            case .temp: ch.colour = .temp(Int(temp))
+            case .custom: ch.colour = s?.activeScale.map { .customCCT(scale: $0, kelvin: Int(customKelvin)) }
+            case .scene:
+                switch scene {
+                case .builtin(let id): ch.colour = .scene(id: id, speed: nil)
+                case .custom(let id): ch.colour = .custom(id, speed: nil)
+                }
+            }
+        }
+        if includeDimming { ch.dimming = Int(dimming) }
+        ch.power = switch power {
+        case .leave: nil
+        case .on: true
+        case .off: false
+        }
+        if useFade { ch.fade = Int(fade) }
+        return ch
+    }
+
+    private func load() {
+        loaded = true
+        guard let s = link.snapshot else { return }
+        (r, g, b, c, w) = (s.r, s.g, s.b, s.c, s.w)
+        temp = s.temp
+        customKelvin = min(max(s.customKelvin, s.customMin), s.customMax)
+        dimming = s.dimming
+        if let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
+            scene = .custom(id)
+        } else if Scenes.isKnown(s.sceneId) {
+            scene = .builtin(s.sceneId)
+        }
+        kind = switch s.mode {
+        case .rgbcw: .rgbcw
+        case .temp: .temp
+        case .custom: s.activeScale == nil ? .temp : .custom
+        case .scene: .scene
         }
     }
 }

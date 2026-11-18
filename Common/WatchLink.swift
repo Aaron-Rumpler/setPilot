@@ -29,6 +29,16 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var customScene: UUID?
     var status = ""
     var pending = false
+    /// What the bulb didn't apply from the last change ("Bulb didn't apply: …"), if anything.
+    var mismatch: String?
+    /// The bulbs the iPhone knows, and the address of the one in use.
+    var bulbs: [KnownBulb]?
+    var address: String?
+    /// The bulb's custom CCT scales and the one in use.
+    var scales: [ScaleSummary]?
+    var activeScale: UUID?
+    /// The fade time setting on the iPhone (ms), if set.
+    var fade: Int?
 
     var canControl: Bool { link == .connected && isOn != nil }
 }
@@ -58,6 +68,9 @@ enum WatchCommand: Codable, Sendable {
     case dimDelta(Int)
     case playCustom(UUID)
     case savePreset(name: String)
+    case compose(LightChange)
+    case useScale(UUID)
+    case chooseBulb(address: String, mac: String?)
     case deletePreset(UUID)
 }
 
@@ -77,3 +90,19 @@ struct CustomSceneSummary: Codable, Hashable, Identifiable, Sendable {
     var swatch: RGB?
 }
 
+
+/// A bulb the app has been used with.
+struct KnownBulb: Codable, Hashable, Identifiable, Sendable {
+    var address: String
+    var mac: String?
+    var name: String?
+    var id: String { mac ?? address }
+}
+
+/// A custom CCT scale's name and range, for the watch.
+struct ScaleSummary: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID
+    var name: String
+    var min: Double
+    var max: Double
+}

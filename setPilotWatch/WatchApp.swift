@@ -10,6 +10,7 @@ struct SetPilotWatchApp: App {
     var body: some Scene {
         WindowGroup {
             PresetsView(link: link)
+                .onOpenURL { link.open($0) } // from the complications
         }
         .onChange(of: phase) { _, new in
             if new == .active { link.refresh() }
@@ -25,6 +26,9 @@ struct PresetsView: View {
         NavigationStack {
             List {
                 PowerRow(link: link)
+                if let mismatch = link.snapshot?.mismatch {
+                    MismatchText(text: mismatch)
+                }
                 if let error = link.error {
                     Text(error)
                         .font(.footnote)
@@ -33,7 +37,7 @@ struct PresetsView: View {
                 }
                 Section("Presets") {
                     if link.presets.isEmpty {
-                        Text("Save presets in setPilot on your iPhone, or below.")
+                        Text("Save presets here or in setPilot on your iPhone.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -49,11 +53,6 @@ struct PresetsView: View {
                                 }
                             }
                         }
-                        .swipeActions {
-                            Button(role: .destructive) { link.send(.deletePreset(preset.id)) } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
                     }
                 }
                 Section {
@@ -62,6 +61,12 @@ struct PresetsView: View {
                     } label: {
                         Label("Controls", systemImage: "slider.horizontal.3")
                     }
+                    NavigationLink {
+                        WatchComposeView(link: link)
+                    } label: {
+                        Label("Compose", systemImage: "paperplane")
+                    }
+                    .disabled(link.snapshot?.canControl != true)
                     NavigationLink {
                         CustomScenesView(link: link)
                     } label: {
@@ -75,14 +80,38 @@ struct PresetsView: View {
                     }
                     .disabled(link.snapshot?.canControl != true)
                 }
+                Section {
+                    NavigationLink {
+                        BulbsView(link: link)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Label("Bulb", systemImage: "lightbulb.2")
+                            if let name = link.snapshot?.bulbName {
+                                Text(name).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("setPilot")
+            .task { await link.poll() } // live updates while the app is open
         }
     }
 
     private func swatch(_ colour: LightColour) -> RGB? {
         if case let .custom(id, _) = colour { return link.scenes.first { $0.id == id }?.swatch ?? nil }
         return colour.swatch
+    }
+}
+
+struct MismatchText: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+            .listRowBackground(Color.clear)
     }
 }
 
@@ -142,10 +171,46 @@ struct CustomScenesView: View {
                 HStack(spacing: 10) {
                     Swatch(rgb: scene.swatch, isScene: true)
                     Text(scene.name)
+                    Spacer()
+                    if link.snapshot?.customScene == scene.id {
+                        Image(systemName: "play.fill").foregroundStyle(.secondary).accessibilityLabel("Playing")
+                    }
                 }
             }
             .disabled(link.snapshot?.canControl != true)
         }
         .navigationTitle("Custom Scenes")
+    }
+}
+
+/// The bulbs the iPhone has been used with; choosing one switches the iPhone (and watch) to it.
+struct BulbsView: View {
+    let link: PhoneLink
+
+    var body: some View {
+        let bulbs = link.snapshot?.bulbs ?? []
+        List {
+            ForEach(bulbs) { bulb in
+                Button { link.send(.chooseBulb(address: bulb.address, mac: bulb.mac)) } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(bulb.name ?? bulb.address).lineLimit(1)
+                            if bulb.name != nil {
+                                Text(bulb.address).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        Spacer()
+                        if bulb.address == link.snapshot?.address {
+                            Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("In use")
+                        }
+                    }
+                }
+            }
+            Text(bulbs.isEmpty ? "Add a bulb in setPilot on your iPhone." : "Add bulbs in setPilot on your iPhone.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .listRowBackground(Color.clear)
+        }
+        .navigationTitle("Bulb")
     }
 }

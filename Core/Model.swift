@@ -167,6 +167,36 @@ final class Model {
     /// MAC of the chosen bulb: its identity, so a different bulb at the same address is never used.
     static let macKey = "bulbMAC"
     static let namesKey = "bulbNames"
+    static let knownBulbsKey = "knownBulbs"
+
+    /// Bulbs used with this app, most recent first (for choosing on iPhone and the watch).
+    var knownBulbs: [KnownBulb] = {
+        guard let d = UserDefaults.standard.data(forKey: Model.knownBulbsKey) else { return [] }
+        return (try? JSONDecoder().decode([KnownBulb].self, from: d)) ?? []
+    }() {
+        didSet {
+            if let d = try? JSONEncoder().encode(knownBulbs) { UserDefaults.standard.set(d, forKey: Self.knownBulbsKey) }
+        }
+    }
+
+    /// Records a bulb's address (and MAC, once known), moving it to the top of `knownBulbs`.
+    func rememberBulb(address: String, mac: String?) {
+        let m = mac?.lowercased()
+        var list = knownBulbs
+        let i = list.firstIndex { (m != nil && $0.mac == m) || $0.address == address }
+        var entry = i.map { list.remove(at: $0) } ?? KnownBulb(address: address)
+        entry.address = address
+        if let m { entry.mac = m }
+        // Another entry with the same address is a different bulb that had it before.
+        list.removeAll { $0.address == address && $0.mac != entry.mac }
+        list.insert(entry, at: 0)
+        knownBulbs = Array(list.prefix(12))
+    }
+
+    func forgetBulb(_ bulb: KnownBulb) { knownBulbs.removeAll { $0.id == bulb.id } }
+
+    /// Known bulbs with their names filled in.
+    var namedBulbs: [KnownBulb] { knownBulbs.map { var b = $0; b.name = name(for: b.mac); return b } }
 
     /// Names the user has given bulbs, keyed by lower-case MAC.
     var names: [String: String] = UserDefaults.standard.dictionary(forKey: Model.namesKey) as? [String: String] ?? [:] {
@@ -206,6 +236,7 @@ final class Model {
            mac == nil || mac?.lowercased() == chosenMAC { return }
         UserDefaults.standard.set(a, forKey: Self.addressKey)
         savedMAC = mac?.lowercased()
+        rememberBulb(address: a, mac: mac)
         started = true
         connect(a)
     }
@@ -287,6 +318,7 @@ final class Model {
         let m = replyMAC.lowercased()
         guard let saved = savedMAC else {
             savedMAC = m
+            if let a = UserDefaults.standard.string(forKey: Self.addressKey) { rememberBulb(address: a, mac: m) }
             return true
         }
         guard saved == m else {
@@ -316,6 +348,7 @@ final class Model {
             guard UserDefaults.standard.string(forKey: Self.addressKey) == address else { return } // user chose another
             if let bulb = found.first(where: { $0.mac.lowercased() == saved }), bulb.ip != address {
                 UserDefaults.standard.set(bulb.ip, forKey: Self.addressKey)
+                rememberBulb(address: bulb.ip, mac: saved)
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
@@ -630,6 +663,26 @@ final class Model {
         }
     }
 
+    /// A preset as a ready-made setPilot (for widgets and controls, which send it themselves if
+    /// they can't use the app). Speed is left out; dimming and the fade setting are in.
+    func pilotParams(for preset: Preset) -> [String: Any]? {
+        var p: [String: Any] = ["dimming": min(max(preset.dimming, 1), 100)]
+        switch preset.colour {
+        case let .rgbcw(r, g, b, c, w): p.merge(["r": r, "g": g, "b": b, "c": c, "w": w]) { $1 }
+        case let .temp(k): p["temp"] = k
+        case let .scene(id, _): p["sceneId"] = id
+        case let .custom(id, _):
+            guard let scene = library.customScene(id) else { return nil }
+            p["sceneId"] = Scenes.inlineCustom
+            p["elm"] = scene.elm
+        case let .customCCT(id, k):
+            guard let ch = library.scale(id)?.scale.channels(at: k) else { return nil }
+            p.merge(["r": ch.r, "g": ch.g, "b": ch.b, "c": ch.c, "w": ch.w]) { $1 }
+        }
+        if let fade = Self.fade { p["trans"] = fade }
+        return p
+    }
+
     /// Saves the current light as a new preset.
     @discardableResult
     func savePreset(named name: String) -> Preset? {
@@ -729,6 +782,14 @@ final class Model {
         }
         s.status = mismatch ?? status
         s.pending = pending
+        s.mismatch = mismatch
+        s.bulbs = namedBulbs
+        s.address = UserDefaults.standard.string(forKey: Self.addressKey)
+        s.scales = library.scales(for: chosenMAC).compactMap { scale in
+            scale.range.map { ScaleSummary(id: scale.id, name: scale.name, min: Double($0.lowerBound), max: Double($0.upperBound)) }
+        }
+        s.activeScale = activeScale?.id
+        s.fade = Self.fade
         return s
     }
 
