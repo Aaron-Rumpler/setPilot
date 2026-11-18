@@ -58,7 +58,11 @@ final class PhoneLink: NSObject {
         })
     }
 
-    func refresh() { send(.state) }
+    /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach.
+    func refresh() {
+        guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }
+        send(.state)
+    }
 
     private func apply(_ s: LightSnapshot) {
         snapshot = s

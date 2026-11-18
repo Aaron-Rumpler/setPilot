@@ -110,7 +110,8 @@ struct RootView: View {
                 MobileSlider(label: "Warm white", tint: ColourTemperature.color(kelvin: 2700), range: 0...255,
                              value: model.binding(\.w))
             case .temp:
-                MobileSlider(label: "Kelvin", range: model.tempRange, step: 50, mired: true, value: model.binding(\.temp))
+                MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
+                             step: 50, mired: true, value: model.binding(\.temp))
             case .scene:
                 Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }
                     .pickerStyle(.navigationLink)

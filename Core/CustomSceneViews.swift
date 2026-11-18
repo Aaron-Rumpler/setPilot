@@ -140,7 +140,10 @@ struct IntSliderRow: View {
 
     var body: some View {
         HStack {
-            Text(label).frame(width: 84, alignment: .leading)
+            Text(label)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: 100, alignment: .leading)
             Slider(value: Binding(
                 get: { Double(value) },
                 set: { value = Int(($0 / Double(step)).rounded()) * step }
@@ -162,7 +165,7 @@ struct MillisecondsRow: View {
 
     var body: some View {
         HStack {
-            Text(label).frame(width: 84, alignment: .leading)
+            Text(label).frame(width: 100, alignment: .leading)
             TextField(label, value: Binding(get: { value }, set: { value = max(0, $0) }), format: .number.grouping(.never))
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)

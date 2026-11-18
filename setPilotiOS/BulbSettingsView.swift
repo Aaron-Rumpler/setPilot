@@ -47,10 +47,13 @@ struct BulbSettingsView: View {
 
                 Section("Device") {
                     if let mac = model.chosenMAC {
-                        TextField("Name", text: $name)
-                            .submitLabel(.done)
-                            .onSubmit { model.rename(mac: mac, to: name) }
-                            .onChange(of: name) { _, new in model.rename(mac: mac, to: new) }
+                        LabeledContent("Name") {
+                            TextField("Name", text: $name, prompt: Text("None"))
+                                .multilineTextAlignment(.trailing)
+                                .submitLabel(.done)
+                                .onSubmit { model.rename(mac: mac, to: name) }
+                                .onChange(of: name) { _, new in model.rename(mac: mac, to: new) }
+                        }
                     }
                     LabeledContent("MAC address", value: model.mac ?? "—")
                     LabeledContent("Module", value: model.module ?? "—")
