@@ -110,7 +110,7 @@ struct PowerRow: View {
         switch s.link {
         case .none: return "No bulb chosen on iPhone"
         case .connecting: return "Connecting…"
-        case .unreachable: return "Bulb not answering"
+        case .unreachable: return "Bulb not answering. Open setPilot on your iPhone to check."
         case .connected: return s.isOn == true ? "On · \(Int(s.dimming))%" : "Off"
         }
     }

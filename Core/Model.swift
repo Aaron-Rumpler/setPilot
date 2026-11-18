@@ -119,8 +119,16 @@ final class Model {
                 if link == .connecting || link == .connected {
                     link = .unreachable
                     live = false
-                    status = "The bulb isn't answering"
-                    relocate()
+                    if bulb.localNetworkDenied {
+                        #if os(iOS)
+                        status = "setPilot needs Local Network access: turn it on in Settings › Apps › setPilot, then try again"
+                        #else
+                        status = "setPilot needs Local Network access: turn it on in System Settings › Privacy & Security › Local Network"
+                        #endif
+                    } else {
+                        status = "The bulb isn't answering"
+                        relocate()
+                    }
                 }
                 pending = false
                 verifyingSeq = nil

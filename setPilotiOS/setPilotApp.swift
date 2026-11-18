@@ -16,6 +16,8 @@ struct SetPilotMobileApp: App {
         PhoneRelay.shared.start(model: Shared.model)
         Shared.model.library.onChange = { PhoneRelay.shared.libraryChanged() }
         Shared.model.startIfSaved()
+        // Siri learns the preset names from this (also refreshed whenever the presets change).
+        SetPilotShortcuts.updateAppShortcutParameters()
     }
 
     var body: some Scene {

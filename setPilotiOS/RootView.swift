@@ -58,6 +58,11 @@ struct RootView: View {
                         } else if model.link == .unreachable, !model.status.isEmpty {
                             Text(model.status).font(.caption).foregroundStyle(.secondary)
                         }
+                        if model.link == .unreachable {
+                            Button("Try Again") { model.resume() }
+                                .font(.caption)
+                                .buttonStyle(.borderless)
+                        }
                     }
                     Spacer()
                     ProgressView().opacity(model.pending ? 1 : 0)

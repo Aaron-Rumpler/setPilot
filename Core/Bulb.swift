@@ -11,6 +11,14 @@ final class Bulb {
     /// The failed request's method (nil for the connection itself) and a message to show.
     var onError: ((String?, String) -> Void)?
 
+    /// The system refused the connection because Local Network access was denied.
+    var localNetworkDenied: Bool {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            return conn?.currentPath?.unsatisfiedReason == .localNetworkDenied
+        }
+        return false
+    }
+
     func connect(to host: String) {
         conn?.cancel()
         conn = nil
