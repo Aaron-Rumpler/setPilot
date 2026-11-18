@@ -28,6 +28,10 @@ struct MenuBarPanel: View {
             }
 
             if model.canControl {
+                if !model.library.presets.isEmpty {
+                    PresetGrid(model: model, columns: 4)
+                    Divider()
+                }
                 LightControls(model: model, compact: true)
             } else {
                 Text(ip.isEmpty ? "Choose a bulb above."

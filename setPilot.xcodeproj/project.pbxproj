@@ -6,10 +6,40 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A1C0DE00000000000009C01 /* setPilot.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A005 /* setPilot.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5A1C0DE00000000000009A01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1C0DE0000000000000E000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1C0DE0000000000000E003;
+			remoteInfo = "setPilot Watch";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5A1C0DE0000000000000C014 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				5A1C0DE00000000000009C01 /* setPilot.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		5A1C0DE0000000000000A001 /* setPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = setPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A002 /* setPilot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = setPilot.entitlements; sourceTree = "<group>"; };
 		5A1C0DE0000000000000A003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		5A1C0DE0000000000000A004 /* setPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = setPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1C0DE0000000000000A005 /* setPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = setPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -18,10 +48,44 @@
 			path = setPilot;
 			sourceTree = "<group>";
 		};
+		5A1C0DE0000000000000B002 /* Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Core;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B003 /* Common */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Common;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B004 /* setPilotiOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = setPilotiOS;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B005 /* setPilotWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = setPilotWatch;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		5A1C0DE0000000000000C002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C022 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -35,6 +99,10 @@
 			isa = PBXGroup;
 			children = (
 				5A1C0DE0000000000000B001 /* setPilot */,
+				5A1C0DE0000000000000B004 /* setPilotiOS */,
+				5A1C0DE0000000000000B005 /* setPilotWatch */,
+				5A1C0DE0000000000000B002 /* Core */,
+				5A1C0DE0000000000000B003 /* Common */,
 				5A1C0DE0000000000000A003 /* Info.plist */,
 				5A1C0DE0000000000000A002 /* setPilot.entitlements */,
 				5A1C0DE0000000000000D002 /* Products */,
@@ -45,6 +113,8 @@
 			isa = PBXGroup;
 			children = (
 				5A1C0DE0000000000000A001 /* setPilot.app */,
+				5A1C0DE0000000000000A004 /* setPilot.app */,
+				5A1C0DE0000000000000A005 /* setPilot.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -66,12 +136,63 @@
 			);
 			fileSystemSynchronizedGroups = (
 				5A1C0DE0000000000000B001 /* setPilot */,
+				5A1C0DE0000000000000B002 /* Core */,
+				5A1C0DE0000000000000B003 /* Common */,
 			);
 			name = setPilot;
 			packageProductDependencies = (
 			);
 			productName = setPilot;
 			productReference = 5A1C0DE0000000000000A001 /* setPilot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5A1C0DE0000000000000E002 /* setPilot iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F003 /* Build configuration list for PBXNativeTarget "setPilot iOS" */;
+			buildPhases = (
+				5A1C0DE0000000000000C011 /* Sources */,
+				5A1C0DE0000000000000C012 /* Frameworks */,
+				5A1C0DE0000000000000C013 /* Resources */,
+				5A1C0DE0000000000000C014 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5A1C0DE00000000000009B01 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B004 /* setPilotiOS */,
+				5A1C0DE0000000000000B002 /* Core */,
+				5A1C0DE0000000000000B003 /* Common */,
+			);
+			name = "setPilot iOS";
+			packageProductDependencies = (
+			);
+			productName = setPilot;
+			productReference = 5A1C0DE0000000000000A004 /* setPilot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5A1C0DE0000000000000E003 /* setPilot Watch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F004 /* Build configuration list for PBXNativeTarget "setPilot Watch" */;
+			buildPhases = (
+				5A1C0DE0000000000000C021 /* Sources */,
+				5A1C0DE0000000000000C022 /* Frameworks */,
+				5A1C0DE0000000000000C023 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B005 /* setPilotWatch */,
+				5A1C0DE0000000000000B003 /* Common */,
+			);
+			name = "setPilot Watch";
+			packageProductDependencies = (
+			);
+			productName = setPilot;
+			productReference = 5A1C0DE0000000000000A005 /* setPilot.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -86,6 +207,12 @@
 				TargetAttributes = {
 					5A1C0DE0000000000000E001 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					5A1C0DE0000000000000E002 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					5A1C0DE0000000000000E003 = {
+						CreatedOnToolsVersion = 26.0;
 					};
 				};
 			};
@@ -104,12 +231,28 @@
 			projectRoot = "";
 			targets = (
 				5A1C0DE0000000000000E001 /* setPilot */,
+				5A1C0DE0000000000000E002 /* setPilot iOS */,
+				5A1C0DE0000000000000E003 /* setPilot Watch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		5A1C0DE0000000000000C003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C023 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -126,7 +269,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5A1C0DE00000000000009B01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1C0DE0000000000000E003 /* setPilot Watch */;
+			targetProxy = 5A1C0DE00000000000009A01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		5A1C0DE00000000000001001 /* Debug */ = {
@@ -222,6 +387,116 @@
 			};
 			name = Release;
 		};
+		5A1C0DE00000000000003001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot;
+				PRODUCT_NAME = setPilot;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000003002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot;
+				PRODUCT_NAME = setPilot;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		5A1C0DE00000000000004001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = nz.aaronrumpler.setPilot;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp;
+				PRODUCT_NAME = setPilot;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000004002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = nz.aaronrumpler.setPilot;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.watchkitapp;
+				PRODUCT_NAME = setPilot;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -239,6 +514,24 @@
 			buildConfigurations = (
 				5A1C0DE00000000000002001 /* Debug */,
 				5A1C0DE00000000000002002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F003 /* Build configuration list for PBXNativeTarget "setPilot iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000003001 /* Debug */,
+				5A1C0DE00000000000003002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F004 /* Build configuration list for PBXNativeTarget "setPilot Watch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000004001 /* Debug */,
+				5A1C0DE00000000000004002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

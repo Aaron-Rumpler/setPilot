@@ -24,17 +24,17 @@ enum JSONHighlighter {
                 var k = j
                 while k < chars.count, chars[k] == " " { k += 1 }
                 let isKey = k < chars.count && chars[k] == ":"
-                append(String(chars[i..<j]), isKey ? Color(nsColor: .systemBlue) : Color(nsColor: .systemRed))
+                append(String(chars[i..<j]), isKey ? Color.blue : Color.red)
                 i = j
             } else if c == "-" || c.isNumber {
                 var j = i + 1
                 while j < chars.count, chars[j].isNumber || "+-.eE".contains(chars[j]) { j += 1 }
-                append(String(chars[i..<j]), Color(nsColor: .systemPurple))
+                append(String(chars[i..<j]), Color.purple)
                 i = j
             } else if c.isLetter {
                 var j = i + 1
                 while j < chars.count, chars[j].isLetter { j += 1 }
-                append(String(chars[i..<j]), Color(nsColor: .systemPink))
+                append(String(chars[i..<j]), Color.pink)
                 i = j
             } else {
                 var j = i + 1

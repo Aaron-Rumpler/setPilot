@@ -1,4 +1,4 @@
-"""Generates setPilot/AppIcon.icon (an Icon Composer package): the "Channels" icon.
+"""Generates Common/AppIcon.icon (an Icon Composer package): the "Channels" icon.
 
 Five slider tracks with glass knobs, one per bulb channel: red, green, blue, cool white and warm
 white, in the same colours as the app's sliders. Red, green and blue are the macOS 26 system
@@ -62,7 +62,7 @@ def planck_srgb(t):
 
 
 
-ICON = Path("setPilot/AppIcon.icon")
+ICON = Path("Common/AppIcon.icon")
 HDR = '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\n'
 
 # macOS 26 system colours (NSColor.systemRed/Green/Blue, light appearance), as the app's sliders
@@ -145,7 +145,7 @@ def manifest():
                          "fill-specializations": [TINTED_WHITE]}],
              "shadow": {"kind": "none", "opacity": 0.5}},
         ],
-        "supported-platforms": {"squares": "shared"},
+        "supported-platforms": {"circles": ["watchOS"], "squares": "shared"},
     }
 
 

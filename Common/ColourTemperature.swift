@@ -1,4 +1,11 @@
-import AppKit
+import Foundation
+
+/// An sRGB colour, each component 0–1 (gamma-encoded).
+struct RGB: Hashable, Sendable, Codable {
+    var r: Double
+    var g: Double
+    var b: Double
+}
 
 /// Display colour of a black-body (Planckian) light, for colour-temperature scales and the
 /// cool/warm white channels.
@@ -24,7 +31,7 @@ enum ColourTemperature {
     /// - Adaptation: von Kries in CAT02 cone space (as in CIECAM02), mapping the adapting white to
     ///   the display's D65 white.
     /// - Output: linear sRGB (IEC 61966-2-1), negatives clipped, normalised, sRGB transfer curve.
-    static func colour(kelvin: Double) -> NSColor {
+    static func rgb(kelvin: Double) -> RGB {
         let source = cat02(xyz(kelvin))
         let from = cat02(xyz(adaptingWhite))
         let to = cat02(d65)
@@ -35,11 +42,11 @@ enum ColourTemperature {
         let g = max(-0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z, 0)
         let b = max(0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z, 0)
         let peak = max(r, g, b)
-        func encode(_ c: Double) -> CGFloat {
+        func encode(_ c: Double) -> Double {
             let v = c / peak
-            return CGFloat(v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055)
+            return v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055
         }
-        return NSColor(srgbRed: encode(r), green: encode(g), blue: encode(b), alpha: 1)
+        return RGB(r: encode(r), g: encode(g), b: encode(b))
     }
 
     private typealias Triple = (Double, Double, Double)

@@ -1,45 +1,5 @@
 import Foundation
 
-/// What a setPilot can change, as the controls see it.
-enum PilotField { case colour, dimming, speed }
-
-enum Mode: String, CaseIterable, Identifiable {
-    case rgbcw = "RGBCW", temp = "Temperature", scene = "Scene"
-    var id: Self { self }
-}
-
-struct WizScene: Identifiable {
-    let id: Int
-    let name: String
-}
-
-enum Scenes {
-    static let all: [WizScene] = {
-        var s: [Int: String] = [
-            1: "Ocean", 2: "Romance", 3: "Sunset", 4: "Party", 5: "Fireplace", 6: "Cozy",
-            7: "Forest", 8: "Pastel colors", 9: "Wake-up", 10: "Bedtime", 11: "Warm white",
-            12: "Daylight", 13: "Cool white", 14: "Night light", 15: "Focus", 16: "Relax",
-            17: "True colors", 18: "TV time", 19: "Plantgrowth", 20: "Spring", 21: "Summer",
-            22: "Fall", 23: "Deep dive", 24: "Jungle", 25: "Mojito", 26: "Club",
-            27: "Christmas", 28: "Halloween", 29: "Candlelight", 30: "Golden white",
-            31: "Pulse", 32: "Steampunk", 33: "Diwali", 34: "White", 35: "Alarm",
-            36: "Snowy sky", 40: "Dim-to-warm",
-        ]
-        for i in 1...10 { s[255 + i] = "Custom Mode \(i)" }
-        return s.map { WizScene(id: $0.key, name: $0.value) }.sorted { $0.id < $1.id }
-    }()
-
-    static func isKnown(_ id: Int) -> Bool { all.contains { $0.id == id } }
-
-    /// What the bulb may report that isn't a scene you can set: pywizlight's 1000 for Rhythm
-    /// (schdPsetId), or an ID newer than this list.
-    static func name(_ id: Int) -> String {
-        all.first { $0.id == id }?.name ?? (id == rhythm ? "Rhythm" : "Scene \(id)")
-    }
-
-    static let rhythm = 1000
-}
-
 @MainActor @Observable
 final class Model {
     /// Remembered, so the window opens with the controls the bulb was last in and doesn't
@@ -59,10 +19,28 @@ final class Model {
     var sceneId = 1
     var speed = 100.0
     var isOn: Bool?
+    /// The custom scene playing, while the bulb reports setPilot's inline scene ID.
+    var customSceneId: UUID? = UserDefaults.standard.string(forKey: Model.customSceneKey).flatMap(UUID.init) {
+        didSet { UserDefaults.standard.set(customSceneId?.uuidString, forKey: Self.customSceneKey) }
+    }
+    static let customSceneKey = "customScene"
+    /// Presets and custom scenes.
+    let library = Library()
+
+    /// Fade time for every change, in ms (the `trans` parameter); nil (or -1 stored) leaves it to
+    /// the bulb.
+    static var fade: Int? {
+        get { (UserDefaults.standard.object(forKey: fadeKey) as? Int).flatMap { $0 >= 0 ? $0 : nil } }
+        set { UserDefaults.standard.set(newValue, forKey: fadeKey) }
+    }
+    static let fadeKey = "fadeMs"
 
     // From getModelConfig / getUserConfig
     var minDimming = 10.0
     var tempRange: ClosedRange<Double> = 2200...6500
+    /// The bulb's own fades (getUserConfig), in ms: when turning on or changing, and turning off.
+    var fadeIn: Int?
+    var fadeOut: Int?
 
     var mac: String?
     var module: String?
@@ -233,6 +211,8 @@ final class Model {
         rssi = nil
         minDimming = 10
         tempRange = 2200...6500
+        fadeIn = nil
+        fadeOut = nil
         mac = nil
         module = nil
         firmware = nil
@@ -244,6 +224,7 @@ final class Model {
         bulb.send("getPilot", retry: true)
         bulb.send("getModelConfig", retry: true)
         bulb.send("getSystemConfig", retry: true)
+        bulb.send("getUserConfig", retry: true)
         addressDetail = nil
         // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
         // for live updates. Lookups block, so off the main thread.
@@ -304,6 +285,7 @@ final class Model {
     /// If the chosen bulb (known by MAC) isn't at its saved IP, search for it and reconnect at its
     /// new address. Never switches to another bulb, and leaves DNS names alone.
     private func relocate() {
+        #if os(macOS)
         guard !relocating, let saved = savedMAC,
               let address = UserDefaults.standard.string(forKey: Self.addressKey),
               Net.isIPv4(address) else { return }
@@ -326,8 +308,13 @@ final class Model {
                 status = "Couldn't find \(label) on the network"
             }
         }
+        #else
+        // No discovery on iOS (no broadcasts without the multicast entitlement): a bulb chosen by
+        // DNS name is found again by name, and one chosen by IP has to be chosen again.
+        #endif
     }
 
+    #if os(macOS)
     /// Searches for bulbs, filling `discovered` as they answer and adding DNS names as lookups
     /// finish. Never changes the chosen bulb. Returns what it found; a call while a search is
     /// running waits for that search.
@@ -388,6 +375,8 @@ final class Model {
     private static let localNetworkHelp =
         "setPilot needs Local Network access to find bulbs: turn it on in System Settings › Privacy & Security › Local Network"
 
+    #endif
+
     // MARK: Commands
 
     func sync() {
@@ -402,8 +391,20 @@ final class Model {
         bulb.send("setState", ["state": on], retry: true)
     }
 
-    func setMode(_ m: Mode) { mode = m; sendPilot([.colour], retry: true) }
-    func setScene(_ id: Int) { sceneId = id; sendPilot([.colour], retry: true) }
+    func setMode(_ m: Mode) {
+        mode = m
+        // A scene that can't be sent (Rhythm, or a deleted custom scene): start with the first one.
+        if m == .scene, !Scenes.isKnown(sceneId), !(sceneId == Scenes.inlineCustom && customSceneId.flatMap(library.customScene) != nil) {
+            sceneId = Scenes.all[0].id
+            customSceneId = nil
+        }
+        sendPilot([.colour], retry: true)
+    }
+    func setScene(_ id: Int) {
+        customSceneId = nil
+        sceneId = id
+        sendPilot([.colour], retry: true)
+    }
 
     func readConfig() {
         for m in ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"] {
@@ -438,8 +439,9 @@ final class Model {
 
     /// Sends only what changed (a whole colour, dimming or speed): the firmware ignores some valid
     /// parameters when they're combined with others, and leaving the rest out doesn't undo
-    /// concurrent changes from other apps.
-    private func sendPilot(_ fields: Set<PilotField>, retry: Bool) {
+    /// concurrent changes from other apps. `switchOn` is for deliberate actions (a preset): it
+    /// leaves `state` out, which turns the bulb on.
+    private func sendPilot(_ fields: Set<PilotField>, retry: Bool, switchOn: Bool = false) {
         let fields = unsent.union(fields)
         unsent = []
         var p: [String: Any] = [:]
@@ -452,23 +454,205 @@ final class Model {
             case .temp:
                 p["temp"] = Int(temp)
             case .scene:
-                // Rhythm and unknown IDs (as reported by the bulb) can't be set.
-                if Scenes.isKnown(sceneId) { p["sceneId"] = sceneId }
+                if sceneId == Scenes.inlineCustom {
+                    // One of ours: the definition goes with it, as the bulb can't keep it.
+                    if let id = customSceneId, let scene = library.customScene(id) {
+                        p["sceneId"] = sceneId
+                        p["elm"] = scene.elm
+                    }
+                } else if Scenes.isKnown(sceneId) {
+                    // Rhythm and unknown IDs (as reported by the bulb) can't be set.
+                    p["sceneId"] = sceneId
+                }
             }
         }
-        if fields.contains(.speed), mode == .scene { p["speed"] = Int(speed) }
-        guard !p.isEmpty else { return }
-        // A setPilot without "state" switches the bulb on: say so only when it's off.
-        if isOn == false { p["state"] = false }
-        if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
+        // Speed only takes when it's sent on its own (a firmware bug), so it's a separate request.
+        let speedParams: [String: Any]? = fields.contains(.speed) && mode == .scene ? ["speed": Int(speed)] : nil
+        guard !p.isEmpty || speedParams != nil else { return }
+        if !p.isEmpty {
+            if let fade = Self.fade { p["trans"] = fade }
+            if switchOn {
+                isOn = true
+            } else if isOn == false {
+                // A setPilot without "state" switches the bulb on: say so only when it's off.
+                p["state"] = false
+            }
+        }
+        let shown = p.isEmpty ? speedParams! : p
+        if let data = try? JSONSerialization.data(withJSONObject: shown, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
-        lastPilot = p.filter { $0.key != "state" }.compactMapValues { $0 as? Int }
+        lastPilot = p.filter { $0.key != "state" && $0.key != "trans" }.compactMapValues { $0 as? Int }
+        if let speedParams { lastPilot["speed"] = speedParams["speed"] as? Int }
         lastState = isOn
         sendSeq += 1
         pending = true
-        bulb.send("setPilot", p, retry: retry)
+        if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
+        if let speedParams {
+            if p.isEmpty {
+                bulb.send("setPilot", speedParams, retry: retry)
+            } else {
+                // After the scene has started (and so retries of the two don't overlap).
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    bulb.send("setPilot", speedParams, retry: retry)
+                }
+            }
+        }
         scheduleVerify()
+    }
+
+    /// Sets the brightness straight away, with retries (Shortcuts; sliders go through `changed`).
+    func setDimming(_ level: Double) {
+        dimming = min(max(level.rounded(), minDimming), 100)
+        sendPilot([.dimming], retry: true)
+    }
+
+    /// Plays one of setPilot's custom scenes (sent inline: nothing is stored on the bulb).
+    func playCustom(_ scene: CustomScene, switchOn: Bool = false) {
+        customSceneId = scene.id
+        mode = .scene
+        sceneId = Scenes.inlineCustom
+        sendPilot([.colour], retry: true, switchOn: switchOn)
+    }
+
+    /// Applies a preset, switching the bulb on if it's off.
+    func apply(_ preset: Preset) {
+        var fields: Set<PilotField> = [.colour, .dimming]
+        switch preset.colour {
+        case let .rgbcw(r, g, b, c, w):
+            mode = .rgbcw
+            (self.r, self.g, self.b, self.c, self.w) = (Double(r), Double(g), Double(b), Double(c), Double(w))
+        case let .temp(k):
+            mode = .temp
+            temp = Double(k)
+        case let .scene(id, speed):
+            mode = .scene
+            sceneId = id
+            if let speed { self.speed = Double(speed); fields.insert(.speed) }
+        case let .custom(id, speed):
+            guard library.customScene(id) != nil else {
+                status = "That preset's custom scene has been deleted"
+                return
+            }
+            mode = .scene
+            sceneId = Scenes.inlineCustom
+            customSceneId = id
+            if let speed { self.speed = Double(speed); fields.insert(.speed) }
+        }
+        if case .scene = preset.colour { customSceneId = nil }
+        dimming = min(max(Double(preset.dimming), minDimming), 100)
+        sendPilot(fields, retry: true, switchOn: true)
+    }
+
+    /// What the bulb is showing, as a preset colour (nil for Rhythm and scenes setPilot can't set).
+    var currentColour: LightColour? {
+        switch mode {
+        case .rgbcw: .rgbcw(r: Int(r), g: Int(g), b: Int(b), c: Int(c), w: Int(w))
+        case .temp: .temp(Int(temp))
+        case .scene:
+            if sceneId == Scenes.inlineCustom, let id = customSceneId { .custom(id, speed: Int(speed)) }
+            else if Scenes.isKnown(sceneId) { .scene(id: sceneId, speed: Int(speed)) }
+            else { nil }
+        }
+    }
+
+    /// Saves the current light as a new preset.
+    @discardableResult
+    func savePreset(named name: String) -> Preset? {
+        guard let colour = currentColour else {
+            status = "This scene can't be saved as a preset"
+            return nil
+        }
+        let n = name.trimmingCharacters(in: .whitespaces)
+        let preset = Preset(name: library.uniquePresetName(n.isEmpty ? "Preset" : n), colour: colour, dimming: Int(dimming))
+        library.presets.append(preset)
+        return preset
+    }
+
+    /// Relative brightness (`dimDelta`): the bulb adds it to its own level, so concurrent changes
+    /// from elsewhere aren't overwritten.
+    func adjustDimming(by delta: Int) {
+        guard delta != 0 else { return }
+        var p: [String: Any] = ["dimDelta": delta]
+        if let fade = Self.fade { p["trans"] = fade }
+        if isOn == false { p["state"] = false }
+        dimming = min(max(dimming + Double(delta), minDimming), 100)
+        if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
+            lastSent = String(decoding: data, as: UTF8.self)
+        }
+        lastPilot = [:] // the result depends on the bulb's level; just read it back
+        lastState = isOn
+        sendSeq += 1
+        pending = true
+        bulb.send("setPilot", p, retry: true)
+        scheduleVerify()
+    }
+
+    /// Sets the given values and sends the fields named (from the watch).
+    func apply(_ v: LightValues, fields: [PilotField]) {
+        if v.mode != .scene || v.sceneId != Scenes.inlineCustom { customSceneId = nil }
+        mode = v.mode
+        (r, g, b, c, w) = (v.r, v.g, v.b, v.c, v.w)
+        temp = v.temp
+        sceneId = v.sceneId
+        speed = v.speed
+        dimming = v.dimming
+        sendPilot(Set(fields), retry: true)
+    }
+
+    var values: LightValues {
+        LightValues(mode: mode, r: r, g: g, b: b, c: c, w: w, temp: temp, sceneId: sceneId, speed: speed, dimming: dimming)
+    }
+
+    var snapshot: LightSnapshot {
+        var s = LightSnapshot()
+        s.link = switch link {
+        case .none: .none
+        case .connecting: .connecting
+        case .connected: .connected
+        case .unreachable: .unreachable
+        }
+        s.bulbName = currentName ?? UserDefaults.standard.string(forKey: Self.addressKey)
+        s.isOn = isOn
+        s.mode = mode
+        (s.r, s.g, s.b, s.c, s.w) = (r, g, b, c, w)
+        s.temp = temp
+        s.sceneId = sceneId
+        s.speed = speed
+        s.dimming = dimming
+        s.minDimming = minDimming
+        s.tempMin = tempRange.lowerBound
+        s.tempMax = tempRange.upperBound
+        s.customScene = mode == .scene && sceneId == Scenes.inlineCustom ? customSceneId : nil
+        s.status = mismatch ?? status
+        s.pending = pending
+        return s
+    }
+
+    /// Back in the foreground (iOS suspends sockets in the background): reconnect if live
+    /// updates stopped or the bulb went quiet, otherwise just read its state again.
+    func resume() {
+        guard started, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else {
+            startIfSaved()
+            return
+        }
+        if !push.isRunning || link != .connected { connect(a) } else { sync() }
+    }
+
+    /// Connects to the saved bulb if needed and waits until it can be controlled (or `timeout`).
+    func waitUntilControllable(timeout: Double = 4) async -> Bool {
+        startIfSaved()
+        if link == .unreachable { sync() }
+        let end = Date().addingTimeInterval(timeout)
+        while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        return canControl
+    }
+
+    /// Waits until the last change has been read back (or `timeout`).
+    func waitUntilSettled(timeout: Double = 3) async {
+        let end = Date().addingTimeInterval(timeout)
+        while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
@@ -581,9 +765,12 @@ final class Model {
             r = num("r") ?? 0; g = num("g") ?? 0; b = num("b") ?? 0
             c = num("c") ?? 0; w = num("w") ?? 0
         }
+        if mode != .scene || sceneId != Scenes.inlineCustom { customSceneId = nil }
     }
 
     private func applyLimits(_ result: [String: Any]) {
+        if let v = result["fadeIn"] as? NSNumber { fadeIn = v.intValue }
+        if let v = result["fadeOut"] as? NSNumber { fadeOut = v.intValue }
         // Only the slider's range: changing `dimming` here would show a level the bulb isn't at.
         if let d = (result["minDimLevel"] as? NSNumber)?.doubleValue, d >= 1, d < 100 {
             minDimming = d

@@ -12,6 +12,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 18) {
             bulbPanel
             lightPanel
+            presetsPanel
             commandPanel
             devicePanel
         }
@@ -96,6 +97,17 @@ struct ContentView: View {
             LightControls(model: model)
         }
         .disabled(!model.canControl)
+    }
+
+    // MARK: Presets
+
+    private var presetsPanel: some View {
+        Panel("Presets") {
+            SavePresetButton(model: model)
+                .buttonStyle(.borderless)
+        } content: {
+            PresetGrid(model: model, columns: 5)
+        }
     }
 
     // MARK: Last command
@@ -240,6 +252,7 @@ struct LightControls: View {
     var compact = false
     /// Read so the colour-temperature colours redraw when the testing setting changes.
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
@@ -273,63 +286,28 @@ struct LightControls: View {
             case .scene:
                 HStack(spacing: 8) {
                     Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
-                    Picker("Scene", selection: Binding(get: { model.sceneId }, set: { model.setScene($0) })) {
-                        ForEach(Scenes.all) { Text($0.name).tag($0.id) }
-                        // What the bulb reported, if it isn't one you can choose (Rhythm, newer IDs)
-                        if !Scenes.isKnown(model.sceneId) {
-                            Divider()
-                            Text(Scenes.name(model.sceneId)).tag(model.sceneId)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
+                    // The bulb's scenes, then setPilot's custom scenes, then anything else it reported
+                    Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }
+                        .labelsHidden()
+                        .fixedSize()
                     Text(verbatim: "ID \(model.sceneId)") // verbatim: no "1,000"
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer()
+                    Button {
+                        openWindow(id: "scenes")
+                        NSApp.activate()
+                    } label: {
+                        Label("Custom Scenes…", systemImage: "square.and.pencil")
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Edit custom scenes")
                 }
                 ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
             ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
 
-        }
-    }
-}
-
-extension Model {
-    /// Rounds to whole numbers and triggers a send only on user edits (not on syncs/pushes).
-    func binding(_ kp: ReferenceWritableKeyPath<Model, Double>) -> Binding<Double> {
-        let field: PilotField = kp == \.dimming ? .dimming : kp == \.speed ? .speed : .colour
-        return Binding(
-            get: { self[keyPath: kp] },
-            set: {
-                let v = $0.rounded()
-                guard v != self[keyPath: kp] else { return } // continuous sliders move in fractions
-                self[keyPath: kp] = v
-                self.changed(field)
-            }
-        )
-    }
-
-    var powerBinding: Binding<Bool> {
-        Binding(get: { self.isOn ?? false }, set: { self.power($0) })
-    }
-
-    var linkColour: Color {
-        switch link {
-        case .none: .secondary.opacity(0.5)
-        case .connecting: .yellow
-        case .connected: .green
-        case .unreachable: .red
-        }
-    }
-
-    var linkText: String {
-        switch link {
-        case .none: "Not connected"
-        case .connecting: "Connecting…"
-        case .connected: "Connected" + (rssi.map { " · \($0 < 0 ? "\u{2212}" : "")\(abs($0)) dBm" } ?? "")
-        case .unreachable: "No response"
         }
     }
 }

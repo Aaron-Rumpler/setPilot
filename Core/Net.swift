@@ -32,6 +32,9 @@ enum Net {
         try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
+    #if os(macOS)
+    // Discovery is Mac-only: on iOS, broadcasting needs the multicast entitlement.
+
     /// Like pywizlight: broadcast registration to every IPv4 broadcast address once a second,
     /// collecting replies for `seconds`. Blocking; call off the main thread.
     ///
@@ -167,6 +170,7 @@ enum Net {
         }
         return out
     }
+    #endif
 
     static func isIPv4(_ s: String) -> Bool {
         var addr = in_addr()

@@ -19,7 +19,9 @@ struct SetPilotApp: App {
                 .onAppear { model.startIfSaved() }
         }
         .menuBarExtraStyle(.window)
-        Settings { SettingsView() }
+        Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model) }
+            .defaultSize(width: 720, height: 640)
+        Settings { SettingsView(model: model) }
     }
 }
 
@@ -104,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct SettingsView: View {
+    let model: Model
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
@@ -121,6 +124,16 @@ struct SettingsView: View {
                         Button("Login Items…") { SMAppService.openSystemSettingsLoginItems() }
                     }
                 }
+            }
+
+            Section {
+                FadeSetting(model: model)
+            } header: {
+                Text("Fade")
+            } footer: {
+                Text("How long each change takes to fade in (setPilot's trans). Turning off always uses the bulb's own fade-out.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             // Testing aid: the white the colour-temperature colours are adapted to.
