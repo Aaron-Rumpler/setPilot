@@ -56,6 +56,8 @@ struct ComposeView: View {
                     ForEach(Power.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("Power")
             } footer: {
                 if model.isOn == false && power == .leave && (includeColour || includeDimming) {
                     Text("The bulb is off and stays off; the change shows when it's switched on.")

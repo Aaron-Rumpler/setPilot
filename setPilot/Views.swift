@@ -325,7 +325,7 @@ struct LightControls: View {
                     }
                     // Marks at the scale's points; the track's colours are black-body, not the scale's.
                     ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound), step: 10,
-                                  marks: Array(Set(scale.points.map { Double($0.kelvin) })).sorted(),
+                                  marks: spacedMarks(scale.points.map(\.kelvin), in: range),
                                   scale: .mired, colourTemperatureStrip: true, value: model.binding(\.customKelvin))
                         .id("\(adaptingWhite) \(scale.id) \(range)")
                 } else {
@@ -483,4 +483,21 @@ final class SelectAllTextField: NSTextField {
         super.mouseDown(with: event) // tracks until mouse-up, placing the caret
         if !wasEditing { currentEditor()?.selectAll(nil) }
     }
+}
+
+/// A scale's points as slider marks, leaving out any too close to the previous one to label
+/// (on the mired scale the slider uses).
+func spacedMarks(_ kelvins: [Int], in range: ClosedRange<Int>) -> [Double] {
+    let lo = 1e6 / Double(range.lowerBound), hi = 1e6 / Double(range.upperBound)
+    guard lo > hi else { return [] }
+    var kept: [Double] = []
+    var last = -1.0
+    for k in Set(kelvins).sorted() {
+        let at = (lo - 1e6 / Double(k)) / (lo - hi)
+        if kept.isEmpty || at - last >= 0.09 {
+            kept.append(Double(k))
+            last = at
+        }
+    }
+    return kept
 }
