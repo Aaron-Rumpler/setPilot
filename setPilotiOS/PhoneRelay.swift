@@ -15,8 +15,9 @@ final class PhoneRelay: NSObject {
     private var lastSnapshot: LightSnapshot?
 
     func start(model: Model) {
-        guard self.model == nil, WCSession.isSupported() else { return }
+        guard self.model == nil else { return }
         self.model = model
+        guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
         observeState()
@@ -84,7 +85,7 @@ final class PhoneRelay: NSObject {
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             pushScheduled = false
-            guard let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
+            guard WCSession.isSupported(), let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
             lastSnapshot = snapshot
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
@@ -96,7 +97,7 @@ final class PhoneRelay: NSObject {
 
     private var contextScheduled = false
 
-    /// Presets or custom scenes changed: pass them on.
+    /// Presets or custom scenes changed: pass them on to the watch (and Siri), at most twice a second.
     func libraryChanged() {
         guard !contextScheduled else { return }
         contextScheduled = true
@@ -104,13 +105,14 @@ final class PhoneRelay: NSObject {
             try? await Task.sleep(for: .milliseconds(500))
             contextScheduled = false
             updateContext()
+            SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
         }
     }
 
     /// The application context holds what the watch should show even when the iPhone isn't
     /// reachable: the presets, custom scene names and the last known state.
     private func updateContext() {
-        guard let model else { return }
+        guard let model, WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
         let encoder = JSONEncoder()
