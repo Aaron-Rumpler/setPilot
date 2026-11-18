@@ -30,7 +30,7 @@ struct ComposeView: View {
     @State private var includeDimming = true
     @State private var dimming = 100
     @State private var power = Power.leave
-    @State private var useFade = true
+    @State private var fadeChoice = FadeChoice.none
     @State private var fade = 10_000
     @State private var loaded = false
 
@@ -64,12 +64,18 @@ struct ComposeView: View {
                 }
             }
             Section {
-                Toggle("Fade", isOn: $useFade)
-                if useFade { MillisecondsRow(label: "Fade time", value: $fade) }
+                Picker("Fade", selection: $fadeChoice) {
+                    ForEach(FadeChoice.options(setting: Model.fade), id: \.self) {
+                        Text($0.title(setting: Model.fade)).tag($0)
+                    }
+                }
+                if fadeChoice == .custom { MillisecondsRow(label: "Fade time", value: $fade) }
             } footer: {
                 Text(power == .off
                      ? "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead."
-                     : useFade ? "The bulb fades to the new state over this time (trans)." : "The bulb's own fade.")
+                     : fadeChoice.trans(setting: Model.fade, custom: fade) != nil
+                        ? "The bulb fades to the new state over this time (trans)."
+                        : "No trans: the bulb uses its own fade\(model.fadeIn.map { " (\($0) ms)" } ?? "").")
             }
             Section {
                 Text(preview)
@@ -149,7 +155,7 @@ struct ComposeView: View {
         case .on: true
         case .off: false
         }
-        if useFade { ch.fade = fade }
+        ch.fade = fadeChoice.trans(setting: Model.fade, custom: fade)
         return ch
     }
 
@@ -193,5 +199,7 @@ struct ComposeView: View {
         case .scene: .scene
         }
         power = .leave
+        // Start from the fade time setting, if there is one.
+        fadeChoice = Model.fade == nil ? .none : .setting
     }
 }

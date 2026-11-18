@@ -88,9 +88,12 @@ final class PhoneLink: NSObject {
     func poll() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(4))
-            if !busy { refresh() }
+            if isActive, !busy { refresh() }
         }
     }
+
+    /// The app is in the foreground (screen on, app showing). Only then does it poll the iPhone.
+    var isActive = true
 
     /// Links from the complications.
     func open(_ url: URL) {

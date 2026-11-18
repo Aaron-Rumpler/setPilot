@@ -183,7 +183,7 @@ struct WatchComposeView: View {
     @State private var includeDimming = true
     @State private var dimming = 100.0
     @State private var power = Power.leave
-    @State private var useFade = true
+    @State private var fadeChoice = FadeChoice.none
     @State private var fade = 10_000.0
     @State private var loaded = false
 
@@ -232,8 +232,11 @@ struct WatchComposeView: View {
                 }
             }
             Section {
-                Toggle("Fade", isOn: $useFade)
-                if useFade {
+                // The iPhone's fade time setting is the default, if it has one.
+                Picker("Fade", selection: $fadeChoice) {
+                    ForEach(FadeChoice.options(setting: s?.fade), id: \.self) { Text($0.title(setting: s?.fade)).tag($0) }
+                }
+                if fadeChoice == .custom {
                     ValueRow(label: "Fade time", value: $fade, range: 0...60_000, step: 100, unit: " ms")
                 }
             } footer: {
@@ -273,13 +276,14 @@ struct WatchComposeView: View {
         case .on: true
         case .off: false
         }
-        if useFade { ch.fade = Int(fade) }
+        ch.fade = fadeChoice.trans(setting: s?.fade, custom: Int(fade))
         return ch
     }
 
     private func load() {
         loaded = true
         guard let s = link.snapshot else { return }
+        fadeChoice = s.fade == nil ? .none : .setting
         (r, g, b, c, w) = (s.r, s.g, s.b, s.c, s.w)
         temp = s.temp
         customKelvin = min(max(s.customKelvin, s.customMin), s.customMax)

@@ -136,6 +136,33 @@ struct LightChange: Codable, Hashable, Sendable {
     var fade: Int? = nil
 }
 
+/// How a composed change fades: the fade time setting (only offered when one is set), none
+/// (no `trans`: the bulb's own fade), or a value just for this change.
+enum FadeChoice: Hashable, Sendable {
+    case setting, none, custom
+
+    /// The choices that mean different things: without a fade setting, "the setting" and "none"
+    /// would both send no `trans`, so only "none" is offered.
+    static func options(setting: Int?) -> [FadeChoice] { setting == nil ? [.none, .custom] : [.setting, .none, .custom] }
+
+    func title(setting: Int?) -> String {
+        switch self {
+        case .setting: "Default (\(setting ?? 0) ms)"
+        case .none: "None"
+        case .custom: "Custom"
+        }
+    }
+
+    /// The `trans` to send, if any.
+    func trans(setting: Int?, custom: Int) -> Int? {
+        switch self {
+        case .setting: setting
+        case .none: nil
+        case .custom: custom
+        }
+    }
+}
+
 /// A saved light setting: colour plus brightness.
 struct Preset: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()

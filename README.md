@@ -48,7 +48,8 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
 - **Compose a change** (Compose… next to the power switch): prepare a new state (any of colour,
-  brightness and power) with its own fade time, say 10 s, and send it as one `setPilot`. It starts
+  brightness and power) and send it as one `setPilot`. Its fade is the fade time setting (shown, if
+  there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
   from the bulb's current state. (A scene's speed can't go in the same request, so it isn't
   offered.)
 - **Custom CCT**: kelvin through a colour-temperature scale of your own, kept per bulb (several
@@ -60,7 +61,7 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   reports RGBCW in this mode, setPilot stays in Custom CCT if the scale gives exactly those values at
   some kelvin (the nearest), and otherwise shows RGBCW. (The bulb's own custom CCT table,
   `setCctTable`, is cloud-only.)
-- **Fade time** (Settings): the `trans` parameter, in milliseconds, for every change, or the bulb's
+- **Fade time** (Settings; off by default, so no `trans` is sent): the `trans` parameter, in milliseconds, for every change, or the bulb's
   own fade (shown from `getUserConfig`). Turning off always uses the bulb's fade-out.
 
 ## iPhone and Apple Watch
@@ -93,7 +94,7 @@ The Watch app's main screen is power and the presets (tap to apply). Below them:
 - **Custom Scenes** to play, **Save Current Light** as a preset, and **Bulb** to switch between the
   iPhone's bulbs.
 - Read-back mismatches ("Bulb didn't apply: …") show as on the iPhone.
-- While it's open it asks the iPhone for the state every 4 seconds. Each request wakes the iPhone
+- While it's in the foreground it asks the iPhone for the state every 4 seconds. Each request wakes the iPhone
   app if needed, which reconnects and re-registers with the bulb for pushes, then forwards changes
   to the watch as they arrive for as long as iOS keeps it awake. (iOS doesn't let it listen in the
   background indefinitely.)
@@ -115,7 +116,7 @@ compilation conditions, so the code that needs them is left out otherwise.
 
 | Switch | Default | What it gives | Needs |
 |---|---|---|---|
-| `WIZ_APP_GROUPS` | YES | Widgets and complications that show the apps' data | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO (widgets then show placeholders) |
+| `WIZ_APP_GROUPS` | YES | The iPhone widgets, Control Center controls and watch complications (they read the apps' data through the group) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps |
 | `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read

@@ -13,6 +13,7 @@ struct SetPilotWatchApp: App {
                 .onOpenURL { link.open($0) } // from the complications
         }
         .onChange(of: phase) { _, new in
+            link.isActive = new == .active
             if new == .active { link.refresh() }
         }
     }
