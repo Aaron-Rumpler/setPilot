@@ -843,6 +843,17 @@ final class Model {
         if !push.isRunning || link != .connected { connect(a) } else { sync() }
     }
 
+    /// getPilot replies so far, so a refresh can wait for the next one.
+    @ObservationIgnored private var pilotReads = 0
+
+    /// Pull to refresh: `resume`, then wait (up to `timeout`) until the bulb's state has been read.
+    func refresh(timeout: Double = 3) async {
+        let before = pilotReads
+        resume()
+        let end = Date().addingTimeInterval(timeout)
+        while pilotReads == before && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+    }
+
     @ObservationIgnored private var liveHost: String?
     @ObservationIgnored private var lastRegistration = Date.distantPast
 
@@ -935,6 +946,7 @@ final class Model {
         link = .connected
         switch method {
         case "getPilot":
+            pilotReads += 1
             if let seq = verifyingSeq {
                 // A newer setPilot went out after this check started; its own check will follow.
                 guard seq == sendSeq else { return }

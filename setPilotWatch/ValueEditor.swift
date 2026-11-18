@@ -58,7 +58,7 @@ struct ValueEditor: View {
                 Button { set(value + step) } label: { Image(systemName: "plus") }
                     .accessibilityLabel("Increase")
             }
-            Text("\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
+            Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -98,7 +98,7 @@ struct NumberPad: View {
         VStack(spacing: 4) {
             // Also a text field: tapping it opens the system's input, which offers a number pad
             // for telephone-number fields where watchOS supports one (it hasn't always worked).
-            TextField("\(Int(range.lowerBound))–\(Int(range.upperBound))", text: $text)
+            TextField(String("\(Int(range.lowerBound))–\(Int(range.upperBound))"), text: $text) // String: no "1,541"
                 .textContentType(.telephoneNumber)
                 .multilineTextAlignment(.center)
                 .font(.title3.monospacedDigit())

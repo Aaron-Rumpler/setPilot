@@ -56,7 +56,7 @@ struct MobileSlider: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
+            Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
         }
     }
 

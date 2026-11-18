@@ -115,6 +115,8 @@ final class PhoneLink: NSObject {
             defaults.set(d, forKey: WatchKey.presets)
             SharedStore.save(p, SharedStore.presetsKey)
             WidgetCenter.shared.reloadAllTimelines()
+            // The preset complication's choices are one suggestion per preset.
+            WidgetCenter.shared.invalidateConfigurationRecommendations()
         }
         if let d = context[WatchKey.customScenes] as? Data, let s = try? decoder.decode([CustomSceneSummary].self, from: d) {
             scenes = s

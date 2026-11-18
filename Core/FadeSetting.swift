@@ -7,6 +7,13 @@ struct FadeSetting: View {
     @AppStorage(Model.fadeKey) private var stored: Int = -1
 
     var body: some View {
+        Group { rows }
+            // Presets' ready-made requests for widgets (iPhone) carry the fade: pass the change on,
+            // as for a change to the presets. Nothing listens on the Mac.
+            .onChange(of: stored) { model.library.onChange?() }
+    }
+
+    @ViewBuilder private var rows: some View {
         Toggle("Set the fade time", isOn: Binding(
             get: { stored >= 0 },
             set: { stored = $0 ? 500 : -1 }

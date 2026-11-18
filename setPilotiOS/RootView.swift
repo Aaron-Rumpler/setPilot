@@ -34,7 +34,7 @@ struct RootView: View {
                 }
             }
             .navigationTitle(model.currentName ?? "setPilot")
-            .refreshable { model.resume() }
+            .refreshable { await model.refresh() }
             .navigationDestination(isPresented: $showingScales) { CCTScalesList(model: model) }
             .navigationDestination(isPresented: $composing) { ComposeView(model: model) { composing = false } }
         }

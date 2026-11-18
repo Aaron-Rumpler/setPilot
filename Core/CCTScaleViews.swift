@@ -133,8 +133,10 @@ struct CCTScaleEditor: View {
                     } else {
                         Button("Use for Custom CCT") { model.useScale(scaleID) }
                     }
-                    Button("Extend Below \(scale.sorted.first?.kelvin ?? 0) K") {
+                    Button {
                         if let extended = scale.extendedDownwards() { binding.wrappedValue = extended }
+                    } label: {
+                        Text(verbatim: "Extend Below \(scale.sorted.first?.kelvin ?? 0) K") // verbatim: no "1,541"
                     }
                     .disabled(scale.extendedDownwards() == nil)
                 } footer: {
