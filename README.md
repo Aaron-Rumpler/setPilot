@@ -85,13 +85,18 @@ The Watch app's main screen is power and the presets (tap to apply). Below them:
 - **Controls**: mode, channels, temperature, Custom CCT (and which scale), scene (the bulb's and
   your custom scenes) and speed, brightness, brighter/dimmer. Each value opens an editor: the
   Digital Crown moves it one step per detent (1, or 10 K for temperatures, with a haptic tick), −
-  and + do the same, and a keypad enters an exact number.
+  and + do the same, and a keypad enters an exact number (its display is also a text field, which
+  offers the system's input, a number pad where watchOS provides one).
 - **Compose**: a change with its own fade time, sent in one go.
+- **Presets**: tap to apply; swipe one, then Edit, to rename it, update it to the current light,
+  or delete it.
 - **Custom Scenes** to play, **Save Current Light** as a preset, and **Bulb** to switch between the
   iPhone's bulbs.
 - Read-back mismatches ("Bulb didn't apply: …") show as on the iPhone.
-- While it's open it asks the iPhone for the state every 4 seconds, and the iPhone sends changes
-  as they happen while it's running.
+- While it's open it asks the iPhone for the state every 4 seconds. Each request wakes the iPhone
+  app if needed, which reconnects and re-registers with the bulb for pushes, then forwards changes
+  to the watch as they arrive for as long as iOS keeps it awake. (iOS doesn't let it listen in the
+  background indefinitely.)
 
 **Complications and Smart Stack** (watch): the bulb's status, a preset (tap to apply; pick from the
 suggestions when adding it), and power (tap to switch). They open the app to act, since watch
@@ -100,11 +105,18 @@ the watch sends every command to the iPhone app over WatchConnectivity, which ta
 replies with its state. The iPhone has to be in Bluetooth or Wi-Fi range of the watch; the iPhone
 app doesn't need to be open. The presets and last state are cached on the watch for when it isn't.
 
-Both run on iOS 26 and watchOS 26. The widgets share data with their apps through an App Group
-(`group.nz.aaronrumpler.setPilot`), which every target that uses it needs in Signing &
-Capabilities; free signing lasts 7 days, so reinstall from Xcode weekly. If your team can't use
-App Groups, remove the capability from the four iOS and watch targets: the apps still work, the
-widgets just show nothing.
+Both run on iOS 26 and watchOS 26. Free signing lasts 7 days, so reinstall from Xcode weekly.
+
+### Account-dependent capabilities
+
+`Account.xcconfig` (the project's base configuration) has two switches; set them to what your
+developer account allows and rebuild. They pick the entitlements (`Entitlements/`) and set Swift
+compilation conditions, so the code that needs them is left out otherwise.
+
+| Switch | Default | What it gives | Needs |
+|---|---|---|---|
+| `WIZ_APP_GROUPS` | YES | Widgets and complications that show the apps' data | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO (widgets then show placeholders) |
+| `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
 back, so writing one could overwrite a scene the WiZ app stored), signed requests (firmware that requires the `udp_signing_key` from the WiZ app),
