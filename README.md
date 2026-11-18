@@ -47,6 +47,19 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   fades into the next. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
   definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
+- **Compose a change** (Compose… next to the power switch): prepare a new state (any of colour,
+  brightness and power) with its own fade time, say 10 s, and send it as one `setPilot`. It starts
+  from the bulb's current state. (A scene's speed can't go in the same request, so it isn't
+  offered.)
+- **Custom CCT**: kelvin through a colour-temperature scale of your own, kept per bulb (several
+  per bulb; Window › CCT Scales). A new scale starts as the bulb's own table, rebuilt from
+  `getModelConfig` (`cctRange`, `renderFactor`) exactly as firmware 1.38.0 builds it, with the same
+  interpolation, so it gives what `temp` gives until you change it. Edit any point's kelvin and
+  RGBCW, add points, or extend it below its lowest point along WiZ's own line (red rising to full,
+  about 1540 K on this bulb). It's sent as RGBCW; the bulb can't tell it apart, so when the bulb
+  reports RGBCW in this mode, setPilot stays in Custom CCT if the scale gives exactly those values at
+  some kelvin (the nearest), and otherwise shows RGBCW. (The bulb's own custom CCT table,
+  `setCctTable`, is cloud-only.)
 - **Fade time** (Settings): the `trans` parameter, in milliseconds, for every change, or the bulb's
   own fade (shown from `getUserConfig`). Turning off always uses the bulb's fade-out.
 
