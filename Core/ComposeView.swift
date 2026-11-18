@@ -77,7 +77,7 @@ struct ComposeView: View {
                      ? "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead."
                      : fadeChoice.trans(setting: Model.fade, custom: fade) != nil
                         ? "The bulb fades to the new state over this time (trans)."
-                        : "No trans: the bulb uses its own fade\(model.fadeIn.map { " (\($0) ms)" } ?? "").")
+                        : "No trans: the bulb uses its own fade" + ownFade + ".")
             }
             Section {
                 Text(preview)
@@ -101,7 +101,9 @@ struct ComposeView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Compose a Change")
-        .onAppear { if !loaded { load() } }
+        // Start from the bulb's state, once it's known (it may arrive after this opens).
+        .onAppear { if !loaded, model.canControl { load() } }
+        .onChange(of: model.canControl) { _, can in if can, !loaded { load() } }
     }
 
     @ViewBuilder private var colourControls: some View {
@@ -171,6 +173,15 @@ struct ComposeView: View {
     private var scale: CCTScale? {
         let scales = model.library.scales(for: model.chosenMAC)
         return scales.first { $0.id == scaleID } ?? model.activeScale
+    }
+
+    /// The bulb's own fade-in, for the footer.
+    private var ownFade: String {
+        switch model.fadeIn {
+        case 0?: ", which is off"
+        case let ms?: " (\(ms) ms)"
+        case nil: ""
+        }
     }
 
     private var hasChange: Bool { change.colour != nil || change.dimming != nil || change.power != nil }

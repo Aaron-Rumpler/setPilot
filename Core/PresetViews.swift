@@ -38,10 +38,7 @@ struct PresetGrid: View {
         .alert("Rename Preset", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") {
-                let n = newName.trimmingCharacters(in: .whitespaces)
-                if let p = renaming, !n.isEmpty, let i = lib.presets.firstIndex(where: { $0.id == p.id }) {
-                    lib.presets[i].name = n
-                }
+                if let p = renaming { model.renamePreset(p.id, to: newName) }
                 renaming = nil
             }
             Button("Cancel", role: .cancel) { renaming = nil }
@@ -67,12 +64,7 @@ struct PresetGrid: View {
             newName = preset.name
             renaming = preset
         }
-        Button("Update to Current Light") {
-            if let colour = model.currentColour, let i = lib.presets.firstIndex(where: { $0.id == preset.id }) {
-                lib.presets[i].colour = colour
-                lib.presets[i].dimming = Int(model.dimming)
-            }
-        }
+        Button("Update to Current Light") { model.updatePreset(preset.id) }
         .disabled(model.currentColour == nil || !model.canControl)
         Divider()
         Button("Move Earlier") { lib.presets.swapAt(i, i - 1) }.disabled(i == 0)

@@ -20,6 +20,12 @@ struct ControlsView: View {
         let s = link.snapshot
         List {
             if let s, s.canControl, let v = values {
+                if !link.reachable {
+                    Text("iPhone not reachable: this is the last state it sent.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                }
                 if let mismatch = s.mismatch { MismatchText(text: mismatch) }
                 Section {
                     // Separate bordered buttons, so each takes its own taps in the row.
