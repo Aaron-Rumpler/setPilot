@@ -11,7 +11,11 @@ WIZ_APP_GROUPS = YES
 // (the watch gets them from the iPhone). Needs a paid developer account.
 WIZ_ICLOUD = NO
 
-// Derived from the two above; no need to edit.
+// Derived from the two above; no need to edit. Without App Groups, the widget extensions are
+// copied next to the apps rather than into them, so they aren't installed.
+WIZ_WIDGETS_EMBED_YES = $(CONTENTS_FOLDER_PATH)/PlugIns
+WIZ_WIDGETS_EMBED_NO = Widgets-left-out
+WIZ_WIDGETS_EMBED_PATH = $(WIZ_WIDGETS_EMBED_$(WIZ_APP_GROUPS))
 WIZ_ENTITLEMENTS = Entitlements/groups-$(WIZ_APP_GROUPS)_icloud-$(WIZ_ICLOUD)
 WIZ_FLAG_GROUPS_YES = WIZ_APP_GROUPS
 WIZ_FLAG_ICLOUD_YES = WIZ_ICLOUD
