@@ -157,6 +157,7 @@ final class Model {
                 verifyingSeq = nil
             case "setState"?:
                 isOn = powerBefore
+                lastState = powerBefore
                 status = "The bulb didn't answer the power switch"
             default:
                 break
@@ -457,6 +458,7 @@ final class Model {
     func power(_ on: Bool) {
         powerBefore = isOn
         isOn = on
+        lastState = on // a read-back still due from an earlier change expects this now
         lastMethod = "setState"
         lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
         bulb.send("setState", ["state": on], retry: true)

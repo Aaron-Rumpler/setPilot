@@ -75,7 +75,7 @@ struct CloudSyncSection: View {
         } footer: {
             Text(CloudSync.isEnabled
                  ? "Presets, custom scenes, CCT scales and bulb names sync between your Mac and iPhone through iCloud."
-                 : "iCloud needs a paid Apple developer account. To build with it, set WIZ_ICLOUD = YES in Account.xcconfig.")
+                 : "iCloud needs a paid Apple developer account. To build with it, set WIZ_ICLOUD\u{00A0}=\u{00A0}YES in Account.xcconfig.") // no-break spaces keep the setting in one piece
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

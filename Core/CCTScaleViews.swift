@@ -47,9 +47,9 @@ struct NoScaleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(model.chosenMAC == nil
+            Text(verbatim: model.chosenMAC == nil // verbatim: no "2,200"
                  ? "Connect to the bulb to set up a custom CCT scale for it."
-                 : "Custom CCT turns a kelvin value into RGBCW through a scale of your own, starting from the bulb's table. It can go beyond the bulb's 2200–6500 K.")
+                 : "Custom CCT turns a kelvin value into RGBCW through a scale of your own, starting from the bulb's table. It can go beyond the bulb's own \(Int(model.tempRange.lowerBound))–\(Int(model.tempRange.upperBound)) K.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
