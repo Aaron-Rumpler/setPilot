@@ -22,12 +22,20 @@ struct ControlsView: View {
             if let s, s.canControl, let v = values {
                 if let mismatch = s.mismatch { MismatchText(text: mismatch) }
                 Section {
+                    // Separate bordered buttons, so each takes its own taps in the row.
                     HStack {
-                        Button { link.send(.dimDelta(-10)) } label: { Image(systemName: "sun.min") }
-                            .accessibilityLabel("Dimmer")
-                        Button { link.send(.dimDelta(10)) } label: { Image(systemName: "sun.max.fill") }
-                            .accessibilityLabel("Brighter")
+                        Button { link.send(.dimDelta(-10)) } label: {
+                            Image(systemName: "sun.min").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Dimmer")
+                        Button { link.send(.dimDelta(10)) } label: {
+                            Image(systemName: "sun.max.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Brighter")
                     }
+                    .listRowBackground(Color.clear)
                     ValueRow(label: "Brightness", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
                 Section {
