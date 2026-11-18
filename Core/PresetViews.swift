@@ -140,6 +140,7 @@ struct SavePresetButton: View {
         case .temp(let k): return "\(k) K"
         case .scene(let id, _): return Scenes.name(id)
         case .custom(let id, _): return model.library.customScene(id)?.name ?? "Preset"
+        case .customCCT(_, let k): return "\(k) K"
         case .rgbcw: return "Preset"
         }
     }

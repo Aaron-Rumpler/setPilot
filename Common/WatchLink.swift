@@ -14,6 +14,11 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var c = 0.0
     var w = 0.0
     var temp = 2700.0
+    var customKelvin = 2700.0
+    /// The bulb's custom CCT scale, if it has one, and its range.
+    var cctScaleName: String?
+    var customMin = 2200.0
+    var customMax = 6500.0
     var sceneId = 0
     var speed = 100.0
     var dimming = 100.0
@@ -37,6 +42,7 @@ struct LightValues: Codable, Equatable, Sendable {
     var c: Double
     var w: Double
     var temp: Double
+    var customKelvin: Double
     var sceneId: Int
     var speed: Double
     var dimming: Double

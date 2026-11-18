@@ -16,6 +16,11 @@ final class Model {
     var w = 0.0
     var dimming = 100.0
     var temp = 2700.0
+    /// Kelvin on the active custom CCT scale (Custom CCT mode).
+    var customKelvin = UserDefaults.standard.object(forKey: Model.customKelvinKey) as? Double ?? 2700 {
+        didSet { UserDefaults.standard.set(customKelvin, forKey: Self.customKelvinKey) }
+    }
+    static let customKelvinKey = "customKelvin"
     var sceneId = 1
     var speed = 100.0
     var isOn: Bool?
@@ -41,6 +46,9 @@ final class Model {
     /// The bulb's own fades (getUserConfig), in ms: when turning on or changing, and turning off.
     var fadeIn: Int?
     var fadeOut: Int?
+    /// getModelConfig's `cctRange` and `renderFactor`, for rebuilding the bulb's CCT table.
+    var cctRange: [Int]?
+    var renderFactor: [Int]?
 
     var mac: String?
     var module: String?
@@ -221,6 +229,8 @@ final class Model {
         tempRange = 2200...6500
         fadeIn = nil
         fadeOut = nil
+        cctRange = nil
+        renderFactor = nil
         mac = nil
         module = nil
         firmware = nil
@@ -401,6 +411,9 @@ final class Model {
 
     func setMode(_ m: Mode) {
         mode = m
+        if m == .custom, let range = activeScale?.range {
+            customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
+        }
         // A scene that can't be sent (Rhythm, or a deleted custom scene): start with the first one.
         if m == .scene, !Scenes.isKnown(sceneId), !(sceneId == Scenes.inlineCustom && customSceneId.flatMap(library.customScene) != nil) {
             sceneId = Scenes.all[0].id
@@ -447,55 +460,72 @@ final class Model {
 
     /// Sends only what changed (a whole colour, dimming or speed): the firmware ignores some valid
     /// parameters when they're combined with others, and leaving the rest out doesn't undo
-    /// concurrent changes from other apps. `switchOn` is for deliberate actions (a preset): it
-    /// leaves `state` out, which turns the bulb on.
-    private func sendPilot(_ fields: Set<PilotField>, retry: Bool, switchOn: Bool = false) {
+    /// concurrent changes from other apps.
+    private func sendPilot(_ fields: Set<PilotField>, retry: Bool) {
         let fields = unsent.union(fields)
         unsent = []
         var p: [String: Any] = [:]
         if fields.contains(.dimming) { p["dimming"] = Int(dimming) }
-        if fields.contains(.colour) {
-            switch mode {
-            case .rgbcw:
-                // All five, zeros included: the colour is one setting.
-                p.merge(["r": r, "g": g, "b": b, "c": c, "w": w].mapValues { Int($0) }) { $1 }
-            case .temp:
-                p["temp"] = Int(temp)
-            case .scene:
-                if sceneId == Scenes.inlineCustom {
-                    // One of ours: the definition goes with it, as the bulb can't keep it.
-                    if let id = customSceneId, let scene = library.customScene(id) {
-                        p["sceneId"] = sceneId
-                        p["elm"] = scene.elm
-                    }
-                } else if Scenes.isKnown(sceneId) {
-                    // Rhythm and unknown IDs (as reported by the bulb) can't be set.
-                    p["sceneId"] = sceneId
-                }
+        if fields.contains(.colour) { p.merge(colourParams()) { $1 } }
+        let speed = fields.contains(.speed) && mode == .scene ? Int(speed) : nil
+        if !p.isEmpty, let fade = Self.fade { p["trans"] = fade }
+        transmit(p, speed: speed, power: nil, retry: retry)
+    }
+
+    /// The current colour as setPilot parameters (empty if it can't be sent).
+    private func colourParams() -> [String: Any] {
+        switch mode {
+        case .rgbcw:
+            // All five, zeros included: the colour is one setting.
+            return ["r": r, "g": g, "b": b, "c": c, "w": w].mapValues { Int($0) }
+        case .temp:
+            return ["temp": Int(temp)]
+        case .custom:
+            // setPilot's own CCT: the scale's channels at this kelvin, sent as RGBCW.
+            guard let ch = activeScale?.channels(at: Int(customKelvin)) else { return [:] }
+            (r, g, b, c, w) = (Double(ch.r), Double(ch.g), Double(ch.b), Double(ch.c), Double(ch.w))
+            return ["r": ch.r, "g": ch.g, "b": ch.b, "c": ch.c, "w": ch.w]
+        case .scene:
+            if sceneId == Scenes.inlineCustom {
+                // One of ours: the definition goes with it, as the bulb can't keep it.
+                guard let id = customSceneId, let scene = library.customScene(id) else { return [:] }
+                return ["sceneId": sceneId, "elm": scene.elm]
             }
+            // Rhythm and unknown IDs (as reported by the bulb) can't be set.
+            return Scenes.isKnown(sceneId) ? ["sceneId": sceneId] : [:]
         }
-        // Speed only takes when it's sent on its own (a firmware bug), so it's a separate request.
-        let speedParams: [String: Any]? = fields.contains(.speed) && mode == .scene ? ["speed": Int(speed)] : nil
-        guard !p.isEmpty || speedParams != nil else { return }
-        if !p.isEmpty {
-            if let fade = Self.fade { p["trans"] = fade }
-            if switchOn {
-                isOn = true
-            } else if isOn == false {
-                // A setPilot without "state" switches the bulb on: say so only when it's off.
-                p["state"] = false
-            }
+    }
+
+    /// Sends one setPilot (and `speed` after it, on its own: the firmware drops speed sent with
+    /// anything else), then reads the bulb back. `power`: true leaves `state` out, which switches
+    /// the bulb on; false sends `"state": false`; nil keeps it as it is (a bulb that's off gets
+    /// `"state": false`, since leaving it out would switch it on).
+    private func transmit(_ params: [String: Any], speed: Int?, power: Bool?, retry: Bool) {
+        var p = params
+        guard !p.isEmpty || speed != nil || power != nil else { return }
+        switch power {
+        case true?: isOn = true
+        case false?:
+            p["state"] = false
+            isOn = false
+        case nil:
+            if !p.isEmpty, isOn == false { p["state"] = false }
         }
-        let shown = p.isEmpty ? speedParams! : p
+        let speedParams: [String: Any]? = speed.map { ["speed": $0] }
+        let shown = p.isEmpty ? (speedParams ?? [:]) : p
         if let data = try? JSONSerialization.data(withJSONObject: shown, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
         lastPilot = p.filter { $0.key != "state" && $0.key != "trans" }.compactMapValues { $0 as? Int }
-        if let speedParams { lastPilot["speed"] = speedParams["speed"] as? Int }
+        if let speed { lastPilot["speed"] = speed }
         lastState = isOn
         sendSeq += 1
         pending = true
-        if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
+        if !p.isEmpty {
+            bulb.send("setPilot", p, retry: retry)
+        } else if power == true {
+            bulb.send("setState", ["state": true], retry: retry)
+        }
         if let speedParams {
             if p.isEmpty {
                 bulb.send("setPilot", speedParams, retry: retry)
@@ -518,39 +548,73 @@ final class Model {
 
     /// Plays one of setPilot's custom scenes (sent inline: nothing is stored on the bulb).
     func playCustom(_ scene: CustomScene, switchOn: Bool = false) {
-        customSceneId = scene.id
-        mode = .scene
-        sceneId = Scenes.inlineCustom
-        sendPilot([.colour], retry: true, switchOn: switchOn)
+        send(LightChange(colour: .custom(scene.id, speed: nil), power: switchOn ? true : nil, fade: Self.fade))
     }
 
     /// Applies a preset, switching the bulb on if it's off.
     func apply(_ preset: Preset) {
-        var fields: Set<PilotField> = [.colour, .dimming]
-        switch preset.colour {
+        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: Self.fade))
+    }
+
+    /// Sends several changes as one setPilot, with their own fade time (`trans`).
+    func send(_ change: LightChange) {
+        var p: [String: Any] = [:]
+        var speed: Int?
+        if let colour = change.colour {
+            guard select(colour, speed: &speed) else { return }
+            p = colourParams()
+            if p.isEmpty {
+                status = "That colour can't be sent"
+                return
+            }
+        }
+        if let d = change.dimming {
+            dimming = min(max(Double(d), minDimming), 100)
+            p["dimming"] = Int(dimming)
+        }
+        if let fade = change.fade, !p.isEmpty || change.power == true { p["trans"] = fade }
+        transmit(p, speed: speed, power: change.power, retry: true)
+    }
+
+    /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.
+    private func select(_ colour: LightColour, speed: inout Int?) -> Bool {
+        switch colour {
         case let .rgbcw(r, g, b, c, w):
             mode = .rgbcw
             (self.r, self.g, self.b, self.c, self.w) = (Double(r), Double(g), Double(b), Double(c), Double(w))
         case let .temp(k):
             mode = .temp
             temp = Double(k)
-        case let .scene(id, speed):
+        case let .scene(id, s):
             mode = .scene
             sceneId = id
-            if let speed { self.speed = Double(speed); fields.insert(.speed) }
-        case let .custom(id, speed):
+            customSceneId = nil
+            if let s { self.speed = Double(s); speed = s }
+        case let .custom(id, s):
             guard library.customScene(id) != nil else {
-                status = "That preset's custom scene has been deleted"
-                return
+                status = "That custom scene has been deleted"
+                return false
             }
             mode = .scene
             sceneId = Scenes.inlineCustom
             customSceneId = id
-            if let speed { self.speed = Double(speed); fields.insert(.speed) }
+            if let s { self.speed = Double(s); speed = s }
+        case let .customCCT(id, k):
+            guard let found = library.scale(id), let ch = found.scale.channels(at: k) else {
+                status = "That CCT scale has been deleted"
+                return false
+            }
+            if let mac = chosenMAC, found.mac == mac.lowercased() {
+                library.setActiveScale(id, for: mac)
+                mode = .custom
+                customKelvin = Double(k)
+            } else {
+                // Another bulb's scale: its values, as plain RGBCW.
+                mode = .rgbcw
+                (r, g, b, c, w) = (Double(ch.r), Double(ch.g), Double(ch.b), Double(ch.c), Double(ch.w))
+            }
         }
-        if case .scene = preset.colour { customSceneId = nil }
-        dimming = min(max(Double(preset.dimming), minDimming), 100)
-        sendPilot(fields, retry: true, switchOn: true)
+        return true
     }
 
     /// What the bulb is showing, as a preset colour (nil for Rhythm and scenes setPilot can't set).
@@ -558,6 +622,7 @@ final class Model {
         switch mode {
         case .rgbcw: .rgbcw(r: Int(r), g: Int(g), b: Int(b), c: Int(c), w: Int(w))
         case .temp: .temp(Int(temp))
+        case .custom: activeScale.map { .customCCT(scale: $0.id, kelvin: Int(customKelvin)) }
         case .scene:
             if sceneId == Scenes.inlineCustom, let id = customSceneId { .custom(id, speed: Int(speed)) }
             else if Scenes.isKnown(sceneId) { .scene(id: sceneId, speed: Int(speed)) }
@@ -576,6 +641,27 @@ final class Model {
         let preset = Preset(name: library.uniquePresetName(n.isEmpty ? "Preset" : n), colour: colour, dimming: Int(dimming))
         library.presets.append(preset)
         return preset
+    }
+
+    // MARK: Custom CCT
+
+    /// The scale Custom CCT uses for the chosen bulb.
+    var activeScale: CCTScale? { library.activeScale(for: chosenMAC) }
+
+    /// The bulb's own CCT table, from getModelConfig, as a starting point for a scale.
+    var defaultScale: CCTScale? {
+        guard let cctRange, let renderFactor else { return nil }
+        return CCTScale.bulbDefault(cctRange: cctRange, renderFactor: renderFactor)
+    }
+
+    /// Switches Custom CCT to another of this bulb's scales (and re-sends, if it's in use).
+    func useScale(_ id: UUID) {
+        guard let mac = chosenMAC else { return }
+        library.setActiveScale(id, for: mac)
+        if mode == .custom, let range = activeScale?.range {
+            customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
+            sendPilot([.colour], retry: true)
+        }
     }
 
     /// Relative brightness (`dimDelta`): the bulb adds it to its own level, so concurrent changes
@@ -603,6 +689,7 @@ final class Model {
         mode = v.mode
         (r, g, b, c, w) = (v.r, v.g, v.b, v.c, v.w)
         temp = v.temp
+        customKelvin = v.customKelvin
         sceneId = v.sceneId
         speed = v.speed
         dimming = v.dimming
@@ -610,7 +697,8 @@ final class Model {
     }
 
     var values: LightValues {
-        LightValues(mode: mode, r: r, g: g, b: b, c: c, w: w, temp: temp, sceneId: sceneId, speed: speed, dimming: dimming)
+        LightValues(mode: mode, r: r, g: g, b: b, c: c, w: w, temp: temp, customKelvin: customKelvin,
+                    sceneId: sceneId, speed: speed, dimming: dimming)
     }
 
     var snapshot: LightSnapshot {
@@ -633,6 +721,12 @@ final class Model {
         s.tempMin = tempRange.lowerBound
         s.tempMax = tempRange.upperBound
         s.customScene = mode == .scene && sceneId == Scenes.inlineCustom ? customSceneId : nil
+        s.customKelvin = customKelvin
+        if let scale = activeScale, let range = scale.range {
+            s.cctScaleName = scale.name
+            s.customMin = Double(range.lowerBound)
+            s.customMax = Double(range.upperBound)
+        }
         s.status = mismatch ?? status
         s.pending = pending
         return s
@@ -769,9 +863,16 @@ final class Model {
             mode = .temp
             temp = t
         } else if num("r") != nil || num("c") != nil || num("w") != nil {
-            mode = .rgbcw
             r = num("r") ?? 0; g = num("g") ?? 0; b = num("b") ?? 0
             c = num("c") ?? 0; w = num("w") ?? 0
+            // The bulb only knows RGBCW. In Custom CCT, stay there if the scale gives exactly
+            // these values at some kelvin (the nearest to where it was); otherwise it's RGBCW.
+            let ch = CCTScale.Channels(r: Int(r), g: Int(g), b: Int(b), c: Int(c), w: Int(w))
+            if mode == .custom, let k = activeScale?.kelvin(matching: ch, near: Int(customKelvin)) {
+                customKelvin = Double(k)
+            } else {
+                mode = .rgbcw
+            }
         }
         if mode != .scene || sceneId != Scenes.inlineCustom { customSceneId = nil }
     }
@@ -779,6 +880,8 @@ final class Model {
     private func applyLimits(_ result: [String: Any]) {
         if let v = result["fadeIn"] as? NSNumber { fadeIn = v.intValue }
         if let v = result["fadeOut"] as? NSNumber { fadeOut = v.intValue }
+        if let v = result["cctRange"] as? [NSNumber] { cctRange = v.map(\.intValue) }
+        if let v = result["renderFactor"] as? [NSNumber] { renderFactor = v.map(\.intValue) }
         // Only the slider's range: changing `dimming` here would show a level the bulb isn't at.
         if let d = (result["minDimLevel"] as? NSNumber)?.doubleValue, d >= 1, d < 100 {
             minDimming = d

@@ -28,7 +28,8 @@ struct ControlsView: View {
                         update { $0.mode = mode }
                         queue(.colour, now: true)
                     })) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        // Custom CCT only if the bulb has a scale (set up on the iPhone)
+                        ForEach(Mode.allCases.filter { $0 != .custom || s.cctScaleName != nil }) { Text($0.rawValue).tag($0) }
                     }
                     switch v.mode {
                     case .rgbcw:
@@ -42,6 +43,13 @@ struct ControlsView: View {
                     case .temp:
                         WatchSlider(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax,
                                     step: 100, tint: ColourTemperature.color(kelvin: v.temp), unit: " K")
+                    case .custom:
+                        if let name = s.cctScaleName, s.customMin < s.customMax {
+                            WatchSlider(label: name, value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
+                                        step: 50, tint: ColourTemperature.color(kelvin: v.customKelvin), unit: " K")
+                        } else {
+                            Text("Set up a CCT scale in setPilot on your iPhone.").foregroundStyle(.secondary)
+                        }
                     case .scene:
                         Picker("Scene", selection: Binding(get: { v.sceneId }, set: { id in
                             update { $0.sceneId = id }
@@ -81,7 +89,7 @@ struct ControlsView: View {
     private func follow(_ s: LightSnapshot?) {
         guard unsent.isEmpty, let s else { return }
         values = LightValues(mode: s.mode, r: s.r, g: s.g, b: s.b, c: s.c, w: s.w, temp: s.temp,
-                             sceneId: s.sceneId, speed: s.speed, dimming: s.dimming)
+                             customKelvin: s.customKelvin, sceneId: s.sceneId, speed: s.speed, dimming: s.dimming)
     }
 
     private func update(_ change: (inout LightValues) -> Void) {

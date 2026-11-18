@@ -5,6 +5,7 @@ struct ContentView: View {
     @AppStorage(Model.addressKey) private var address = ""
     let model: Model
     @State private var confirmingReboot = false
+    @State private var composing = false
     @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
 
@@ -35,6 +36,18 @@ struct ContentView: View {
             } else {
                 model.startIfSaved()
             }
+        }
+        // Here, not on the Light panel: that is disabled while the bulb is unknown.
+        .sheet(isPresented: $composing) {
+            VStack(spacing: 0) {
+                ComposeView(model: model) { composing = false }
+                HStack {
+                    Spacer()
+                    Button("Close") { composing = false }.keyboardShortcut(.cancelAction)
+                }
+                .padding(12)
+            }
+            .frame(width: 480, height: 640)
         }
         .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot) {
             Button("Reboot", role: .destructive) { model.reboot() }
@@ -86,6 +99,9 @@ struct ContentView: View {
                     .controlSize(.small)
                     .opacity(model.pending ? 1 : 0)
                     .help("Waiting for the bulb to confirm")
+                Button("Compose…") { composing = true }
+                    .buttonStyle(.borderless)
+                    .help("Prepare a change (colour, brightness, power) and send it in one go, with its own fade time")
                 Toggle("Power", isOn: model.powerBinding)
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -254,6 +270,18 @@ struct LightControls: View {
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @Environment(\.openWindow) private var openWindow
 
+    private var editScalesButton: some View {
+        Button {
+            openWindow(id: "scales")
+            NSApp.activate()
+        } label: {
+            Label("CCT Scales…", systemImage: "square.and.pencil")
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .help("Edit this bulb's custom CCT scales")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
             Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
@@ -283,6 +311,26 @@ struct LightControls: View {
                               marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
                               value: model.binding(\.temp))
                     .id(adaptingWhite) // rebuild the track when the adapting white changes
+            case .custom:
+                if let scale = model.activeScale, let range = scale.range {
+                    HStack(spacing: 8) {
+                        Text("Scale").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+                        Picker("Scale", selection: model.scaleChoice) {
+                            ForEach(model.library.scales(for: model.chosenMAC)) { Text($0.name).tag(Optional($0.id)) }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Spacer()
+                        editScalesButton
+                    }
+                    // Marks at the scale's points; the track's colours are black-body, not the scale's.
+                    ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound), step: 10,
+                                  marks: Array(Set(scale.points.map { Double($0.kelvin) })).sorted(),
+                                  scale: .mired, colourTemperatureStrip: true, value: model.binding(\.customKelvin))
+                        .id("\(adaptingWhite) \(scale.id) \(range)")
+                } else {
+                    NoScaleView(model: model) { openWindow(id: "scales"); NSApp.activate() }
+                }
             case .scene:
                 HStack(spacing: 8) {
                     Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)

@@ -21,6 +21,8 @@ struct SetPilotApp: App {
         .menuBarExtraStyle(.window)
         Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model) }
             .defaultSize(width: 720, height: 640)
+        Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
+            .defaultSize(width: 720, height: 680)
         Settings { SettingsView(model: model) }
     }
 }
