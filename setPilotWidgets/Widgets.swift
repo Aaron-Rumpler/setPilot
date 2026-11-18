@@ -140,7 +140,7 @@ struct PresetsWidgetView: View {
     }
 
     private var powerIntent: PowerToggleIntent {
-        var i = PowerToggleIntent()
+        let i = PowerToggleIntent()
         i.value = !(entry.snapshot?.isOn ?? false)
         return i
     }
@@ -208,7 +208,7 @@ struct StatusWidgetView: View {
                 }
                 Spacer(minLength: 0)
                 Toggle(isOn: on, intent: {
-                    var i = PowerToggleIntent()
+                    let i = PowerToggleIntent()
                     i.value = !on
                     return i
                 }()) {
