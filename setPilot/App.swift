@@ -184,7 +184,7 @@ struct SettingsView: View {
             } header: {
                 Text("Sliders")
             } footer: {
-                Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. Hold Option while dragging (or with the arrow keys) to move in 1s anyway.")
+                Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. To move in 1s anyway, hold Option while dragging (or with the arrow keys), or hold the knob still for a moment before dragging.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

@@ -59,10 +59,11 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
 - **Round numbers**: sliders (and the watch's Digital Crown) snap to round steps, and the steppers
   and − and + step to the next one: 5 for dimming and other percentages, 50 K for temperatures, 32
   for 0–255 channels, 10 for speed, 100 ms for times. Snapping can be turned off in Settings.
-  Finer: hold Option on the Mac while dragging, using the arrow keys or clicking a stepper; on
-  iPhone, touch and hold a slider for a moment before dragging. Tapping a value on iPhone or the
-  watch opens a number pad, where − and + (and the Crown) step by 1, with ±10 for temperatures
-  and times on iPhone. Keyboard: arrow keys step a focused slider, ⌘R syncs.
+  Finer: hold a slider's knob still for a moment before dragging (Mac and iPhone; a haptic tick
+  says it's on), or on the Mac hold Option while dragging, using the arrow keys or clicking a
+  stepper. Tapping a value on iPhone or the watch opens a number pad, where − and + (and the
+  Crown) step by 1; temperatures and times also have ±10 (on the watch the default, with a button
+  to switch to 1s). Keyboard: arrow keys step a focused slider, ⌘R syncs.
 - **Presets**: save the light as it is (colour, temperature, scene or custom scene, with its
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
   switches the bulb on. Right-click a preset to rename, update, move or delete it.

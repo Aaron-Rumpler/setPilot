@@ -90,7 +90,8 @@ struct ValueEditor: View {
 }
 
 /// Enters a whole number exactly: digits, delete and OK, starting from the current value (the
-/// first digit typed replaces it); − and + and the Crown fine-tune it in 1s.
+/// first digit typed replaces it). − and + and the Crown fine-tune it: by 10 for temperatures and
+/// times (the button under the value switches to 1s), by 1 otherwise.
 struct NumberPad: View {
     let title: String
     let range: ClosedRange<Double>
@@ -101,7 +102,12 @@ struct NumberPad: View {
     /// The next digit replaces the text (it's the value it started from, or one stepped to).
     @State private var replace = true
     @State private var crown = 0.0
+    /// Steps of 1 rather than the in-between step (where there is one).
+    @State private var ones = false
     @Environment(\.dismiss) private var dismiss
+
+    private var medium: Double? { Stepping.medium(for: range) }
+    private var stepSize: Double { ones ? 1 : medium ?? 1 }
 
     private var number: Double? { Double(text) }
     private var valid: Bool { number.map(range.contains) ?? false }
@@ -111,10 +117,10 @@ struct NumberPad: View {
             // Also a text field: tapping it opens the system's input, which offers a number pad
             // for telephone-number fields where watchOS supports one (it hasn't always worked).
             HStack(spacing: 4) {
-                Button { step(-1) } label: { Image(systemName: "minus") }
+                Button { step(-stepSize) } label: { Image(systemName: "minus") }
                     .buttonStyle(.bordered)
                     .frame(width: 34)
-                    .accessibilityLabel("Down 1")
+                    .accessibilityLabel("Down \(Int(stepSize))")
                 TextField(String("\(Int(range.lowerBound))–\(Int(range.upperBound))"), text: $text) // String: no "1,541"
                     .textContentType(.telephoneNumber)
                     .multilineTextAlignment(.center)
@@ -124,10 +130,20 @@ struct NumberPad: View {
                         let digits = String(new.filter(\.isNumber).prefix(6))
                         if digits != new { text = digits }
                     }
-                Button { step(1) } label: { Image(systemName: "plus") }
+                Button { step(stepSize) } label: { Image(systemName: "plus") }
                     .buttonStyle(.bordered)
                     .frame(width: 34)
-                    .accessibilityLabel("Up 1")
+                    .accessibilityLabel("Up \(Int(stepSize))")
+            }
+            if let medium {
+                Button {
+                    ones.toggle()
+                } label: {
+                    Text(verbatim: ones ? "Steps of 1 · tap for \(Int(medium))" : "Steps of \(Int(medium)) · tap for 1")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 ForEach([["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]], id: \.self) { row in
@@ -159,7 +175,7 @@ struct NumberPad: View {
         }
         .navigationTitle(title)
         .focusable()
-        .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: 1,
+        .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: stepSize,
                               sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { _, new in
             let v = Int(min(max(new.rounded(), range.lowerBound), range.upperBound))
@@ -176,7 +192,7 @@ struct NumberPad: View {
         }
     }
 
-    /// − and +: by 1 from what's shown (or the bottom of the range).
+    /// − and +: by `delta` from what's shown (or the bottom of the range).
     private func step(_ delta: Double) {
         let v = min(max((number ?? range.lowerBound) + delta, range.lowerBound), range.upperBound)
         text = String(Int(v))

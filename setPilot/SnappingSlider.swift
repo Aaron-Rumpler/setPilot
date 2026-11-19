@@ -135,9 +135,31 @@ final class SnapSlider: NSSlider {
         set { doubleValue = scale.position(of: min(max(newValue, range.lowerBound), range.upperBound), in: range) }
     }
 
-    /// The step in effect: whole numbers while Option is held (no snapping), otherwise `step`.
+    /// The step in effect: whole numbers while Option is held, or during a drag that began with
+    /// the knob held still for a moment (no snapping); otherwise `step`.
     private var currentStep: Double {
-        NSEvent.modifierFlags.contains(.option) ? 1 : max(step, 1)
+        NSEvent.modifierFlags.contains(.option) || fineDrag ? 1 : max(step, 1)
+    }
+
+    /// This drag began with the knob held still for ~0.35 s (as on iPhone): it moves in 1s.
+    private var fineDrag = false
+
+    override func mouseDown(with event: NSEvent) {
+        fineDrag = false
+        let start = doubleValue
+        // Fires during the tracking loop below (common modes include event tracking).
+        let hold = Timer(timeInterval: 0.35, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                // Still where it was pressed (allowing for the first snap): a fine drag.
+                guard let self, abs(self.doubleValue - start) < 0.002 else { return }
+                self.fineDrag = true
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+        }
+        RunLoop.current.add(hold, forMode: .common)
+        super.mouseDown(with: event) // tracks until mouse-up
+        hold.invalidate()
+        fineDrag = false
     }
 
     /// Nearest multiple of the current step, clamped so both ends stay reachable.
