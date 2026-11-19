@@ -344,3 +344,22 @@ struct CCTScale: Codable, Hashable, Identifiable, Sendable {
         return copy
     }
 }
+
+/// The coarse steps of − and + (and the Mac's steppers), the same in every app: to the next
+/// multiple of a round step for the value's range, so presses land on round numbers.
+enum Stepping {
+    /// 1000 ms for fade times, 100 K for colour temperatures, 32 for 0–255 channels (eight steps,
+    /// the last one short), 10 for the rest (percentages, speed).
+    static func coarse(for range: ClosedRange<Double>) -> Double {
+        if range.upperBound > 20_000 { return 1000 }
+        if range.upperBound > 1000 { return 100 }
+        if range.upperBound == 255 { return 32 }
+        return 10
+    }
+
+    /// The next multiple of `step` above or below `value` (37 → 40 → 50), within `range`.
+    static func next(_ value: Double, up: Bool, by step: Double, in range: ClosedRange<Double>) -> Double {
+        let v = up ? ((value / step).rounded(.down) + 1) * step : ((value / step).rounded(.up) - 1) * step
+        return min(max(v, range.lowerBound), range.upperBound)
+    }
+}

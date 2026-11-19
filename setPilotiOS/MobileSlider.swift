@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A labelled slider row: the value shows on the right, and tapping it lets you type one.
-/// Kelvin uses a mired scale (equal steps look equally different, so warm whites get more room)
-/// with a colour-temperature strip under it, and snaps to `step`.
+/// A labelled slider row: − and + step to round numbers (`Stepping`), and tapping the value opens
+/// a popover to type one or fine-tune it in 1s. Kelvin uses a mired scale (equal steps look
+/// equally different, so warm whites get more room) with a colour-temperature strip under it,
+/// and snaps to `step`.
 struct MobileSlider: View {
     let label: String
     var tint: Color? = nil
@@ -13,32 +14,38 @@ struct MobileSlider: View {
     @Binding var value: Double
 
     @State private var editing = false
-    @State private var typed = ""
     @Environment(\.isEnabled) private var isEnabled
+
+    private var coarse: Double { Stepping.coarse(for: range) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: 10) {
                 Text(label)
                 Spacer()
+                stepButton(up: false)
                 Button {
-                    typed = String(Int(value))
                     editing = true
                 } label: {
                     Text(verbatim: "\(Int(value))\(unit)")
                         .monospacedDigit()
                         .foregroundStyle(isEnabled ? .primary : .secondary)
+                        .frame(minWidth: 52, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Type a value for \(label)")
+                .accessibilityLabel("\(label): type or fine-tune the value")
+                .popover(isPresented: $editing) {
+                    FineValueEditor(label: label, range: range, unit: unit, value: $value)
+                        .presentationCompactAdaptation(.popover)
+                }
+                stepButton(up: true)
             }
             Slider(value: position, in: 0...1)
                 .tint(tint)
                 .accessibilityLabel(label)
                 .accessibilityValue("\(Int(value))\(unit)")
                 .accessibilityAdjustableAction { direction in
-                    let delta = step * (step == 1 ? 5 : 1)
-                    value = clamp(direction == .increment ? value + delta : value - delta)
+                    value = Stepping.next(value, up: direction == .increment, by: coarse, in: range)
                 }
             if mired {
                 LinearGradient(stops: stripStops, startPoint: .leading, endPoint: .trailing)
@@ -49,15 +56,20 @@ struct MobileSlider: View {
             }
         }
         .padding(.vertical, 2)
-        .alert(label, isPresented: $editing) {
-            TextField(label, text: $typed).keyboardType(.numberPad)
-            Button("Set") {
-                if let v = Double(typed.trimmingCharacters(in: .whitespaces)) { value = clamp(v) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
+    }
+
+    /// − or +: to the next round number (borderless, so each button in the list row takes its own taps).
+    private func stepButton(up: Bool) -> some View {
+        Button {
+            let v = Stepping.next(value, up: up, by: coarse, in: range)
+            if v != value { value = v }
+        } label: {
+            Image(systemName: up ? "plus.circle" : "minus.circle")
+                .font(.title3)
         }
+        .buttonStyle(.borderless)
+        .disabled(up ? value >= range.upperBound : value <= range.lowerBound)
+        .accessibilityLabel(up ? "\(label) up \(Int(coarse))" : "\(label) down \(Int(coarse))")
     }
 
     /// The slider works in 0…1; this maps it to the value (linearly, or in mireds).
@@ -91,5 +103,54 @@ struct MobileSlider: View {
             let t = Double(i) / 12
             return .init(color: ColourTemperature.color(kelvin: value(at: t)), location: t)
         }
+    }
+}
+
+/// The value popover: type a value, or fine-tune it in 1s with the system stepper (which
+/// repeats, faster and faster, while held).
+private struct FineValueEditor: View {
+    let label: String
+    let range: ClosedRange<Double>
+    let unit: String
+    @Binding var value: Double
+    @State private var typed = ""
+    @FocusState private var focused: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    private var typedValue: Double? {
+        Double(typed.trimmingCharacters(in: .whitespaces)).flatMap { range.contains($0) ? $0.rounded() : nil }
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(label).font(.headline)
+            HStack(spacing: 4) {
+                TextField(label, text: $typed)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .font(.title2.monospacedDigit())
+                    .focused($focused)
+                    .frame(width: 110)
+                    .foregroundStyle(typedValue == nil && !typed.isEmpty ? Color.orange : Color.primary)
+                if !unit.isEmpty { Text(unit.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary) }
+            }
+            Stepper(label, value: Binding(get: { value }, set: { new in
+                value = new
+                typed = String(Int(new))
+            }), in: range, step: 1)
+            .labelsHidden()
+            Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Set") {
+                if let v = typedValue { value = v }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(typedValue == nil)
+        }
+        .padding()
+        .frame(minWidth: 220)
+        .onAppear { typed = String(Int(value)) }
     }
 }

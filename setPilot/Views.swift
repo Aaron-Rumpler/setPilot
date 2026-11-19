@@ -406,21 +406,13 @@ struct ChannelSlider: View {
         }
     }
 
-    /// The stepper's step, from the range: 100 for colour temperatures, 15 for 0–255 channels
-    /// (it divides 255), 10 for the rest (dimming, speed).
-    private var buttonStep: Double {
-        if range.upperBound > 1000 { return 100 }
-        if range.upperBound == 255 { return 15 }
-        return 10
-    }
+    private var buttonStep: Double { Stepping.coarse(for: range) }
 
-    /// To the next multiple of the step (so 37 goes to 40, then 50), or by 1 with Option held,
-    /// within the range.
+    /// To the next multiple of the step (so 37 goes to 40, then 50), or by 1 with Option held.
     private func nudge(up: Bool) {
-        let s = NSEvent.modifierFlags.contains(.option) ? 1 : buttonStep
-        let v = up ? ((value / s).rounded(.down) + 1) * s : ((value / s).rounded(.up) - 1) * s
-        let clamped = min(max(v, range.lowerBound), range.upperBound)
-        if clamped != value { value = clamped }
+        let step = NSEvent.modifierFlags.contains(.option) ? 1 : buttonStep
+        let v = Stepping.next(value, up: up, by: step, in: range)
+        if v != value { value = v }
     }
 }
 

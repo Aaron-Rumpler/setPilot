@@ -57,8 +57,9 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   console.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
 - Keyboard: arrow keys step sliders (50 K for temperature), ⌘R syncs. The steppers next to the
-  sliders go to the next multiple of 10 (100 K for temperatures, 15 for 0–255 channels); with
-  Option held, by 1.
+  sliders go to the next multiple of 10 (100 K for temperatures, 32 for 0–255 channels); with
+  Option held, by 1. The iPhone's − and + and the watch's do the same; on iPhone, tapping a value
+  opens a popover to type one or fine-tune in 1s, and on the watch the Digital Crown fine-tunes.
 - **Presets**: save the light as it is (colour, temperature, scene or custom scene, with its
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
   switches the bulb on. Right-click a preset to rename, update, move or delete it.

@@ -28,8 +28,8 @@ struct ValueRow: View {
     }
 }
 
-/// One value, full screen: the Digital Crown changes it a step per detent (with a haptic tick),
-/// − and + do the same, and the keypad enters an exact number.
+/// One value, full screen: − and + go to the next round number (`Stepping`), the Digital Crown
+/// fine-tunes it a step per detent (with a haptic tick), and the keypad enters an exact number.
 struct ValueEditor: View {
     let label: String
     @Binding var value: Double
@@ -51,12 +51,12 @@ struct ValueEditor: View {
                 .gaugeStyle(.accessoryLinearCapacity)
                 .tint(tint)
             HStack {
-                Button { set(value - step) } label: { Image(systemName: "minus") }
-                    .accessibilityLabel("Decrease")
+                Button { set(Stepping.next(value, up: false, by: coarse, in: range)) } label: { Image(systemName: "minus") }
+                    .accessibilityLabel("Down \(Int(coarse))")
                 Button { typing = true } label: { Image(systemName: "number") }
                     .accessibilityLabel("Enter a value")
-                Button { set(value + step) } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Increase")
+                Button { set(Stepping.next(value, up: true, by: coarse, in: range)) } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Up \(Int(coarse))")
             }
             Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
                 .font(.caption2)
@@ -74,6 +74,8 @@ struct ValueEditor: View {
         .accessibilityElement(children: .contain)
         .accessibilityValue("\(Int(value))\(unit)")
     }
+
+    private var coarse: Double { Stepping.coarse(for: range) }
 
     private func set(_ v: Double) {
         let clamped = min(max(v.rounded(), range.lowerBound), range.upperBound)
