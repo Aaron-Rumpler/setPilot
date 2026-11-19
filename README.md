@@ -37,10 +37,10 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   push arrives, since registering doesn't prove pushes get through a firewall.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
   shows the MAC address, module and firmware, the raw replies to every read the bulb answers over
-  UDP (all 22 of firmware 1.38.0's, Wi-Fi ones included; in a popover from the ⓘ button, and Bulb &
-  Settings › Configuration on iPhone), and a reboot button.
+  UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included, plus `getWifiConfig`; in a
+  popover from the ⓘ button, and Bulb & Settings › Configuration on iPhone), and a reboot button.
 - **Console** (Mac; Window › Console, ⌥⌘K, or Console… on the Last Command panel): send any method
-  with any params. Known methods (all 70 in firmware 1.38.0's table) are in a menu with params to
+  with any params. Known methods (all 70 in firmware 1.38.0's table, plus `getWifiConfig`) are in a menu with params to
   start from, a description, whether the bulb takes them over UDP, and a confirmation for anything
   that changes what the bulb stores. Params are edited as syntax-highlighted JSON, checked as you
   type. A `setPilot` from the console is read back like the controls' own, with `"state": false`

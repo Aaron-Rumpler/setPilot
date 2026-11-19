@@ -46,6 +46,7 @@ enum BulbAPI {
         Method(name: "getModelConfig", kind: .read, summary: "Hardware and colour configuration: CCT range, renderFactor, channel currents, PWM resolution."),
         Method(name: "getUserConfig", kind: .read, summary: "User settings: fadeIn and fadeOut, default dimming, power-on behaviour, dim-to-warm points."),
         Method(name: "getDevInfo", kind: .read, summary: "Device MACs, module and flash."),
+        Method(name: "getWifiConfig", kind: .read, summary: "Wi-Fi configuration. Not in firmware 1.38.0's method table, so this bulb may answer \"method not found\"; other firmware may have it."),
         Method(name: "getPower", kind: .read, summary: "Power metering."),
         Method(name: "getTelemetry", kind: .read, summary: "Runtime and telemetry counters."),
         Method(name: "getTime", kind: .read, summary: "The bulb's clock."),
