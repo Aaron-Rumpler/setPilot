@@ -383,7 +383,7 @@ struct ChannelSlider: View {
     let label: String
     var tint: Color? = nil
     let range: ClosedRange<Double>
-    /// Slider snapping (drag, arrow keys, VoiceOver); the field and stepper still work in 1s.
+    /// Slider snapping (drag, arrow keys, VoiceOver); the field works in 1s.
     var step: Double = 1
     var marks: [Double] = []
     var scale: SliderScale = .linear
@@ -399,9 +399,28 @@ struct ChannelSlider: View {
                 .alignmentGuide(VerticalAlignment.center) { _ in SnapSliderContainer.sliderHeight / 2 }
             NumberField(value: $value, range: range, label: label)
                 .frame(width: 56)
-            Stepper(label, value: $value, in: range, step: 1)
+            // Holding a stepper half repeats (AppKit's own, at a steady rate).
+            Stepper(label, onIncrement: { nudge(up: true) }, onDecrement: { nudge(up: false) })
                 .labelsHidden()
+                .help("Steps of \(Int(buttonStep)); hold Option for steps of 1")
         }
+    }
+
+    /// The stepper's step, from the range: 100 for colour temperatures, 15 for 0–255 channels
+    /// (it divides 255), 10 for the rest (dimming, speed).
+    private var buttonStep: Double {
+        if range.upperBound > 1000 { return 100 }
+        if range.upperBound == 255 { return 15 }
+        return 10
+    }
+
+    /// To the next multiple of the step (so 37 goes to 40, then 50), or by 1 with Option held,
+    /// within the range.
+    private func nudge(up: Bool) {
+        let s = NSEvent.modifierFlags.contains(.option) ? 1 : buttonStep
+        let v = up ? ((value / s).rounded(.down) + 1) * s : ((value / s).rounded(.up) - 1) * s
+        let clamped = min(max(v, range.lowerBound), range.upperBound)
+        if clamped != value { value = clamped }
     }
 }
 
