@@ -39,7 +39,10 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   shows the MAC address, module and firmware, the raw replies to every read the bulb answers over
   UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included, plus `getWifiConfig`; in a
   popover from the ⓘ button, and Bulb & Settings › Configuration on iPhone), and a reboot button.
-- **Console** (Mac; Window › Console, ⌥⌘K, or Console… on the Last Command panel): send any method
+- **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer;
+  from the Shortcuts app, Spotlight and Siri.
+- **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
+  Settings › Console, with the log on its own page): send any method
   with any params. Known methods (all 70 in firmware 1.38.0's table, plus `getWifiConfig`) are in a menu with params to
   start from, a description, whether the bulb takes them over UDP, and a confirmation for anything
   that changes what the bulb stores. Params are edited as syntax-highlighted JSON, checked as you
@@ -83,7 +86,8 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
 The iPhone app has the same controls, presets and custom scenes (its own, kept on the iPhone), plus
 Shortcuts actions: apply a preset, switch on or off, set the brightness, and make it brighter or
 dimmer (`dimDelta`, relative to wherever the bulb is). Through the Shortcuts app those reach Siri,
-the Action button, and Control Center and the Lock Screen (a Shortcuts control).
+the Action button, and Control Center and the Lock Screen (a Shortcuts control). It has the console
+too (Bulb & Settings › Console).
 
 The iPhone app doesn't search the network: broadcasting needs Apple's multicast entitlement (paid
 accounts only), and probing every address on a network isn't acceptable on networks you don't own.

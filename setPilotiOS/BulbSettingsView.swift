@@ -90,6 +90,7 @@ struct BulbSettingsView: View {
                     LabeledContent("Firmware", value: model.firmware ?? "—")
                     NavigationLink("Configuration") { ConfigView(model: model) }
                         .disabled(model.link != .connected)
+                    NavigationLink("Console") { ConsoleView(model: model) }
                     Button("Reboot…", role: .destructive) { confirmingReboot = true }
                         .disabled(model.link != .connected)
                 }

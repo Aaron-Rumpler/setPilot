@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// The one connection to the bulb, shared by the app's screens, its App Intents and the watch.
-@MainActor
-enum Shared {
-    static let model = Model()
-}
-
 @main
 struct SetPilotMobileApp: App {
     @State private var model = Shared.model

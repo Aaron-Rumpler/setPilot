@@ -5,8 +5,14 @@ import SwiftUI
 @main
 struct SetPilotApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    /// One connection to the bulb, shared by the window and the menu bar panel.
-    @State private var model = Model()
+    /// One connection to the bulb, shared by the windows, the menu bar panel and Shortcuts.
+    @State private var model = Shared.model
+
+    init() {
+        // Shortcuts and Siri learn the preset names from this, at launch and when they change.
+        Shared.model.library.onChange = { ShortcutNames.update() }
+        SetPilotShortcuts.updateAppShortcutParameters()
+    }
 
     var body: some Scene {
         Window("setPilot", id: "main") { ContentView(model: model) }
@@ -28,6 +34,21 @@ struct SetPilotApp: App {
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
+    }
+}
+
+/// Tells Shortcuts the preset names once edits pause (renaming types a name a letter at a time).
+@MainActor
+enum ShortcutNames {
+    private static var pending: Task<Void, Never>?
+
+    static func update() {
+        pending?.cancel()
+        pending = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            SetPilotShortcuts.updateAppShortcutParameters()
+        }
     }
 }
 
