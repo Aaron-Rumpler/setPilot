@@ -8,7 +8,8 @@ struct ComposeView: View {
     var onSend: () -> Void = {}
 
     private enum ColourKind: String, CaseIterable, Identifiable {
-        case rgbcw = "RGBCW", temp = "Temperature", custom = "Custom CCT", scene = "Scene"
+        // The same names as the modes (Mode.title).
+        case rgbcw = "RGBCW", temp = "Kelvin", custom = "Custom", scene = "Scene"
         var id: Self { self }
     }
 

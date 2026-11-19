@@ -7,8 +7,9 @@ enum Mode: String, CaseIterable, Identifiable, Codable, Sendable {
     case rgbcw = "RGBCW", temp = "Temperature", custom = "Custom CCT", scene = "Scene"
     var id: Self { self }
 
-    /// For narrow segmented controls.
-    var shortTitle: String {
+    /// The name shown for the mode, the same everywhere (short enough for the menu bar panel and
+    /// a phone). The raw values are stored, so they stay as they are.
+    var title: String {
         switch self {
         case .rgbcw: "RGBCW"
         case .temp: "Kelvin"

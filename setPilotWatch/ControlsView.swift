@@ -50,7 +50,7 @@ struct ControlsView: View {
                         queue(.colour, now: true)
                     })) {
                         // Custom CCT only if the bulb has a scale (set up on the iPhone or Mac)
-                        ForEach(Mode.allCases.filter { $0 != .custom || !(s.scales ?? []).isEmpty }) { Text($0.rawValue).tag($0) }
+                        ForEach(Mode.allCases.filter { $0 != .custom || !(s.scales ?? []).isEmpty }) { Text($0.title).tag($0) }
                     }
                     modeControls(s, v)
                 }
@@ -167,7 +167,8 @@ struct WatchComposeView: View {
     @Environment(\.dismiss) private var dismiss
 
     private enum Kind: String, CaseIterable, Identifiable {
-        case rgbcw = "RGBCW", temp = "Temperature", custom = "Custom CCT", scene = "Scene"
+        // The same names as the modes (Mode.title).
+        case rgbcw = "RGBCW", temp = "Kelvin", custom = "Custom", scene = "Scene"
         var id: Self { self }
     }
 

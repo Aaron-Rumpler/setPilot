@@ -109,7 +109,7 @@ struct RootView: View {
     private var lightSection: some View {
         Section {
             Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                ForEach(Mode.allCases) { Text($0.shortTitle).tag($0) }
+                ForEach(Mode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)

@@ -95,8 +95,8 @@ struct ConsoleComposer: View {
                 if rawMode || sendParams { parseStatus }
                 Spacer()
                 if !rawMode && trimmedMethod == "setPilot" {
-                    Toggle("Keep it off", isOn: $keepOff)
-                        .help(#"While the bulb is off, add "state": false (a setPilot without it switches the bulb on)"#)
+                    Toggle("Don't switch on", isOn: $keepOff)
+                        .help(#"A setPilot without "state" switches the bulb on. While the bulb is off, this adds "state": false, as the app's own controls do, so the change waits for the bulb to be switched on"#)
                 }
                 Toggle("Retry", isOn: $retry)
                     .disabled(rawMode && currentMethod.isEmpty)

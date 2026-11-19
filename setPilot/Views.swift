@@ -276,9 +276,7 @@ struct LightControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
             Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                // Short names in the menu bar panel: the full ones are wider than it, which
-                // pushed everything off centre.
-                ForEach(Mode.allCases) { Text(compact ? $0.shortTitle : $0.rawValue).tag($0) }
+                ForEach(Mode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
