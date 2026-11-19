@@ -18,31 +18,47 @@ enum Pasteboard {
     }
 }
 
-/// Method, params, send, reply.
+/// Method, params, send, reply; or (raw mode) a whole message, sent exactly as typed.
 struct ConsoleComposer: View {
     let model: Model
     @AppStorage("consoleMethod") private var method = "getPilot"
     @AppStorage("consoleParams") private var params = "{}"
+    @AppStorage("consoleRawMode") private var rawMode = false
+    @AppStorage("consoleRaw") private var raw = #"{"method": "getPilot", "params": {}}"#
     @AppStorage("consoleKeepOff") private var keepOff = true
     @AppStorage("consoleRetry") private var retry = true
+    @AppStorage("consoleFullReply") private var fullReply = false
     @State private var confirming: String?
 
     private var trimmedMethod: String { method.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var known: BulbAPI.Method? { BulbAPI.method(trimmedMethod) }
     private var parsed: Result<[String: Any], JSONText.ParamsError> { JSONText.parseParams(params) }
+    /// The raw message, if it's a JSON object.
+    private var rawObject: [String: Any]? { Net.json(Data(raw.utf8)) }
+    /// The method being sent: the one typed, or the one in the raw message (if any).
+    private var currentMethod: String { rawMode ? (rawObject?["method"] as? String ?? "") : trimmedMethod }
+    private var known: BulbAPI.Method? { BulbAPI.method(currentMethod) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                TextField("Method", text: $method)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                    .autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                    .frame(maxWidth: 260)
+                if rawMode {
+                    Text("Raw message").font(.headline)
+                } else {
+                    TextField("Method", text: $method)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .frame(maxWidth: 260)
+                }
                 methodMenu
+                Toggle("Raw", isOn: Binding(get: { rawMode }, set: { setRawMode($0) }))
+                    .help("Edit the whole message and send it exactly as typed, without wrapping it in method and params")
+                    #if os(iOS)
+                    .toggleStyle(.button)
+                    #endif
                 Spacer()
                 if model.consoleWaiting != nil { ProgressView().controlSize(.small) }
                 Button {
@@ -57,21 +73,22 @@ struct ConsoleComposer: View {
 
             methodInfo
 
-            JSONEditor(text: $params)
+            JSONEditor(text: rawMode ? $raw : $params)
                 .frame(minHeight: 70)
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
             HStack(spacing: 14) {
                 parseStatus
                 Spacer()
-                if trimmedMethod == "setPilot" {
+                if !rawMode && trimmedMethod == "setPilot" {
                     Toggle("Keep it off", isOn: $keepOff)
                         .help(#"While the bulb is off, add "state": false (a setPilot without it switches the bulb on)"#)
                 }
                 Toggle("Retry", isOn: $retry)
-                    .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands)")
+                    .disabled(rawMode && currentMethod.isEmpty)
+                    .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands); needs a method to recognise the reply")
                 Button("Format") { format() }
-                    .disabled((try? parsed.get()) == nil)
-                    .help("Tidy the params into indented JSON")
+                    .disabled(rawMode ? rawObject == nil : (try? parsed.get()) == nil)
+                    .help("Tidy the JSON into indented form")
             }
             .font(.callout)
             #if os(iOS)
@@ -82,7 +99,8 @@ struct ConsoleComposer: View {
             reply
         }
         .padding(14)
-        .confirmationDialog("Send \(trimmedMethod)?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+        .confirmationDialog(currentMethod.isEmpty ? "Send this message?" : "Send \(currentMethod)?",
+                            isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
             Button("Send", role: .destructive) { send(confirmed: true) }
         } message: {
             Text(confirming ?? "")
@@ -90,7 +108,26 @@ struct ConsoleComposer: View {
     }
 
     private var canSend: Bool {
-        !trimmedMethod.isEmpty && (try? parsed.get()) != nil && model.link != .none
+        guard model.link != .none else { return false }
+        if rawMode { return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return !trimmedMethod.isEmpty && (try? parsed.get()) != nil
+    }
+
+    /// Carries the request across: into one message when turning raw on, and back into method
+    /// and params when turning it off (if the message has them).
+    private func setRawMode(_ on: Bool) {
+        if on {
+            if let p = try? parsed.get() {
+                raw = JSONText.pretty(["method": trimmedMethod, "params": p] as [String: Any])
+            } else {
+                raw = "{\"method\": \"\(trimmedMethod)\", \"params\": \(params)}"
+            }
+        } else if let obj = rawObject, let m = obj["method"] as? String {
+            method = m
+            let p = obj["params"] as? [String: Any] ?? [:]
+            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+        }
+        rawMode = on
     }
 
     private var methodMenu: some View {
@@ -130,7 +167,7 @@ struct ConsoleComposer: View {
                         Label(caution, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
                 }
-            } else if !trimmedMethod.isEmpty {
+            } else if !currentMethod.isEmpty {
                 Text("Not a method setPilot knows: it's sent as typed.").foregroundStyle(.secondary)
             }
         }
@@ -149,36 +186,73 @@ struct ConsoleComposer: View {
     }
 
     @ViewBuilder private var parseStatus: some View {
-        switch parsed {
-        case .success:
-            Label("Valid JSON", systemImage: "checkmark.circle").foregroundStyle(.secondary)
-        case .failure(let error):
-            Label(error.message, systemImage: "xmark.octagon.fill")
-                .foregroundStyle(.red)
-                .lineLimit(2)
-                .help(error.message)
+        if rawMode {
+            if let obj = rawObject {
+                if obj["method"] is String {
+                    Label("Valid JSON", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                } else {
+                    Label("No method: sent as typed", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                }
+            } else {
+                Label("Not a JSON object: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+        } else {
+            switch parsed {
+            case .success:
+                Label("Valid JSON", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+            case .failure(let error):
+                Label(error.message, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .help(error.message)
+            }
         }
+    }
+
+    /// The reply to show: just its `result` (or `error`), or the whole message with Full Reply on.
+    /// Anything that isn't JSON is shown as it came.
+    private var shownReply: (text: String, isJSON: Bool)? {
+        if let failure = model.consoleFailure { return (failure, false) }
+        guard let text = model.consoleReply else { return nil }
+        guard let obj = Net.json(Data(text.utf8)) else { return (text, false) }
+        if fullReply { return (JSONText.pretty(obj), true) }
+        if let result = obj["result"] { return (JSONText.pretty(result), true) }
+        if let error = obj["error"] { return (JSONText.pretty(["error": error]), true) }
+        return (JSONText.pretty(obj), true)
     }
 
     @ViewBuilder private var reply: some View {
         HStack {
             Text("Reply").font(.headline)
             Spacer()
-            if let text = model.consoleReply {
+            Toggle("Full reply", isOn: $fullReply)
+                .help("Show the whole message the bulb sent, not just its result")
+                #if os(iOS)
+                .toggleStyle(.button)
+                #endif
+            if let shown = shownReply {
                 Button {
-                    Pasteboard.copy(text)
+                    Pasteboard.copy(shown.text)
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
             }
         }
+        .font(.callout)
         ScrollView {
             Group {
-                if let text = model.consoleReply {
-                    Text(JSONHighlighter.highlight(text))
+                if let shown = shownReply {
+                    if model.consoleFailure != nil {
+                        Text(shown.text).foregroundStyle(.red)
+                    } else if shown.isJSON {
+                        Text(JSONHighlighter.highlight(shown.text))
+                    } else {
+                        Text(shown.text)
+                    }
                 } else if let waiting = model.consoleWaiting {
-                    Text(verbatim: "Waiting for \(waiting)…").foregroundStyle(.secondary)
+                    Text(verbatim: waiting.isEmpty ? "Waiting for a reply…" : "Waiting for \(waiting)…").foregroundStyle(.secondary)
                 } else {
                     Text("Nothing sent from here yet").foregroundStyle(.tertiary)
                 }
@@ -191,26 +265,34 @@ struct ConsoleComposer: View {
     }
 
     private func choose(_ m: BulbAPI.Method) {
-        method = m.name
-        if let p = try? JSONText.parseParams(m.template).get(), !p.isEmpty {
-            params = JSONText.pretty(p)
+        let template = (try? JSONText.parseParams(m.template).get()) ?? [:]
+        if rawMode {
+            raw = JSONText.pretty(["method": m.name, "params": template] as [String: Any])
         } else {
-            params = m.template
+            method = m.name
+            params = template.isEmpty ? "{}" : JSONText.pretty(template)
         }
     }
 
     private func format() {
-        guard let p = try? parsed.get() else { return }
-        params = p.isEmpty ? "{}" : JSONText.pretty(p)
+        if rawMode {
+            if let obj = rawObject { raw = JSONText.pretty(obj) }
+        } else if let p = try? parsed.get() {
+            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+        }
     }
 
     private func send(confirmed: Bool = false) {
-        guard canSend, let p = try? parsed.get() else { return }
+        guard canSend else { return }
         if !confirmed, let caution = known?.caution {
             confirming = caution
             return
         }
-        model.sendRaw(trimmedMethod, p, keepOff: keepOff, retry: retry)
+        if rawMode {
+            model.sendRawText(raw, retry: retry)
+        } else if let p = try? parsed.get() {
+            model.sendRaw(trimmedMethod, p, keepOff: keepOff, retry: retry)
+        }
     }
 }
 
@@ -221,6 +303,8 @@ struct ConsoleLog: View {
     @AppStorage("logShowRegistration") private var showRegistration = true
     @AppStorage("consoleMethod") private var method = "getPilot"
     @AppStorage("consoleParams") private var params = "{}"
+    @AppStorage("consoleRaw") private var raw = ""
+    @AppStorage("consoleRawMode") private var rawMode = false
     /// After "Edit in Console" has loaded a request (the iPhone switches to the console with it).
     var onEdit: () -> Void = {}
 
@@ -292,10 +376,15 @@ struct ConsoleLog: View {
         Button("Copy") {
             Pasteboard.copy(entry.text)
         }
-        if let request = entry.request {
+        if entry.kind == .sent {
             Button("Edit in Console") {
-                method = request.method
-                params = request.params.isEmpty ? "{}" : JSONText.pretty(request.params)
+                raw = Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text
+                if let request = entry.request {
+                    method = request.method
+                    params = request.params.isEmpty ? "{}" : JSONText.pretty(request.params)
+                } else {
+                    rawMode = true // a raw message without a method only fits there
+                }
                 onEdit()
             }
         }

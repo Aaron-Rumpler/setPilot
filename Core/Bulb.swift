@@ -48,16 +48,28 @@ final class Bulb {
     /// `retry` mirrors pywizlight: resend up to 6 times (0.75 s doubling, capped at 3 s)
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     func send(_ method: String, _ params: [String: Any] = [:], retry: Bool = false) {
-        guard let conn,
-              let data = try? JSONSerialization.data(withJSONObject: ["method": method, "params": params],
+        guard let data = try? JSONSerialization.data(withJSONObject: ["method": method, "params": params],
                                                      options: [.sortedKeys, .withoutEscapingSlashes])
         else { return }
-        onSent?(method, String(decoding: data, as: UTF8.self))
+        transmit(data, method: method, retry: retry)
+    }
 
-        guard retry else {
+    /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON).
+    /// `method` names it for the log and errors; retrying needs one, as it stops on a reply with
+    /// that method.
+    func sendRaw(_ text: String, method: String?, retry: Bool) {
+        transmit(Data(text.utf8), method: method, retry: retry && method != nil)
+    }
+
+    private func transmit(_ data: Data, method: String?, retry: Bool) {
+        guard let conn else { return }
+        let name = method ?? "Raw message"
+        onSent?(method ?? "", String(decoding: data, as: UTF8.self))
+
+        guard retry, let method else {
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
                 guard let error else { return }
-                Task { @MainActor in self?.onError?(method, "\(method): couldn't send (\(error))") }
+                Task { @MainActor in self?.onError?(method, "\(name): couldn't send (\(error))") }
             })
             return
         }

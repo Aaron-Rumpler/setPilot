@@ -57,10 +57,11 @@ final class Model {
     var info: [String: String] = [:] // method -> pretty-printed result (or why there isn't one)
     /// Every message to and from the bulb (and pushes), oldest first, for the console.
     var log: [LogEntry] = []
-    /// The console's last request: its method while waiting, and the reply (pretty JSON) or what
-    /// went wrong.
+    /// The console's last request: its method while waiting ("" for the next message of any
+    /// method, after a raw message without one), then the reply as received, or what went wrong.
     var consoleWaiting: String?
     var consoleReply: String?
+    var consoleFailure: String?
     enum Link { case none, connecting, connected, unreachable }
     /// Whether the bulb has answered since the last Connect.
     var link: Link = .none
@@ -136,9 +137,9 @@ final class Model {
             let obj = Net.json(Data(text.utf8))
             let method = obj?["method"] as? String ?? ""
             appendLog(.received, method: method, text: text)
-            if let waiting = consoleWaiting, method == waiting {
+            if let waiting = consoleWaiting, waiting.isEmpty || method == waiting {
                 consoleWaiting = nil
-                consoleReply = obj.map(JSONText.pretty) ?? text
+                consoleReply = text
             }
         }
         bulb.onError = { [weak self] method, message in
@@ -147,9 +148,9 @@ final class Model {
             if let method, BulbAPI.deviceInfo.contains(method), info[method] == nil {
                 info[method] = JSONText.pretty(["error": message])
             }
-            if let waiting = consoleWaiting, method == waiting {
+            if let waiting = consoleWaiting, waiting.isEmpty || method == waiting {
                 consoleWaiting = nil
-                consoleReply = message
+                consoleFailure = message
             }
             if method == "registration" { // live updates only; not worth the status line
                 live = false
@@ -516,6 +517,23 @@ final class Model {
         sendPilot([.colour], retry: true)
     }
 
+    /// Sends the console's raw text exactly as typed: nothing added, and no read-back comparison.
+    /// The method, if the text is JSON with one, names it for the reply, the log and retries. After
+    /// a setPilot or setState the bulb's state is read again so the controls follow.
+    func sendRawText(_ text: String, retry: Bool) {
+        let method = Net.json(Data(text.utf8))?["method"] as? String
+        consoleWaiting = method ?? ""
+        consoleReply = nil
+        consoleFailure = nil
+        bulb.sendRaw(text, method: method, retry: retry)
+        if method == "setPilot" || method == "setState" {
+            Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                sync()
+            }
+        }
+    }
+
     /// Reads everything the bulb will tell over UDP (device info), a little apart so the bulb
     /// isn't sent 22 requests at once.
     func readConfig() {
@@ -537,6 +555,7 @@ final class Model {
         var p = params
         consoleWaiting = method
         consoleReply = nil
+        consoleFailure = nil
         switch method {
         case "setPilot":
             let lightKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "dimming", "dimDelta", "ratio"]

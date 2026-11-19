@@ -42,12 +42,14 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
 - **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer;
   from the Shortcuts app, Spotlight and Siri.
 - **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
-  Settings › Console, with the log on its own page): send any method
-  with any params. Known methods (all 70 in firmware 1.38.0's table, plus `getWifiConfig`) are in a menu with params to
+  Settings › Console, with the log on its own page): send any method with any params. Known
+  methods (all 70 in firmware 1.38.0's table, plus `getWifiConfig`) are in a menu with params to
   start from, a description, whether the bulb takes them over UDP, and a confirmation for anything
   that changes what the bulb stores. Params are edited as syntax-highlighted JSON, checked as you
   type. A `setPilot` from the console is read back like the controls' own, with `"state": false`
-  added while the bulb is off unless you turn that off. Below it, a log of every request, reply and
+  added while the bulb is off unless you turn that off. **Raw** edits the whole message instead
+  and sends it exactly as typed (it needn't be valid JSON). The reply shows its `result` (or
+  `error`); **Full reply** shows the whole message. Below it, a log of every request, reply and
   live update (with times to the millisecond), filterable, copyable, and loadable back into the
   console.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
