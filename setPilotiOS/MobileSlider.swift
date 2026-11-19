@@ -2,18 +2,21 @@ import SwiftUI
 
 /// A labelled slider row: − and + step to round numbers (`Stepping`), and tapping the value opens
 /// a popover to type one or fine-tune it in 1s. Kelvin uses a mired scale (equal steps look
-/// equally different, so warm whites get more room) with a colour-temperature strip under it,
-/// and snaps to `step`.
+/// equally different, so warm whites get more room) with a colour-temperature strip under it.
+/// Drags snap to the same round step unless that's off in Settings; touching and holding before
+/// dragging moves it in 1s.
 struct MobileSlider: View {
     let label: String
     var tint: Color? = nil
     let range: ClosedRange<Double>
-    var step: Double = 1
     var mired = false
     var unit = ""
     @Binding var value: Double
 
     @State private var editing = false
+    /// This drag started with a touch and hold: no snapping.
+    @State private var fine = false
+    @AppStorage(Stepping.snapKey) private var snaps = true
     @Environment(\.isEnabled) private var isEnabled
 
     private var coarse: Double { Stepping.coarse(for: range) }
@@ -40,7 +43,8 @@ struct MobileSlider: View {
                 }
                 stepButton(up: true)
             }
-            Slider(value: position, in: 0...1)
+            Slider(value: position, in: 0...1) { active in if !active { fine = false } }
+                .modifier(FineDrag(fine: $fine))
                 .tint(tint)
                 .accessibilityLabel(label)
                 .accessibilityValue("\(Int(value))\(unit)")
@@ -81,8 +85,7 @@ struct MobileSlider: View {
     }
 
     private func clamp(_ v: Double) -> Double {
-        let snapped = (v / step).rounded() * step
-        return min(max(snapped, range.lowerBound), range.upperBound)
+        Stepping.snap(v, to: Stepping.snapStep(for: range, snapping: snaps && !fine), in: range)
     }
 
     private func value(at t: Double) -> Double {
@@ -103,54 +106,5 @@ struct MobileSlider: View {
             let t = Double(i) / 12
             return .init(color: ColourTemperature.color(kelvin: value(at: t)), location: t)
         }
-    }
-}
-
-/// The value popover: type a value, or fine-tune it in 1s with the system stepper (which
-/// repeats, faster and faster, while held).
-private struct FineValueEditor: View {
-    let label: String
-    let range: ClosedRange<Double>
-    let unit: String
-    @Binding var value: Double
-    @State private var typed = ""
-    @FocusState private var focused: Bool
-    @Environment(\.dismiss) private var dismiss
-
-    private var typedValue: Double? {
-        Double(typed.trimmingCharacters(in: .whitespaces)).flatMap { range.contains($0) ? $0.rounded() : nil }
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text(label).font(.headline)
-            HStack(spacing: 4) {
-                TextField(label, text: $typed)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.center)
-                    .font(.title2.monospacedDigit())
-                    .focused($focused)
-                    .frame(width: 110)
-                    .foregroundStyle(typedValue == nil && !typed.isEmpty ? Color.orange : Color.primary)
-                if !unit.isEmpty { Text(unit.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary) }
-            }
-            Stepper(label, value: Binding(get: { value }, set: { new in
-                value = new
-                typed = String(Int(new))
-            }), in: range, step: 1)
-            .labelsHidden()
-            Text(verbatim: "\(Int(range.lowerBound))–\(Int(range.upperBound))\(unit)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Set") {
-                if let v = typedValue { value = v }
-                dismiss()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(typedValue == nil)
-        }
-        .padding()
-        .frame(minWidth: 220)
-        .onAppear { typed = String(Int(value)) }
     }
 }

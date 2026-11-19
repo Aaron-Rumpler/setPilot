@@ -7,6 +7,7 @@ struct BulbSettingsView: View {
     @State private var address = ""
     @State private var name = ""
     @FocusState private var focused: Bool
+    @AppStorage(Stepping.snapKey) private var snaps = true
 
     var body: some View {
         Form {
@@ -91,6 +92,14 @@ struct BulbSettingsView: View {
                         .disabled(model.link != .connected)
                     NavigationLink("Console") { ConsoleView(model: model) }
                 }
+            }
+
+            Section {
+                Toggle("Snap Sliders to Round Numbers", isOn: $snaps)
+            } header: {
+                Text("Sliders")
+            } footer: {
+                Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. Touch and hold a slider for a moment before dragging to move it in 1s anyway, or tap a value to type it or fine-tune it.")
             }
 
             Section {

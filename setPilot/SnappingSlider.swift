@@ -135,14 +135,18 @@ final class SnapSlider: NSSlider {
         set { doubleValue = scale.position(of: min(max(newValue, range.lowerBound), range.upperBound), in: range) }
     }
 
-    /// Nearest multiple of `step`, clamped so both ends stay reachable.
+    /// The step in effect: whole numbers while Option is held (no snapping), otherwise `step`.
+    private var currentStep: Double {
+        NSEvent.modifierFlags.contains(.option) ? 1 : max(step, 1)
+    }
+
+    /// Nearest multiple of the current step, clamped so both ends stay reachable.
     func snap(_ v: Double) -> Double {
-        guard step > 0 else { return v }
-        return min(max((v / step).rounded() * step, range.lowerBound), range.upperBound)
+        Stepping.snap(v, to: currentStep, in: range)
     }
 
     private func nudge(_ steps: Double) {
-        value = snap(snap(value) + steps * step)
+        value = snap(snap(value) + steps * currentStep)
         sendAction(action, to: target)
     }
 

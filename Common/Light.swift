@@ -345,21 +345,44 @@ struct CCTScale: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// The coarse steps of − and + (and the Mac's steppers), the same in every app: to the next
-/// multiple of a round step for the value's range, so presses land on round numbers.
+/// The round steps sliders snap to, and − and + (and the Mac's steppers) step by, the same in every
+/// app, so values land on round numbers. Snapping can be turned off in Settings; − and + always
+/// step. Finer control: Option on the Mac, touch and hold before dragging on iPhone, and the value
+/// popup's − and + (and the Crown there) in 1s.
 enum Stepping {
-    /// 1000 ms for fade times, 100 K for colour temperatures, 32 for 0–255 channels (eight steps,
-    /// the last one short), 10 for the rest (percentages, speed).
+    /// 100 ms for times, 50 K for colour temperatures, 32 for 0–255 channels (eight steps, the last
+    /// one short), 5 for percentages (anything up to 100), 10 for the rest (speed).
     static func coarse(for range: ClosedRange<Double>) -> Double {
-        if range.upperBound > 20_000 { return 1000 }
-        if range.upperBound > 1000 { return 100 }
+        if range.upperBound > 20_000 { return 100 }
+        if range.upperBound > 1000 { return 50 }
         if range.upperBound == 255 { return 32 }
+        if range.upperBound <= 100 { return 5 }
         return 10
+    }
+
+    /// In-between buttons for the value popup where 1 is too fine and the round step too coarse
+    /// (temperatures and times): 10. Nil elsewhere.
+    static func medium(for range: ClosedRange<Double>) -> Double? {
+        coarse(for: range) >= 50 ? 10 : nil
     }
 
     /// The next multiple of `step` above or below `value` (37 → 40 → 50), within `range`.
     static func next(_ value: Double, up: Bool, by step: Double, in range: ClosedRange<Double>) -> Double {
         let v = up ? ((value / step).rounded(.down) + 1) * step : ((value / step).rounded(.up) - 1) * step
         return min(max(v, range.lowerBound), range.upperBound)
+    }
+
+    /// The nearest multiple of `step`, within `range` (both ends stay reachable).
+    static func snap(_ value: Double, to step: Double, in range: ClosedRange<Double>) -> Double {
+        min(max((value / step).rounded() * step, range.lowerBound), range.upperBound)
+    }
+
+    /// Settings: sliders (and the Digital Crown) snap to the round steps. On by default.
+    static let snapKey = "snapSliders"
+    static var snaps: Bool { UserDefaults.standard.object(forKey: snapKey) as? Bool ?? true }
+
+    /// What a slider snaps to: the round step, or 1 with snapping off (or a fine drag).
+    static func snapStep(for range: ClosedRange<Double>, snapping: Bool) -> Double {
+        snapping ? coarse(for: range) : 1
     }
 }

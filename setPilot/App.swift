@@ -162,6 +162,7 @@ struct SettingsView: View {
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
+    @AppStorage(Stepping.snapKey) private var snaps = true
 
     var body: some View {
         Form {
@@ -176,6 +177,16 @@ struct SettingsView: View {
                         Button("Login Items…") { SMAppService.openSystemSettingsLoginItems() }
                     }
                 }
+            }
+
+            Section {
+                Toggle("Snap sliders to round numbers", isOn: $snaps)
+            } header: {
+                Text("Sliders")
+            } footer: {
+                Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. Hold Option while dragging (or with the arrow keys) to move in 1s anyway.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             Section {

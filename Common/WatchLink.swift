@@ -39,6 +39,8 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var activeScale: UUID?
     /// The fade time setting on the iPhone (ms), if set.
     var fade: Int?
+    /// Sliders snap to round numbers (the iPhone's setting; the watch's Crown follows it).
+    var snapSliders: Bool?
 
     var canControl: Bool { link == .connected && isOn != nil }
 }

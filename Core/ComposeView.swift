@@ -123,7 +123,7 @@ struct ComposeView: View {
                     ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
                 }
             }
-            IntSliderRow(label: "Kelvin", value: $kelvin, range: kelvinRange, step: scale == nil ? 50 : 10,
+            IntSliderRow(label: "Kelvin", value: $kelvin, range: kelvinRange,
                          tint: ColourTemperature.color(kelvin: Double(kelvin)))
         case .scenes:
             Picker("Scene", selection: $scene) {

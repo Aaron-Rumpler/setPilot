@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Edits one custom scene: its name and steps (1–12), with a Play button.
 struct CustomSceneEditor: View {
@@ -117,7 +120,7 @@ struct StepEditor: View {
                 .accessibilityHidden(true)
         }
         if step.useTemp {
-            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange, step: 50,
+            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange,
                          tint: ColourTemperature.color(kelvin: Double(step.temp)))
         } else {
             IntSliderRow(label: "Red", value: $step.r, range: 0...255, tint: .red)
@@ -132,14 +135,32 @@ struct StepEditor: View {
     }
 }
 
-/// A labelled slider for a whole number, with its value.
+/// A labelled slider for a whole number, with its value. Snaps to the round step for its range
+/// (`Stepping`) unless that's off in Settings; Option on the Mac, or touching and holding before
+/// dragging on iPhone, moves it in 1s. On iPhone, tapping the value opens the fine-tune popover.
 struct IntSliderRow: View {
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
-    var step = 1
     var unit = ""
     var tint: Color? = nil
+    @AppStorage(Stepping.snapKey) private var snaps = true
+    #if os(iOS)
+    @State private var fine = false
+    @State private var editing = false
+    #endif
+
+    private var doubleRange: ClosedRange<Double> { Double(range.lowerBound)...Double(range.upperBound) }
+
+    /// What a drag snaps to right now.
+    private var snapStep: Double {
+        #if os(macOS)
+        let fineNow = NSEvent.modifierFlags.contains(.option)
+        #else
+        let fineNow = fine
+        #endif
+        return Stepping.snapStep(for: doubleRange, snapping: snaps && !fineNow)
+    }
 
     var body: some View {
         HStack {
@@ -147,19 +168,46 @@ struct IntSliderRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(width: 100, alignment: .leading)
-            Slider(value: Binding(
-                get: { Double(value) },
-                // Snapped to `step`, but kept in range: a range that doesn't start on a multiple of
-                // the step (a scale from 1543 K, say) would otherwise snap past its ends.
-                set: { value = min(max(Int(($0 / Double(step)).rounded()) * step, range.lowerBound), range.upperBound) }
-            ), in: Double(range.lowerBound)...Double(range.upperBound))
-            .tint(tint)
-            .accessibilityLabel(label)
-            .accessibilityValue("\(value)\(unit)")
+            slider
+                .tint(tint)
+                .accessibilityLabel(label)
+                .accessibilityValue("\(value)\(unit)")
+            #if os(iOS)
+            Button {
+                editing = true
+            } label: {
+                Text(verbatim: "\(value)\(unit)")
+                    .monospacedDigit()
+                    .frame(width: 48, alignment: .trailing)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(label): type or fine-tune the value")
+            .popover(isPresented: $editing) {
+                FineValueEditor(label: label, range: doubleRange, unit: unit,
+                                value: Binding(get: { Double(value) }, set: { value = Int($0.rounded()) }))
+                    .presentationCompactAdaptation(.popover)
+            }
+            #else
             Text(verbatim: "\(value)\(unit)")
                 .monospacedDigit()
                 .frame(width: 48, alignment: .trailing)
+            #endif
         }
+    }
+
+    private var slider: some View {
+        // Snapped, but kept in range: a range that doesn't start on a multiple of the step (a scale
+        // from 1543 K, say) would otherwise snap past its ends.
+        let binding = Binding(
+            get: { Double(value) },
+            set: { value = Int(Stepping.snap($0, to: snapStep, in: doubleRange)) }
+        )
+        #if os(iOS)
+        return Slider(value: binding, in: doubleRange) { active in if !active { fine = false } }
+            .modifier(FineDrag(fine: $fine))
+        #else
+        return Slider(value: binding, in: doubleRange)
+        #endif
     }
 }
 

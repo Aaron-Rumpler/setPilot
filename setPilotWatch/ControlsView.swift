@@ -91,9 +91,9 @@ struct ControlsView: View {
             }
             if v.mode == .custom, s.customMin < s.customMax {
                 ValueRow(label: "Kelvin", value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
-                         step: 10, unit: " K", tint: ColourTemperature.color(kelvin: v.customKelvin))
+                         unit: " K", tint: ColourTemperature.color(kelvin: v.customKelvin))
             } else {
-                ValueRow(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax, step: 10, unit: " K",
+                ValueRow(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax, unit: " K",
                          tint: ColourTemperature.color(kelvin: v.temp))
             }
         case .scene:
@@ -217,7 +217,7 @@ struct WatchComposeView: View {
                             Text("Bulb's own").tag(UUID?.none)
                             ForEach(s.scales ?? []) { Text($0.name).tag(Optional($0.id)) }
                         }
-                        ValueRow(label: "Kelvin", value: $kelvin, range: range, step: 10, unit: " K",
+                        ValueRow(label: "Kelvin", value: $kelvin, range: range, unit: " K",
                                  tint: ColourTemperature.color(kelvin: kelvin))
                     case .scenes:
                         Picker("Scene", selection: $scene) {
@@ -244,7 +244,7 @@ struct WatchComposeView: View {
                     ForEach(FadeChoice.options(setting: s?.fade), id: \.self) { Text($0.title(setting: s?.fade)).tag($0) }
                 }
                 if fadeChoice == .custom {
-                    ValueRow(label: "Fade time", value: $fade, range: 0...60_000, step: 100, unit: " ms")
+                    ValueRow(label: "Fade time", value: $fade, range: 0...60_000, unit: " ms")
                 }
             } footer: {
                 if power == .off { Text("Turning off uses the bulb's own fade-out.") }

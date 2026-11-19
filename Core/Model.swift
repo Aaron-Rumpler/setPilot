@@ -959,6 +959,7 @@ final class Model {
         }
         s.activeScale = activeScale?.id
         s.fade = Self.fade
+        s.snapSliders = Stepping.snaps
         return s
     }
 

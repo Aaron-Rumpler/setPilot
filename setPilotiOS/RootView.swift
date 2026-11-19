@@ -125,11 +125,11 @@ struct RootView: View {
                 TemperatureScalePicker(model: model)
                 if model.mode == .custom, let range = model.activeScale?.range {
                     MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.customKelvin),
-                                 range: Double(range.lowerBound)...Double(range.upperBound), step: 10, mired: true,
+                                 range: Double(range.lowerBound)...Double(range.upperBound), mired: true,
                                  value: model.binding(\.customKelvin))
                 } else {
                     MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
-                                 step: 50, mired: true, value: model.binding(\.temp))
+                                 mired: true, value: model.binding(\.temp))
                 }
             case .scene:
                 Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }

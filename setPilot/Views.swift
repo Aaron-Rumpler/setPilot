@@ -308,12 +308,12 @@ struct LightControls: View {
                 }
                 if model.mode == .custom, let scale = model.activeScale, let range = scale.range {
                     // Marks at the scale's points; the track's colours are black-body, not the scale's.
-                    ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound), step: 10,
+                    ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound),
                                   marks: spacedMarks(scale.points.map(\.kelvin), in: range),
                                   scale: .mired, colourTemperatureStrip: true, value: model.binding(\.customKelvin))
                         .id("\(adaptingWhite) \(scale.id) \(range)")
                 } else {
-                    ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
+                    ChannelSlider(label: "Kelvin", range: model.tempRange,
                                   marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
                                   value: model.binding(\.temp))
                         .id(adaptingWhite) // rebuild the track when the adapting white changes
@@ -383,17 +383,19 @@ struct ChannelSlider: View {
     let label: String
     var tint: Color? = nil
     let range: ClosedRange<Double>
-    /// Slider snapping (drag, arrow keys, VoiceOver); the field works in 1s.
-    var step: Double = 1
     var marks: [Double] = []
     var scale: SliderScale = .linear
     var colourTemperatureStrip = false
     @Binding var value: Double
+    @AppStorage(Stepping.snapKey) private var snaps = true
 
     var body: some View {
         HStack(spacing: 8) {
             Text(label).frame(width: Self.labelWidth, alignment: .leading)
-            SnappingSlider(value: $value, range: range, step: step, marks: marks, scale: scale,
+            // Snaps (drag, arrow keys, VoiceOver) to the round step, unless that's off in Settings
+            // or Option is held; the field works in 1s.
+            SnappingSlider(value: $value, range: range, step: Stepping.snapStep(for: range, snapping: snaps),
+                           marks: marks, scale: scale,
                            colourTemperatureStrip: colourTemperatureStrip, tint: tint, label: label)
                 // Centre the row on the track, not on the track plus the marks below it.
                 .alignmentGuide(VerticalAlignment.center) { _ in SnapSliderContainer.sliderHeight / 2 }
