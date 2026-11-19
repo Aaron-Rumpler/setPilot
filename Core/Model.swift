@@ -55,6 +55,8 @@ final class Model {
     var firmware: String?
     var rssi: Int?
     var info: [String: String] = [:] // method -> pretty-printed result (or why there isn't one)
+    /// Device info reads that failed: method -> what went wrong, in a few words.
+    var infoErrors: [String: String] = [:]
     /// Every message to and from the bulb (and pushes), oldest first, for the console.
     var log: [LogEntry] = []
     /// The console's last request: its method while waiting ("" for the next message of any
@@ -114,7 +116,6 @@ final class Model {
     @ObservationIgnored private var verifyingSeq: Int?
     @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var registerTask: Task<Void, Never>?
-    @ObservationIgnored private var rebootTask: Task<Void, Never>?
     /// The power state before the last setState, restored if the bulb never answers it.
     @ObservationIgnored private var powerBefore: Bool?
     /// A different bulb (MAC) answered at the address: ignore everything from it until the next connect.
@@ -147,6 +148,7 @@ final class Model {
             appendLog(.failure, method: method ?? "", text: message)
             if let method, BulbAPI.deviceInfo.contains(method), info[method] == nil {
                 info[method] = JSONText.pretty(["error": message])
+                infoErrors[method] = "No reply"
             }
             if let waiting = consoleWaiting, waiting.isEmpty || method == waiting {
                 consoleWaiting = nil
@@ -293,7 +295,6 @@ final class Model {
         let generation = connectGeneration
         bulb.connect(to: ip)
         verifyTask?.cancel()
-        rebootTask?.cancel()
         verifyingSeq = nil
         pending = false
         mismatch = nil
@@ -311,6 +312,7 @@ final class Model {
         module = nil
         firmware = nil
         info = [:]
+        infoErrors = [:]
         live = false
         pushSeen = false
         link = ip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .none : .connecting
@@ -551,8 +553,11 @@ final class Model {
     /// Sends any method from the console. A setPilot is tracked like the controls' own (read
     /// back, mismatches shown), with `"state": false` added while the bulb is off if
     /// `keepOff` (leaving it out switches the bulb on); a setState updates the power switch.
-    func sendRaw(_ method: String, _ params: [String: Any], keepOff: Bool, retry: Bool) {
-        var p = params
+    /// `params` nil sends the request without a params key.
+    func sendRaw(_ method: String, _ params: [String: Any]?, keepOff: Bool, retry: Bool) {
+        var p = params ?? [:]
+        // Without params, the key stays out (unless "state": false had to be added).
+        func sent(_ p: [String: Any]) -> [String: Any]? { params != nil || !p.isEmpty ? p : nil }
         consoleWaiting = method
         consoleReply = nil
         consoleFailure = nil
@@ -574,7 +579,7 @@ final class Model {
             lastState = isOn
             sendSeq += 1
             pending = true
-            bulb.send(method, p, retry: retry)
+            bulb.send(method, sent(p), retry: retry)
             scheduleVerify()
         case "setState":
             if let s = p["state"] as? Bool {
@@ -584,22 +589,9 @@ final class Model {
             }
             lastMethod = "setState"
             lastSent = JSONText.compact(p)
-            bulb.send(method, p, retry: retry)
+            bulb.send(method, sent(p), retry: retry)
         default:
-            bulb.send(method, p, retry: retry)
-        }
-    }
-
-    /// Not retried: the bulb may go away before it answers.
-    func reboot() {
-        bulb.send("reboot")
-        status = "Rebooting…"
-        // Read it back once it's had time to restart (retried for ~15 s more).
-        rebootTask?.cancel()
-        rebootTask = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            bulb.send("getPilot", retry: true)
+            bulb.send(method, sent(p), retry: retry)
         }
     }
 
@@ -1033,15 +1025,23 @@ final class Model {
         if let err = reply["error"] as? [String: Any] {
             link = .connected
             let text = (err["code"] as? Int) == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
-            // Device info shows the error as the bulb sent it (code and message).
-            if BulbAPI.deviceInfo.contains(method) { info[method] = JSONText.pretty(["error": err]) }
+            if BulbAPI.deviceInfo.contains(method) {
+                // Device info shows the error as the bulb sent it (code and message), flagged; a
+                // failed read isn't worth the status line.
+                info[method] = JSONText.pretty(["error": err])
+                infoErrors[method] = err["message"] as? String ?? (err["code"] as? Int).map { "Error \($0)" } ?? "Error"
+                return
+            }
             status = "\(method): \(text)"
             return
         }
         let anyResult = reply["result"]
         if let r = anyResult as? [String: Any], let replyMAC = r["mac"] as? String, !isChosenBulb(replyMAC) { return }
         // Device info: every read's reply, as it came.
-        if BulbAPI.deviceInfo.contains(method), let anyResult { info[method] = JSONText.pretty(anyResult) }
+        if BulbAPI.deviceInfo.contains(method), let anyResult {
+            info[method] = JSONText.pretty(anyResult)
+            infoErrors[method] = nil
+        }
         guard let result = anyResult as? [String: Any] else { return }
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.
         if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }

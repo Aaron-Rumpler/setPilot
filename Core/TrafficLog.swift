@@ -21,10 +21,10 @@ struct LogEntry: Identifiable, Sendable {
     /// The message as JSON text (for failures, what went wrong).
     let text: String
 
-    /// The request as method and params, to send again.
-    var request: (method: String, params: [String: Any])? {
+    /// The request as method and params (nil if it had none), to send again.
+    var request: (method: String, params: [String: Any]?)? {
         guard kind == .sent, let obj = Net.json(Data(text.utf8)), let method = obj["method"] as? String else { return nil }
-        return (method, obj["params"] as? [String: Any] ?? [:])
+        return (method, obj["params"] as? [String: Any])
     }
 
     /// 24-hour time with milliseconds, whatever the locale's clock.

@@ -24,6 +24,8 @@ struct ConsoleComposer: View {
     @AppStorage("consoleMethod") private var method = "getPilot"
     @AppStorage("consoleParams") private var params = "{}"
     @AppStorage("consoleRawMode") private var rawMode = false
+    /// Off: the request has no params key at all.
+    @AppStorage("consoleSendParams") private var sendParams = true
     @AppStorage("consoleRaw") private var raw = #"{"method": "getPilot", "params": {}}"#
     @AppStorage("consoleKeepOff") private var keepOff = true
     @AppStorage("consoleRetry") private var retry = true
@@ -73,11 +75,24 @@ struct ConsoleComposer: View {
 
             methodInfo
 
-            JSONEditor(text: rawMode ? $raw : $params)
-                .frame(minHeight: 70)
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+            if rawMode || sendParams {
+                JSONEditor(text: rawMode ? $raw : $params)
+                    .frame(minHeight: 70)
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+            } else {
+                Text(verbatim: "No params: the request is {\"method\": \"\(trimmedMethod)\"} and nothing else.")
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+                    .padding(6)
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+            }
             HStack(spacing: 14) {
-                parseStatus
+                if !rawMode {
+                    Toggle("Params", isOn: $sendParams)
+                        .help("Send a params object (turn off to leave the key out of the request altogether)")
+                }
+                if rawMode || sendParams { parseStatus }
                 Spacer()
                 if !rawMode && trimmedMethod == "setPilot" {
                     Toggle("Keep it off", isOn: $keepOff)
@@ -87,7 +102,7 @@ struct ConsoleComposer: View {
                     .disabled(rawMode && currentMethod.isEmpty)
                     .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands); needs a method to recognise the reply")
                 Button("Format") { format() }
-                    .disabled(rawMode ? rawObject == nil : (try? parsed.get()) == nil)
+                    .disabled(rawMode ? rawObject == nil : !sendParams || (try? parsed.get()) == nil)
                     .help("Tidy the JSON into indented form")
             }
             .font(.callout)
@@ -110,20 +125,23 @@ struct ConsoleComposer: View {
     private var canSend: Bool {
         guard model.link != .none else { return false }
         if rawMode { return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return !trimmedMethod.isEmpty && (try? parsed.get()) != nil
+        return !trimmedMethod.isEmpty && (!sendParams || (try? parsed.get()) != nil)
     }
 
     /// Carries the request across: into one message when turning raw on, and back into method
     /// and params when turning it off (if the message has them).
     private func setRawMode(_ on: Bool) {
         if on {
-            if let p = try? parsed.get() {
+            if !sendParams {
+                raw = JSONText.pretty(["method": trimmedMethod])
+            } else if let p = try? parsed.get() {
                 raw = JSONText.pretty(["method": trimmedMethod, "params": p] as [String: Any])
             } else {
                 raw = "{\"method\": \"\(trimmedMethod)\", \"params\": \(params)}"
             }
         } else if let obj = rawObject, let m = obj["method"] as? String {
             method = m
+            sendParams = obj["params"] != nil
             let p = obj["params"] as? [String: Any] ?? [:]
             params = p.isEmpty ? "{}" : JSONText.pretty(p)
         }
@@ -159,16 +177,12 @@ struct ConsoleComposer: View {
                             .foregroundStyle(badgeColour(known.kind))
                         Text(known.summary).foregroundStyle(.secondary)
                     }
-                    if known.kind == .cloudOnly {
-                        Text("The bulb refuses this over local UDP.")
-                            .foregroundStyle(.secondary)
-                    }
                     if let caution = known.caution {
                         Label(caution, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
                 }
             } else if !currentMethod.isEmpty {
-                Text("Not a method setPilot knows: it's sent as typed.").foregroundStyle(.secondary)
+                Text("Not a method the bulb takes over UDP, as far as setPilot knows: it's sent as typed.").foregroundStyle(.secondary)
             }
         }
         .font(.callout)
@@ -181,7 +195,6 @@ struct ConsoleComposer: View {
         case .read: .blue
         case .action: .teal
         case .write: .orange
-        case .cloudOnly: .gray
         }
     }
 
@@ -290,6 +303,8 @@ struct ConsoleComposer: View {
         }
         if rawMode {
             model.sendRawText(raw, retry: retry)
+        } else if !sendParams {
+            model.sendRaw(trimmedMethod, nil, keepOff: keepOff, retry: retry)
         } else if let p = try? parsed.get() {
             model.sendRaw(trimmedMethod, p, keepOff: keepOff, retry: retry)
         }
@@ -305,6 +320,7 @@ struct ConsoleLog: View {
     @AppStorage("consoleParams") private var params = "{}"
     @AppStorage("consoleRaw") private var raw = ""
     @AppStorage("consoleRawMode") private var rawMode = false
+    @AppStorage("consoleSendParams") private var sendParams = true
     /// After "Edit in Console" has loaded a request (the iPhone switches to the console with it).
     var onEdit: () -> Void = {}
 
@@ -381,7 +397,9 @@ struct ConsoleLog: View {
                 raw = Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text
                 if let request = entry.request {
                     method = request.method
-                    params = request.params.isEmpty ? "{}" : JSONText.pretty(request.params)
+                    sendParams = request.params != nil
+                    let p = request.params ?? [:]
+                    params = p.isEmpty ? "{}" : JSONText.pretty(p)
                 } else {
                     rawMode = true // a raw message without a method only fits there
                 }

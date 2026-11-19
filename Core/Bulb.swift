@@ -47,9 +47,11 @@ final class Bulb {
 
     /// `retry` mirrors pywizlight: resend up to 6 times (0.75 s doubling, capped at 3 s)
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
-    func send(_ method: String, _ params: [String: Any] = [:], retry: Bool = false) {
-        guard let data = try? JSONSerialization.data(withJSONObject: ["method": method, "params": params],
-                                                     options: [.sortedKeys, .withoutEscapingSlashes])
+    /// `params` nil leaves the key out of the request altogether.
+    func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
+        var request: [String: Any] = ["method": method]
+        if let params { request["params"] = params }
+        guard let data = try? JSONSerialization.data(withJSONObject: request, options: [.sortedKeys, .withoutEscapingSlashes])
         else { return }
         transmit(data, method: method, retry: retry)
     }

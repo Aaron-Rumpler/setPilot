@@ -4,7 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage(Model.addressKey) private var address = ""
     let model: Model
-    @State private var confirmingReboot = false
     @State private var composing = false
     @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
@@ -50,11 +49,6 @@ struct ContentView: View {
             }
             .frame(width: 480, height: 640)
         }
-        .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot) {
-            Button("Reboot", role: .destructive) { model.reboot() }
-        } message: {
-            Text("It will be unreachable for a few seconds while it restarts.")
-        }
     }
 
     // MARK: Bulb
@@ -84,6 +78,15 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .help(model.liveStatus)
                     }
+                    Spacer()
+                    // On the bulb, as in the menu bar panel: it's the bulb's state, not a light setting.
+                    Toggle("Power", isOn: model.powerBinding)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .labelsHidden()
+                        .disabled(!model.canControl)
+                        .help(model.isOn == true ? "Switch the bulb off (⇧⌘P)" : "Switch the bulb on (⇧⌘P)")
+                        .accessibilityLabel("Power")
                 }
                 .font(.callout)
                 .padding(.leading, 2)
@@ -100,15 +103,13 @@ struct ContentView: View {
                     .controlSize(.small)
                     .opacity(model.pending ? 1 : 0)
                     .help("Waiting for the bulb to confirm")
-                Button("Compose…") { composing = true }
-                    .buttonStyle(.borderless)
-                    .help("Prepare a change (colour, brightness, power) and send it in one go, with its own fade time")
-                Toggle("Power", isOn: model.powerBinding)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize() // the label wrapped on macOS 26 without this
+                Button {
+                    composing = true
+                } label: {
+                    Label("Compose…", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(.borderless)
+                .help("Prepare a change (colour, brightness, power) and send it in one go, with its own fade time")
             }
         } content: {
             LightControls(model: model)
@@ -194,8 +195,8 @@ struct ContentView: View {
                 Image(systemName: "info.circle")
             }
             .buttonStyle(.borderless)
-            .help("Device configuration")
-            .accessibilityLabel("Device configuration")
+            .help("Device info: every read the bulb answers")
+            .accessibilityLabel("Device info")
             .disabled(model.link != .connected)
             .popover(isPresented: $showingConfig, arrowEdge: .bottom) { configPopover }
         } content: {
@@ -223,8 +224,6 @@ struct ContentView: View {
                 }
                 .font(.callout)
                 Spacer()
-                Button("Reboot…") { confirmingReboot = true }
-                    .disabled(model.link != .connected)
             }
         }
     }
@@ -238,23 +237,9 @@ struct ContentView: View {
 
     private var configPopover: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Device Configuration").font(.headline)
-                let read = configOrder.filter { model.info[$0] != nil }.count
-                if read < configOrder.count {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(verbatim: "Reading… \(read) of \(configOrder.count)").foregroundStyle(.secondary)
-                    }
-                }
-                ForEach(configOrder.filter { model.info[$0] != nil }, id: \.self) { key in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(key).font(.caption.bold()).foregroundStyle(.secondary)
-                        Text(JSONHighlighter.highlight(model.info[key] ?? ""))
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Device Info").font(.title3.weight(.semibold))
+                DeviceInfoView(model: model)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -263,11 +248,8 @@ struct ContentView: View {
             })
         }
         // Hug the content; scroll only when it's taller than this.
-        .frame(width: 440, height: min(configHeight, 640))
+        .frame(width: 480, height: min(configHeight, 680))
     }
-
-    /// Every read the bulb answers over UDP: identity first, then capabilities, settings and the rest.
-    private var configOrder: [String] { BulbAPI.deviceInfo }
 }
 
 /// The mode control and the current mode's sliders, plus Dimming. Shared by the window and the

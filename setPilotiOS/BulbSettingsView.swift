@@ -6,7 +6,6 @@ struct BulbSettingsView: View {
     @AppStorage(Model.addressKey) private var saved = ""
     @State private var address = ""
     @State private var name = ""
-    @State private var confirmingReboot = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -88,11 +87,9 @@ struct BulbSettingsView: View {
                     LabeledContent("MAC address", value: model.mac ?? "—")
                     LabeledContent("Module", value: model.module ?? "—")
                     LabeledContent("Firmware", value: model.firmware ?? "—")
-                    NavigationLink("Configuration") { ConfigView(model: model) }
+                    NavigationLink("Device Info") { ConfigView(model: model) }
                         .disabled(model.link != .connected)
                     NavigationLink("Console") { ConsoleView(model: model) }
-                    Button("Reboot…", role: .destructive) { confirmingReboot = true }
-                        .disabled(model.link != .connected)
                 }
             }
 
@@ -120,11 +117,6 @@ struct BulbSettingsView: View {
         }
         // A typed address's MAC (and so its name) is only known once the bulb answers.
         .onChange(of: model.chosenMAC) { name = model.currentName ?? "" }
-        .confirmationDialog("Reboot the bulb?", isPresented: $confirmingReboot, titleVisibility: .visible) {
-            Button("Reboot", role: .destructive) { model.reboot() }
-        } message: {
-            Text("It will be unreachable for a few seconds while it restarts.")
-        }
     }
 
     private func connect() { use(address, mac: nil) }
@@ -138,30 +130,15 @@ struct BulbSettingsView: View {
     }
 }
 
-/// The raw replies to the config requests.
+/// Every read the bulb answers, as it sent them.
 struct ConfigView: View {
     let model: Model
-    /// Every read the bulb answers over UDP.
-    private var order: [String] { BulbAPI.deviceInfo }
 
     var body: some View {
-        List {
-            let read = order.filter { model.info[$0] != nil }.count
-            if read < order.count {
-                HStack {
-                    ProgressView()
-                    Text(verbatim: "Reading… \(read) of \(order.count)").foregroundStyle(.secondary)
-                }
-            }
-            ForEach(order.filter { model.info[$0] != nil }, id: \.self) { key in
-                Section(key) {
-                    Text(JSONHighlighter.highlight(model.info[key] ?? ""))
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                }
-            }
+        ScrollView {
+            DeviceInfoView(model: model).padding()
         }
-        .navigationTitle("Configuration")
+        .navigationTitle("Device Info")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { model.readConfig() }
     }

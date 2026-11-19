@@ -37,16 +37,17 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   push arrives, since registering doesn't prove pushes get through a firewall.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
   shows the MAC address, module and firmware, the raw replies to every read the bulb answers over
-  UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included, plus `getWifiConfig`; in a
-  popover from the ⓘ button, and Bulb & Settings › Configuration on iPhone), and a reboot button.
+  UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included), in a popover from the ⓘ
+  button (Bulb & Settings › Device Info on iPhone): each a collapsible section with a copy button,
+  errors flagged, and Expand All and Copy All.
 - **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer;
   from the Shortcuts app, Spotlight and Siri.
 - **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
   Settings › Console, with the log on its own page): send any method with any params. Known
-  methods (all 70 in firmware 1.38.0's table, plus `getWifiConfig`) are in a menu with params to
-  start from, a description, whether the bulb takes them over UDP, and a confirmation for anything
-  that changes what the bulb stores. Params are edited as syntax-highlighted JSON, checked as you
-  type. A `setPilot` from the console is read back like the controls' own, with `"state": false`
+  methods (the 35 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
+  start from, a description, and a confirmation for anything that changes what the bulb stores.
+  Params are edited as syntax-highlighted JSON, checked as you type, and can be left out
+  altogether. A `setPilot` from the console is read back like the controls' own, with `"state": false`
   added while the bulb is off unless you turn that off. **Raw** edits the whole message instead
   and sends it exactly as typed (it needn't be valid JSON). The reply shows its `result` (or
   `error`); **Full reply** shows the whole message. Below it, a log of every request, reply and
@@ -62,7 +63,7 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   fades into the next. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
   definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
-- **Compose a change** (Compose… next to the power switch): prepare a new state (any of colour,
+- **Compose a change** (Compose… on the Light panel): prepare a new state (any of colour,
   brightness and power) and send it as one `setPilot`. Its fade is the fade time setting (shown, if
   there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
   from the bulb's current state. A scene can have a speed too, which goes in a `setPilot` of its
