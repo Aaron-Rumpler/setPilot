@@ -63,6 +63,20 @@ struct FineValueEditor: View {
     }
 }
 
+/// Shown by a slider's label while a fine drag moves it in 1s.
+struct FineBadge: View {
+    var body: some View {
+        Text(verbatim: "1s")
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Color.accentColor.opacity(0.18), in: Capsule())
+            .foregroundStyle(Color.accentColor)
+            .transition(.opacity)
+            .accessibilityLabel("Moving in steps of 1")
+    }
+}
+
 /// Touch and hold a slider for a moment before dragging, and that drag moves in 1s instead of
 /// snapping (iPhone's stand-in for Option on the Mac); a haptic tick says it's on. `fine` is set
 /// here and should be cleared when the drag ends (the slider's onEditingChanged).

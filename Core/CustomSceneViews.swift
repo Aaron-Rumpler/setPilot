@@ -178,6 +178,7 @@ struct IntSliderRow: View {
             } label: {
                 Text(verbatim: "\(value)\(unit)")
                     .monospacedDigit()
+                    .foregroundStyle(fine ? Color.accentColor : Color.primary) // a fine drag: moving in 1s
                     .frame(width: 48, alignment: .trailing)
             }
             .buttonStyle(.borderless)

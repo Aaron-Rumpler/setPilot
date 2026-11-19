@@ -25,6 +25,7 @@ struct MobileSlider: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Text(label)
+                if fine { FineBadge() }
                 Spacer()
                 stepButton(up: false)
                 Button {
@@ -32,7 +33,7 @@ struct MobileSlider: View {
                 } label: {
                     Text(verbatim: "\(Int(value))\(unit)")
                         .monospacedDigit()
-                        .foregroundStyle(isEnabled ? .primary : .secondary)
+                        .foregroundStyle(fine ? Color.accentColor : isEnabled ? Color.primary : Color.secondary)
                         .frame(minWidth: 52, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -60,6 +61,7 @@ struct MobileSlider: View {
             }
         }
         .padding(.vertical, 2)
+        .animation(.easeOut(duration: 0.15), value: fine)
     }
 
     /// − or +: to the next round number (borderless, so each button in the list row takes its own taps).

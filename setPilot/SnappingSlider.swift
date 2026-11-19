@@ -153,18 +153,33 @@ final class SnapSlider: NSSlider {
                 // Still where it was pressed (allowing for the first snap): a fine drag.
                 guard let self, abs(self.doubleValue - start) < 0.002 else { return }
                 self.fineDrag = true
+                self.showFine(self.step > 1)
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
         }
         RunLoop.current.add(hold, forMode: .common)
+        tracking = true
         super.mouseDown(with: event) // tracks until mouse-up
+        tracking = false
         hold.invalidate()
         fineDrag = false
+        showFine(false)
     }
 
-    /// Nearest multiple of the current step, clamped so both ends stay reachable.
+    /// Nearest multiple of the current step, clamped so both ends stay reachable. While dragging,
+    /// also shows on the knob whether it's moving in 1s.
     func snap(_ v: Double) -> Double {
-        Stepping.snap(v, to: currentStep, in: range)
+        if tracking { showFine(currentStep == 1 && step > 1) }
+        return Stepping.snap(v, to: currentStep, in: range)
+    }
+
+    /// The mouse is down on the slider.
+    private var tracking = false
+
+    private func showFine(_ on: Bool) {
+        guard let cell = cell as? SnapSliderCell, cell.fine != on else { return }
+        cell.fine = on
+        needsDisplay = true
     }
 
     private func nudge(_ steps: Double) {
@@ -249,6 +264,19 @@ final class SnapSliderContainer: NSView {
 /// Draws the track as a gradient when `barColour` is set (position 0...1 → colour).
 final class SnapSliderCell: NSSliderCell {
     var barColour: ((Double) -> NSColor)?
+    /// The knob is moving in 1s (a held-knob or Option drag): ringed in the accent colour.
+    var fine = false
+
+    override func drawKnob(_ knobRect: NSRect) {
+        super.drawKnob(knobRect)
+        guard fine else { return }
+        let side = min(knobRect.width, knobRect.height)
+        let ring = NSRect(x: knobRect.midX - side / 2, y: knobRect.midY - side / 2, width: side, height: side).insetBy(dx: 1, dy: 1)
+        NSColor.controlAccentColor.setStroke()
+        let path = NSBezierPath(ovalIn: ring)
+        path.lineWidth = 2
+        path.stroke()
+    }
 
     override func drawBar(inside rect: NSRect, flipped: Bool) {
         guard let barColour else { return super.drawBar(inside: rect, flipped: flipped) }
