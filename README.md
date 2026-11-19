@@ -14,8 +14,10 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   others, and this doesn't undo changes made meanwhile by other apps.
 - Changes never switch the bulb on or off: a `setPilot` to a bulb that's off carries
   `"state": false` (one without `state` switches it on), and only the power switch changes it.
-- **Kelvin** mode (colour temperature): the slider's track shows the colour of each temperature, uses a mired scale
-  so warm whites get more room, and snaps to 50 K. **Scene** mode with speed.
+- Three modes, by the same names everywhere: **RGBCW**, **Temperature** and **Scenes** (with speed).
+  Temperature's Scale is the bulb's own (`temp`) or one of your CCT scales (Custom CCT, below); the
+  kelvin carries over when you switch. The slider's track shows the colour of each temperature,
+  uses a mired scale so warm whites get more room, and snaps to 50 K on the bulb's own.
 - **Menu bar item**: a lightbulb (lit inside when the bulb is on) with a panel holding the power switch
   and the same light controls as the window. The app keeps running in the menu bar when the window
   is closed: it has a Dock icon only while a window is open, ⌘Q just closes its windows, and the
@@ -72,14 +74,14 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
 - **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
   and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
   what's there and updates items exported from there before.
-- **Custom CCT** (the Custom mode): kelvin through a colour-temperature scale of your own, kept per bulb (several
-  per bulb; Window › CCT Scales). A new scale starts as the bulb's own table, rebuilt from
+- **Custom CCT** (a Scale under Temperature): kelvin through a colour-temperature scale of your
+  own, kept per bulb (several per bulb; Window › CCT Scales). A new scale starts as the bulb's own table, rebuilt from
   `getModelConfig` (`cctRange`, `renderFactor`) exactly as firmware 1.38.0 builds it, with the same
   interpolation, so it gives what `temp` gives until you change it. Edit any point's kelvin and
   RGBCW, add points, or extend it below its lowest point along WiZ's own line (red rising to full,
   about 1540 K on this bulb). It's sent as RGBCW; the bulb can't tell it apart, so when the bulb
-  reports RGBCW in this mode, setPilot stays in Custom CCT if the scale gives exactly those values at
-  some kelvin (the nearest), and otherwise shows RGBCW. (The bulb's own custom CCT table,
+  reports RGBCW while a scale is in use, setPilot stays on it if the scale gives exactly those
+  values at some kelvin (the nearest), and otherwise shows RGBCW. (The bulb's own custom CCT table,
   `setCctTable`, is cloud-only.)
 - **Fade time** (Settings; off by default, so no `trans` is sent): the `trans` parameter, in milliseconds, for every change, or the bulb's
   own fade (shown from `getUserConfig`). Turning off always uses the bulb's fade-out.

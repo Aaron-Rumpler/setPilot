@@ -11,10 +11,10 @@ struct CCTScalesList: View {
         List {
             ForEach(scales) { scale in
                 NavigationLink(value: scale.id) {
-                    CCTScaleRow(scale: scale, inUse: model.activeScale?.id == scale.id)
+                    CCTScaleRow(scale: scale, inUse: model.temperatureScale == scale.id)
                 }
                 .contextMenu {
-                    Button { model.useScale(scale.id) } label: { Label("Use for Custom CCT", systemImage: "checkmark") }
+                    Button { model.useTemperatureScale(scale.id) } label: { Label("Use for Temperature", systemImage: "checkmark") }
                     Button { _ = model.duplicateScale(scale) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                     Button(role: .destructive) { deleting = scale } label: { Label("Delete", systemImage: "trash") }
                 }
@@ -30,7 +30,7 @@ struct CCTScalesList: View {
                 } description: {
                     Text(model.chosenMAC == nil
                          ? "Connect to a bulb first: scales are kept per bulb."
-                         : "A scale turns kelvin into RGBCW for Custom CCT. Start from the bulb's own table and change it, or extend it below 2200 K.")
+                         : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K.")
                 } actions: {
                     Button("New Scale") { created = model.newScale()?.id }
                         .disabled(model.chosenMAC == nil)

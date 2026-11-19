@@ -495,7 +495,42 @@ final class Model {
         bulb.send("setState", ["state": on], retry: true)
     }
 
+    /// Switches between the three controls. Temperature goes back to whichever scale it last used:
+    /// the bulb's own, or a CCT scale (if this bulb still has one).
+    func setModeChoice(_ choice: ModeChoice) {
+        switch choice {
+        case .rgbcw: setMode(Mode.rgbcw)
+        case .scenes: setMode(Mode.scene)
+        case .temperature:
+            guard mode.choice != .temperature else { return }
+            let scale = UserDefaults.standard.bool(forKey: Self.temperatureScaleKey) && activeScale?.range != nil
+            setMode(scale ? Mode.custom : Mode.temp)
+        }
+    }
+    /// Temperature last used a CCT scale rather than the bulb's own.
+    static let temperatureScaleKey = "temperatureUsesScale"
+
+    /// Temperature's scale: nil for the bulb's own (`temp`), otherwise one of this bulb's CCT scales
+    /// (Custom CCT). The kelvin carries over, kept within the new scale's range.
+    var temperatureScale: UUID? { mode == .custom ? activeScale?.id : nil }
+
+    func useTemperatureScale(_ id: UUID?) {
+        UserDefaults.standard.set(id != nil, forKey: Self.temperatureScaleKey)
+        let kelvin = mode == .custom ? customKelvin : temp
+        if let id, let mac = chosenMAC {
+            library.setActiveScale(id, for: mac)
+            customKelvin = kelvin
+            setMode(Mode.custom) // clamps to the scale's range
+        } else {
+            // The bulb's own snaps to 50 K, like its slider.
+            temp = min(max((kelvin / 50).rounded() * 50, tempRange.lowerBound), tempRange.upperBound)
+            setMode(Mode.temp)
+        }
+    }
+
     func setMode(_ m: Mode) {
+        // Custom CCT without a scale (deleted since) can't send anything: the bulb's own instead.
+        let m = m == .custom && activeScale?.range == nil ? Mode.temp : m
         mode = m
         if m == .custom, let range = activeScale?.range {
             customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
@@ -630,8 +665,12 @@ final class Model {
         case .temp:
             return ["temp": Int(temp)]
         case .custom:
-            // setPilot's own CCT: the scale's channels at this kelvin, sent as RGBCW.
-            guard let ch = activeScale?.channels(at: Int(customKelvin)) else { return [:] }
+            // setPilot's own CCT: the scale's channels at this kelvin, sent as RGBCW. If the scale
+            // has gone, the bulb's own temperature instead.
+            guard let ch = activeScale?.channels(at: Int(customKelvin)) else {
+                mode = .temp
+                return ["temp": Int(temp)]
+            }
             (r, g, b, c, w) = (Double(ch.r), Double(ch.g), Double(ch.b), Double(ch.c), Double(ch.w))
             return ["r": ch.r, "g": ch.g, "b": ch.b, "c": ch.c, "w": ch.w]
         case .scene:

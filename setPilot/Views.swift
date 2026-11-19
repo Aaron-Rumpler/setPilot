@@ -275,8 +275,8 @@ struct LightControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
-            Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                ForEach(Mode.allCases) { Text($0.title).tag($0) }
+            Picker("Mode", selection: Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
+                ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -297,30 +297,26 @@ struct LightControls: View {
                 ChannelSlider(label: "Warm white", tint: Color(nsColor: ColourTemperature.colour(kelvin: 2700)),
                               range: 0...255, value: model.binding(\.w))
                     .id(adaptingWhite)
-            case .temp:
-                ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
-                              marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
-                              value: model.binding(\.temp))
-                    .id(adaptingWhite) // rebuild the track when the adapting white changes
-            case .custom:
-                if let scale = model.activeScale, let range = scale.range {
-                    HStack(spacing: 8) {
-                        Text("Scale").frame(width: ChannelSlider.labelWidth, alignment: .leading)
-                        Picker("Scale", selection: model.scaleChoice) {
-                            ForEach(model.library.scales(for: model.chosenMAC)) { Text($0.name).tag(Optional($0.id)) }
-                        }
+            case .temp, .custom:
+                HStack(spacing: 8) {
+                    Text("Scale").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+                    TemperatureScalePicker(model: model)
                         .labelsHidden()
                         .fixedSize()
-                        Spacer()
-                        editScalesButton
-                    }
+                    Spacer()
+                    editScalesButton
+                }
+                if model.mode == .custom, let scale = model.activeScale, let range = scale.range {
                     // Marks at the scale's points; the track's colours are black-body, not the scale's.
                     ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound), step: 10,
                                   marks: spacedMarks(scale.points.map(\.kelvin), in: range),
                                   scale: .mired, colourTemperatureStrip: true, value: model.binding(\.customKelvin))
                         .id("\(adaptingWhite) \(scale.id) \(range)")
                 } else {
-                    NoScaleView(model: model) { openWindow(id: "scales"); NSApp.activate() }
+                    ChannelSlider(label: "Kelvin", range: model.tempRange, step: 50,
+                                  marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
+                                  value: model.binding(\.temp))
+                        .id(adaptingWhite) // rebuild the track when the adapting white changes
                 }
             case .scene:
                 HStack(spacing: 8) {

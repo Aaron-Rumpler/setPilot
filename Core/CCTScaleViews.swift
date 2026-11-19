@@ -34,30 +34,27 @@ extension Model {
         return "\(base) \(i)"
     }
 
-    /// The scale in use, as a picker selection.
-    var scaleChoice: Binding<UUID?> {
-        Binding(get: { self.activeScale?.id }, set: { if let id = $0 { self.useScale(id) } })
+    /// Temperature's scale, as a picker selection: nil for the bulb's own.
+    var temperatureScaleChoice: Binding<UUID?> {
+        Binding(get: { self.temperatureScale }, set: { self.useTemperatureScale($0) })
     }
+
+    /// The scales Temperature can use: this bulb's, with a range.
+    var usableScales: [CCTScale] { library.scales(for: chosenMAC).filter { $0.range != nil } }
 }
 
-/// Explains Custom CCT when the bulb has no scale yet, with a button to make one.
-struct NoScaleView: View {
+/// Temperature's Scale picker: the bulb's own, or one of your CCT scales.
+struct TemperatureScalePicker: View {
     let model: Model
-    var openEditor: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: model.chosenMAC == nil // verbatim: no "2,200"
-                 ? "Connect to the bulb to set up a custom CCT scale for it."
-                 : "Custom CCT turns a kelvin value into RGBCW through a scale of your own, starting from the bulb's table. It can go beyond the bulb's own \(Int(model.tempRange.lowerBound))–\(Int(model.tempRange.upperBound)) K.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Create a Scale…") {
-                model.newScale()
-                openEditor()
+        Picker("Scale", selection: model.temperatureScaleChoice) {
+            Text("Bulb's own").tag(UUID?.none)
+            let scales = model.usableScales
+            if !scales.isEmpty {
+                Divider()
+                ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
             }
-            .disabled(model.chosenMAC == nil)
         }
     }
 }
@@ -127,11 +124,11 @@ struct CCTScaleEditor: View {
                     ScaleStrip(scale: scale)
                         .frame(height: 14)
                         .clipShape(Capsule())
-                    if model.activeScale?.id == scaleID {
-                        Label("Used by Custom CCT", systemImage: "checkmark.circle.fill")
+                    if model.temperatureScale == scaleID {
+                        Label("In use by Temperature", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.secondary)
                     } else {
-                        Button("Use for Custom CCT") { model.useScale(scaleID) }
+                        Button("Use for Temperature") { model.useTemperatureScale(scaleID) }
                     }
                     Button {
                         if let extended = scale.extendedDownwards() { binding.wrappedValue = extended }

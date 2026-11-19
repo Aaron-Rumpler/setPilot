@@ -3,7 +3,6 @@ import SwiftUI
 struct RootView: View {
     let model: Model
     @AppStorage(Model.addressKey) private var address = ""
-    @State private var showingScales = false
     @State private var composing = false
 
     var body: some View {
@@ -35,7 +34,6 @@ struct RootView: View {
             }
             .navigationTitle(model.currentName ?? "setPilot")
             .refreshable { await model.refresh() }
-            .navigationDestination(isPresented: $showingScales) { CCTScalesList(model: model) }
             .navigationDestination(isPresented: $composing) { ComposeView(model: model) { composing = false } }
         }
     }
@@ -108,8 +106,8 @@ struct RootView: View {
 
     private var lightSection: some View {
         Section {
-            Picker("Mode", selection: Binding(get: { model.mode }, set: { model.setMode($0) })) {
-                ForEach(Mode.allCases) { Text($0.title).tag($0) }
+            Picker("Mode", selection: Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
+                ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
@@ -123,19 +121,15 @@ struct RootView: View {
                              value: model.binding(\.c))
                 MobileSlider(label: "Warm white", tint: ColourTemperature.color(kelvin: 2700), range: 0...255,
                              value: model.binding(\.w))
-            case .temp:
-                MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
-                             step: 50, mired: true, value: model.binding(\.temp))
-            case .custom:
-                if let scale = model.activeScale, let range = scale.range {
-                    Picker("Scale", selection: model.scaleChoice) {
-                        ForEach(model.library.scales(for: model.chosenMAC)) { Text($0.name).tag(Optional($0.id)) }
-                    }
+            case .temp, .custom:
+                TemperatureScalePicker(model: model)
+                if model.mode == .custom, let range = model.activeScale?.range {
                     MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.customKelvin),
                                  range: Double(range.lowerBound)...Double(range.upperBound), step: 10, mired: true,
                                  value: model.binding(\.customKelvin))
                 } else {
-                    NoScaleView(model: model) { showingScales = true }
+                    MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
+                                 step: 50, mired: true, value: model.binding(\.temp))
                 }
             case .scene:
                 Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }

@@ -7,27 +7,21 @@ struct ComposeView: View {
     /// Called after sending (to close a sheet).
     var onSend: () -> Void = {}
 
-    private enum ColourKind: String, CaseIterable, Identifiable {
-        // The same names as the modes (Mode.title).
-        case rgbcw = "RGBCW", temp = "Kelvin", custom = "Custom", scene = "Scene"
-        var id: Self { self }
-    }
-
     private enum Power: String, CaseIterable, Identifiable {
         case leave = "Leave", on = "On", off = "Off"
         var id: Self { self }
     }
 
     @State private var includeColour = true
-    @State private var kind = ColourKind.temp
+    @State private var kind = ModeChoice.temperature
     @State private var r = 255
     @State private var g = 0
     @State private var b = 0
     @State private var c = 0
     @State private var w = 0
-    @State private var temp = 2700
-    @State private var customKelvin = 2700
-    /// The scale for Custom CCT, chosen here: picking one mustn't change the bulb until Send.
+    @State private var kelvin = 2700
+    /// Temperature's scale, chosen here (nil: the bulb's own): picking one mustn't change the
+    /// bulb until Send.
     @State private var scaleID: UUID?
     @State private var scene = SceneChoice.builtin(1)
     @State private var includeSpeed = false
@@ -45,7 +39,7 @@ struct ComposeView: View {
                 Toggle("Colour", isOn: $includeColour)
                 if includeColour {
                     Picker("Kind", selection: $kind) {
-                        ForEach(ColourKind.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
                     }
                     colourControls
                 }
@@ -117,27 +111,21 @@ struct ComposeView: View {
             IntSliderRow(label: "Blue", value: $b, range: 0...255, tint: .blue)
             IntSliderRow(label: "Cool white", value: $c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
             IntSliderRow(label: "Warm white", value: $w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
-        case .temp:
-            IntSliderRow(label: "Kelvin", value: $temp,
-                         range: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound), step: 50,
-                         tint: ColourTemperature.color(kelvin: Double(temp)))
-        case .custom:
-            if let scale, let range = scale.range {
-                let scales = model.library.scales(for: model.chosenMAC).filter { $0.range != nil }
-                Picker("Scale", selection: Binding(get: { scale.id }, set: { id in
-                    scaleID = id
-                    if let r = scales.first(where: { $0.id == id })?.range {
-                        customKelvin = min(max(customKelvin, r.lowerBound), r.upperBound)
-                    }
-                })) {
-                    ForEach(scales) { Text($0.name).tag($0.id) }
+        case .temperature:
+            Picker("Scale", selection: Binding(get: { scale?.id }, set: { id in
+                scaleID = id
+                kelvin = clamped(kelvin)
+            })) {
+                Text("Bulb's own").tag(UUID?.none)
+                let scales = model.usableScales
+                if !scales.isEmpty {
+                    Divider()
+                    ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
                 }
-                IntSliderRow(label: "Kelvin", value: $customKelvin, range: range, step: 10,
-                             tint: ColourTemperature.color(kelvin: Double(customKelvin)))
-            } else {
-                Text("This bulb has no custom CCT scale yet.").foregroundStyle(.secondary)
             }
-        case .scene:
+            IntSliderRow(label: "Kelvin", value: $kelvin, range: kelvinRange, step: scale == nil ? 50 : 10,
+                         tint: ColourTemperature.color(kelvin: Double(kelvin)))
+        case .scenes:
             Picker("Scene", selection: $scene) {
                 ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) }
                 if !model.library.customScenes.isEmpty {
@@ -155,9 +143,9 @@ struct ComposeView: View {
         if includeColour {
             switch kind {
             case .rgbcw: ch.colour = .rgbcw(r: r, g: g, b: b, c: c, w: w)
-            case .temp: ch.colour = .temp(temp)
-            case .custom: ch.colour = scale.map { .customCCT(scale: $0.id, kelvin: customKelvin) }
-            case .scene:
+            case .temperature:
+                if let scale { ch.colour = LightColour.customCCT(scale: scale.id, kelvin: kelvin) } else { ch.colour = .temp(kelvin) }
+            case .scenes:
                 switch scene {
                 case .builtin(let id): ch.colour = .scene(id: id, speed: includeSpeed ? speed : nil)
                 case .custom(let id): ch.colour = .custom(id, speed: includeSpeed ? speed : nil)
@@ -174,11 +162,15 @@ struct ComposeView: View {
         return ch
     }
 
-    /// The chosen scale (while it still exists), else the one Custom CCT uses.
-    private var scale: CCTScale? {
-        let scales = model.library.scales(for: model.chosenMAC)
-        return scales.first { $0.id == scaleID } ?? model.activeScale
+    /// The chosen scale (while it still exists); nil for the bulb's own.
+    private var scale: CCTScale? { model.usableScales.first { $0.id == scaleID } }
+
+    /// Kelvin within the chosen scale, or the bulb's own range.
+    private var kelvinRange: ClosedRange<Int> {
+        scale?.range ?? Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound)
     }
+
+    private func clamped(_ k: Int) -> Int { min(max(k, kelvinRange.lowerBound), kelvinRange.upperBound) }
 
     /// The bulb's own fade-in, for the footer.
     private var ownFade: String {
@@ -224,22 +216,21 @@ struct ComposeView: View {
     private func load() {
         loaded = true
         r = Int(model.r); g = Int(model.g); b = Int(model.b); c = Int(model.c); w = Int(model.w)
-        temp = Int(model.temp)
-        customKelvin = Int(model.customKelvin)
-        scaleID = model.activeScale?.id
-        if let range = model.activeScale?.range { customKelvin = min(max(customKelvin, range.lowerBound), range.upperBound) }
+        if model.mode == .custom, let id = model.activeScale?.id {
+            scaleID = id
+            kelvin = Int(model.customKelvin)
+        } else {
+            scaleID = nil
+            kelvin = Int(model.temp)
+        }
+        kelvin = clamped(kelvin)
         dimming = Int(model.dimming)
         scene = model.sceneChoice.wrappedValue
         speed = min(max(Int(model.speed), 10), 200)
         includeSpeed = false
         if case .builtin(let id) = scene, !Scenes.isKnown(id) { scene = .builtin(1) }
         if case .custom(let id) = scene, model.library.customScene(id) == nil { scene = .builtin(1) }
-        kind = switch model.mode {
-        case .rgbcw: .rgbcw
-        case .temp: .temp
-        case .custom: .custom
-        case .scene: .scene
-        }
+        kind = model.mode.choice
         power = .leave
         // Start from the fade time setting, if there is one.
         fadeChoice = Model.fade == nil ? .none : .setting

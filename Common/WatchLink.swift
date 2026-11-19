@@ -72,6 +72,10 @@ enum WatchCommand: Codable, Sendable {
     case renamePreset(UUID, name: String)
     case updatePreset(UUID)
     case useScale(UUID)
+    /// Switches between RGBCW, Temperature and Scenes (Temperature as last used).
+    case modeChoice(ModeChoice)
+    /// Temperature's scale: nil for the bulb's own.
+    case temperatureScale(UUID?)
     case chooseBulb(address: String, mac: String?)
     case deletePreset(UUID)
 }

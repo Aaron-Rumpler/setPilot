@@ -70,6 +70,10 @@ final class PhoneRelay: NSObject {
             model.send(change)
         case .useScale(let id):
             model.useScale(id)
+        case .modeChoice(let choice):
+            model.setModeChoice(choice)
+        case .temperatureScale(let id):
+            model.useTemperatureScale(id)
         case .updatePreset(let id):
             model.updatePreset(id)
         case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset:

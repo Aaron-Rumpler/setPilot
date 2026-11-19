@@ -1,22 +1,26 @@
 import Foundation
 
-/// The ways of setting colour, as the controls show them. Custom CCT is setPilot's: a kelvin
-/// value turned into RGBCW through one of your scales (the bulb only takes custom CCT tables from
-/// the cloud). The raw values are stored, so they mustn't change.
+/// The ways of setting colour. Custom CCT is setPilot's: a kelvin value turned into RGBCW through
+/// one of your scales (the bulb only takes custom CCT tables from the cloud). The controls show it
+/// as a scale under Temperature (`ModeChoice`). The raw values are stored, so they mustn't change.
 enum Mode: String, CaseIterable, Identifiable, Codable, Sendable {
     case rgbcw = "RGBCW", temp = "Temperature", custom = "Custom CCT", scene = "Scene"
     var id: Self { self }
 
-    /// The name shown for the mode, the same everywhere (short enough for the menu bar panel and
-    /// a phone). The raw values are stored, so they stay as they are.
-    var title: String {
+    var choice: ModeChoice {
         switch self {
-        case .rgbcw: "RGBCW"
-        case .temp: "Kelvin"
-        case .custom: "Custom"
-        case .scene: "Scene"
+        case .rgbcw: .rgbcw
+        case .temp, .custom: .temperature
+        case .scene: .scenes
         }
     }
+}
+
+/// The modes as every control shows them, by these names: Temperature covers both the bulb's
+/// own colour temperature and your CCT scales (picked with its Scale control).
+enum ModeChoice: String, CaseIterable, Identifiable, Codable, Sendable {
+    case rgbcw = "RGBCW", temperature = "Temperature", scenes = "Scenes"
+    var id: Self { self }
 }
 
 /// What a setPilot can change, as the controls see it.
