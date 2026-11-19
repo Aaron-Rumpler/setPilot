@@ -29,6 +29,8 @@ struct ComposeView: View {
     /// The scale for Custom CCT, chosen here: picking one mustn't change the bulb until Send.
     @State private var scaleID: UUID?
     @State private var scene = SceneChoice.builtin(1)
+    @State private var includeSpeed = false
+    @State private var speed = 100
     @State private var includeDimming = true
     @State private var dimming = 100
     @State private var power = Power.leave
@@ -94,8 +96,8 @@ struct ComposeView: View {
                 .keyboardShortcut(.defaultAction)
                 Button("Start from the Bulb's Current State") { load() }
             } footer: {
-                if case .scene(let id, _)? = change.colour, case .builtin = scene, Scenes.isKnown(id) {
-                    Text("A scene's speed can't go in the same request (a firmware bug), so it's left as it is.")
+                if change.colour?.isScene == true, includeSpeed {
+                    Text("The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else.")
                 }
             }
         }
@@ -142,6 +144,8 @@ struct ComposeView: View {
                     ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) }
                 }
             }
+            Toggle("Speed", isOn: $includeSpeed)
+            if includeSpeed { IntSliderRow(label: "Speed", value: $speed, range: 10...200) }
         }
     }
 
@@ -154,8 +158,8 @@ struct ComposeView: View {
             case .custom: ch.colour = scale.map { .customCCT(scale: $0.id, kelvin: customKelvin) }
             case .scene:
                 switch scene {
-                case .builtin(let id): ch.colour = .scene(id: id, speed: nil)
-                case .custom(let id): ch.colour = .custom(id, speed: nil)
+                case .builtin(let id): ch.colour = .scene(id: id, speed: includeSpeed ? speed : nil)
+                case .custom(let id): ch.colour = .custom(id, speed: includeSpeed ? speed : nil)
                 }
             }
         }
@@ -208,7 +212,12 @@ struct ComposeView: View {
         if parts.isEmpty && ch.power == true { return "setState {\"state\":true}" }
         if ch.power == false || (ch.power == nil && model.isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
         if parts.isEmpty { return "Nothing to send" }
-        return "setPilot {" + parts.joined(separator: ",") + "}"
+        var text = "setPilot {" + parts.joined(separator: ",") + "}"
+        switch ch.colour {
+        case let .scene(_, s?)?, let .custom(_, s?)?: text += "\nthen setPilot {\"speed\":\(s)}"
+        default: break
+        }
+        return text
     }
 
     private func load() {
@@ -220,6 +229,8 @@ struct ComposeView: View {
         if let range = model.activeScale?.range { customKelvin = min(max(customKelvin, range.lowerBound), range.upperBound) }
         dimming = Int(model.dimming)
         scene = model.sceneChoice.wrappedValue
+        speed = min(max(Int(model.speed), 10), 200)
+        includeSpeed = false
         if case .builtin(let id) = scene, !Scenes.isKnown(id) { scene = .builtin(1) }
         if case .custom(let id) = scene, model.library.customScene(id) == nil { scene = .builtin(1) }
         kind = switch model.mode {

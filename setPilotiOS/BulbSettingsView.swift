@@ -104,6 +104,7 @@ struct BulbSettingsView: View {
             }
 
             CloudSyncSection()
+            LibraryTransferSection(model: model)
 
             Section {
                 NavigationLink("Shortcuts and Siri") { ShortcutsHelpView() }

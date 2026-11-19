@@ -60,8 +60,12 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
 - **Compose a change** (Compose… next to the power switch): prepare a new state (any of colour,
   brightness and power) and send it as one `setPilot`. Its fade is the fade time setting (shown, if
   there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
-  from the bulb's current state. (A scene's speed can't go in the same request, so it isn't
-  offered.)
+  from the bulb's current state. A scene can have a speed too, which goes in a `setPilot` of its
+  own just after (the firmware ignores speed alongside anything else).
+- **Light menu** (Mac): switch on or off (⇧⌘P), sync, and the first nine presets on ⌘1–⌘9.
+- **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
+  and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
+  what's there and updates items exported from there before.
 - **Custom CCT**: kelvin through a colour-temperature scale of your own, kept per bulb (several
   per bulb; Window › CCT Scales). A new scale starts as the bulb's own table, rebuilt from
   `getModelConfig` (`cctRange`, `renderFactor`) exactly as firmware 1.38.0 builds it, with the same

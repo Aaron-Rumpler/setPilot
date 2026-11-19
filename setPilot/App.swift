@@ -11,6 +11,7 @@ struct SetPilotApp: App {
     var body: some Scene {
         Window("setPilot", id: "main") { ContentView(model: model) }
             .windowResizability(.contentSize)
+            .commands { LightCommands(model: model) }
         MenuBarExtra {
             MenuBarPanel(model: model)
         } label: {
@@ -27,6 +28,31 @@ struct SetPilotApp: App {
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
+    }
+}
+
+/// The Light menu: power, and the first nine presets on ⌘1–⌘9.
+struct LightCommands: Commands {
+    let model: Model
+
+    var body: some Commands {
+        CommandMenu("Light") {
+            Button(model.isOn == true ? "Switch Off" : "Switch On") { model.power(model.isOn != true) }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(!model.canControl)
+            Button("Sync") { model.sync() }
+                .disabled(model.link == .none)
+            Divider()
+            let presets = Array(model.library.presets.prefix(9).enumerated())
+            if presets.isEmpty {
+                Button("No Presets") {}.disabled(true)
+            }
+            ForEach(presets, id: \.element.id) { i, preset in
+                Button(preset.name) { model.apply(preset) }
+                    .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
+                    .disabled(model.link != .connected)
+            }
+        }
     }
 }
 
@@ -142,6 +168,7 @@ struct SettingsView: View {
             }
 
             CloudSyncSection()
+            LibraryTransferSection(model: model)
 
             // Testing aid: the white the colour-temperature colours are adapted to.
             Section("Colour temperature (testing)") {
