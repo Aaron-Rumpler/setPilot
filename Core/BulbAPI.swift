@@ -1,8 +1,9 @@
 import Foundation
 
-/// The methods the bulb takes over local UDP (firmware 1.38.0, ESP25_SHRGB_01), from its method table: 35 of its 70. The rest are refused over UDP, so they
-/// aren't listed (the console still sends any name typed). For the console's method menu and
-/// templates, and the device info list.
+/// The methods the bulb takes over local UDP (firmware 1.38.0, ESP25_SHRGB_01): 35 of the 70 in
+/// its method table. The rest are refused over UDP, so they aren't listed (the console still sends
+/// any name typed). For the console's method menu and templates, and the device info list. See
+/// docs/UDP-API.md.
 enum BulbAPI {
     enum Kind: String, CaseIterable {
         case read = "Reads"

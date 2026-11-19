@@ -246,3 +246,6 @@ JSON over UDP port 38899, e.g.:
 ```json
 {"method":"setPilot","params":{"r":255,"g":0,"b":0,"c":0,"w":128}}
 ```
+
+[docs/UDP-API.md](docs/UDP-API.md) describes the local API as setPilot uses it: messages and
+replies, `setPilot`, live updates, scenes, and the methods the bulb takes over UDP.
