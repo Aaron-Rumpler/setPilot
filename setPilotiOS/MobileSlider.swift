@@ -43,7 +43,7 @@ struct MobileSlider: View {
                 }
                 stepButton(up: true)
             }
-            Slider(value: position, in: 0...1) { active in if !active { fine = false } }
+            Slider(value: position, in: 0...1, onEditingChanged: { active in if !active { fine = false } })
                 .modifier(FineDrag(fine: $fine))
                 .tint(tint)
                 .accessibilityLabel(label)

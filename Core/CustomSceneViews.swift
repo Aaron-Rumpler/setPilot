@@ -203,7 +203,7 @@ struct IntSliderRow: View {
             set: { value = Int(Stepping.snap($0, to: snapStep, in: doubleRange)) }
         )
         #if os(iOS)
-        return Slider(value: binding, in: doubleRange) { active in if !active { fine = false } }
+        return Slider(value: binding, in: doubleRange, onEditingChanged: { active in if !active { fine = false } })
             .modifier(FineDrag(fine: $fine))
         #else
         return Slider(value: binding, in: doubleRange)
