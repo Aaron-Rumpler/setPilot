@@ -27,7 +27,7 @@ struct ConsoleComposer: View {
     /// Off: the request has no params key at all.
     @AppStorage("consoleSendParams") private var sendParams = true
     @AppStorage("consoleRaw") private var raw = #"{"method": "getPilot", "params": {}}"#
-    @AppStorage("consoleKeepOff") private var keepOff = true
+    @AppStorage("consoleDontSwitchOn") private var keepOff = false
     @AppStorage("consoleRetry") private var retry = true
     @AppStorage("consoleFullReply") private var fullReply = false
     @State private var confirming: String?

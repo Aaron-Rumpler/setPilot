@@ -47,8 +47,8 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   methods (the 35 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
   start from, a description, and a confirmation for anything that changes what the bulb stores.
   Params are edited as syntax-highlighted JSON, checked as you type, and can be left out
-  altogether. A `setPilot` from the console is read back like the controls' own, with `"state": false`
-  added while the bulb is off unless you turn that off. **Raw** edits the whole message instead
+  altogether. A `setPilot` from the console is read back like the controls' own; with "Don't switch
+  on" (off by default) it gets `"state": false` while the bulb is off, as the controls' own do. **Raw** edits the whole message instead
   and sends it exactly as typed (it needn't be valid JSON). The reply shows its `result` (or
   `error`); **Full reply** shows the whole message. Below it, a log of every request, reply and
   live update (with times to the millisecond), filterable, copyable, and loadable back into the
