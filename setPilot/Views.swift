@@ -342,6 +342,7 @@ struct LightControls: View {
                 ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
             ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
+            ControlsFadeRow(model: model)
 
         }
     }

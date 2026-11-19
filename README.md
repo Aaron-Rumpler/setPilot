@@ -52,9 +52,11 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   altogether. A `setPilot` from the console is read back like the controls' own; with "Don't switch
   on" (off by default) it gets `"state": false` while the bulb is off, as the controls' own do. **Raw** edits the whole message instead
   and sends it exactly as typed (it needn't be valid JSON). The reply shows its `result` (or
-  `error`); **Full reply** shows the whole message. Below it, a log of every request, reply and
-  live update (with times to the millisecond), filterable, copyable, and loadable back into the
-  console.
+  `error`); **Full reply** shows the whole message. Format indents the JSON (or puts it on one
+  line), and on the Mac the editor and reply share a divider you can drag. Below it, a log of every
+  request, reply and live update (with times to the millisecond), filterable, indented or one line
+  each, copyable, with a button on each message to put it into the console, and a choice of how
+  many entries it keeps.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
 - **Round numbers**: sliders (and the watch's Digital Crown) snap to round steps, and the steppers
   and − and + step to the next one: 5 for dimming and other percentages, 50 K for temperatures, 32
@@ -90,6 +92,8 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   reports RGBCW while a scale is in use, setPilot stays on it if the scale gives exactly those
   values at some kelvin (the nearest), and otherwise shows RGBCW. (The bulb's own custom CCT table,
   `setCctTable`, is cloud-only.)
+- **Fade** under Dimming: what the main controls send as `trans` (sliders, presets, brighter and
+  dimmer): the fade time setting, none, or a value of their own, as in Compose.
 - **Fade time** (Settings; off by default, so no `trans` is sent): the `trans` parameter, in milliseconds, for every change, or the bulb's
   own fade (shown from `getUserConfig`). Turning off always uses the bulb's fade-out.
 

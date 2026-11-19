@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 /// Edits one custom scene: its name and steps (1–12), with a Play button.
 struct CustomSceneEditor: View {
@@ -15,7 +12,8 @@ struct CustomSceneEditor: View {
                     TextField("Name", text: binding.name)
                     HStack {
                         Button {
-                            if let scene = model.library.customScene(sceneID) { model.playCustom(scene) }
+                            // At speed 100, so the preview shows the steps as timed.
+                            if let scene = model.library.customScene(sceneID) { model.playCustom(scene, speed: 100) }
                         } label: {
                             Label(isPlaying ? "Play Again" : "Play on Bulb", systemImage: "play.fill")
                         }
@@ -29,10 +27,21 @@ struct CustomSceneEditor: View {
                 } footer: {
                     Text("The bulb steps through these in order and repeats. Changes take effect the next time it's played. The bulb can't store or read back setPilot's scenes, so they're kept on this device.")
                 }
+                // Live, while previewing: the two settings that apply to a playing scene.
+                Section {
+                    LiveSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
+                    LiveSlider(label: "Dimming", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
+                } header: {
+                    Text("Preview")
+                } footer: {
+                    Text("Sent straight away, as with the main controls. Speed only applies while a scene is playing.")
+                }
+                .disabled(!model.canControl)
                 ForEach(binding.steps) { $step in
                     let i = binding.wrappedValue.steps.firstIndex { $0.id == step.id } ?? 0
                     Section {
-                        StepEditor(step: $step, kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound))
+                        StepEditor(step: $step, kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
+                                   levelRange: Int(model.minDimming)...100)
                     } header: {
                         HStack {
                             Text("Step \(i + 1)")
@@ -104,6 +113,8 @@ struct StepEditor: View {
     @Binding var step: CustomScene.Step
     /// The bulb's colour-temperature range (from getModelConfig; 2200–6500 K until it's known).
     var kelvinRange = 2200...6500
+    /// The bulb's minimum dimming to 100 (10–100 until it's known).
+    var levelRange = 10...100
 
     var body: some View {
         HStack {
@@ -120,7 +131,7 @@ struct StepEditor: View {
                 .accessibilityHidden(true)
         }
         if step.useTemp {
-            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange,
+            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange, kelvin: true,
                          tint: ColourTemperature.color(kelvin: Double(step.temp)))
         } else {
             IntSliderRow(label: "Red", value: $step.r, range: 0...255, tint: .red)
@@ -129,86 +140,46 @@ struct StepEditor: View {
             IntSliderRow(label: "Cool white", value: $step.c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
             IntSliderRow(label: "Warm white", value: $step.w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
         }
-        IntSliderRow(label: "Level", value: $step.level, range: 1...100, unit: "%")
+        IntSliderRow(label: "Level", value: $step.level, range: levelRange, unit: "%")
         MillisecondsRow(label: "Hold", value: $step.hold)
         MillisecondsRow(label: "Fade", value: $step.fade)
     }
 }
 
-/// A labelled slider for a whole number, with its value. Snaps to the round step for its range
-/// (`Stepping`) unless that's off in Settings; Option on the Mac, or touching and holding before
-/// dragging on iPhone, moves it in 1s. On iPhone, tapping the value opens the fine-tune popover.
+/// A labelled slider row, the same as the main controls' (Mac: `ChannelSlider`, with a number field
+/// and stepper; iPhone: `MobileSlider`, with − and + and the value popover): round-step snapping,
+/// fine drags, typing a value. `kelvin` gives it the mired scale and colour-temperature track.
+struct LiveSlider: View {
+    let label: String
+    var tint: Color? = nil
+    let range: ClosedRange<Double>
+    var unit = ""
+    var kelvin = false
+    @Binding var value: Double
+
+    var body: some View {
+        #if os(macOS)
+        ChannelSlider(label: label, tint: kelvin ? nil : tint, range: range,
+                      marks: kelvin ? [2200, 2700, 4200, 6500] : [], scale: kelvin ? .mired : .linear,
+                      colourTemperatureStrip: kelvin, value: $value)
+        #else
+        MobileSlider(label: label, tint: tint, range: range, mired: kelvin, unit: unit, value: $value)
+        #endif
+    }
+}
+
+/// `LiveSlider` for a whole number.
 struct IntSliderRow: View {
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
     var unit = ""
+    var kelvin = false
     var tint: Color? = nil
-    @AppStorage(Stepping.snapKey) private var snaps = true
-    #if os(iOS)
-    @State private var fine = false
-    @State private var editing = false
-    #endif
-
-    private var doubleRange: ClosedRange<Double> { Double(range.lowerBound)...Double(range.upperBound) }
-
-    /// What a drag snaps to right now.
-    private var snapStep: Double {
-        #if os(macOS)
-        let fineNow = NSEvent.modifierFlags.contains(.option)
-        #else
-        let fineNow = fine
-        #endif
-        return Stepping.snapStep(for: doubleRange, snapping: snaps && !fineNow)
-    }
 
     var body: some View {
-        HStack {
-            Text(label)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: 100, alignment: .leading)
-            slider
-                .tint(tint)
-                .accessibilityLabel(label)
-                .accessibilityValue("\(value)\(unit)")
-            #if os(iOS)
-            Button {
-                editing = true
-            } label: {
-                Text(verbatim: "\(value)\(unit)")
-                    .monospacedDigit()
-                    .foregroundStyle(fine ? Color.accentColor : Color.primary) // a fine drag: moving in 1s
-                    .frame(width: 48, alignment: .trailing)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("\(label): type or fine-tune the value")
-            .popover(isPresented: $editing) {
-                FineValueEditor(label: label, range: doubleRange, unit: unit,
-                                value: Binding(get: { Double(value) }, set: { value = Int($0.rounded()) }))
-                    .presentationCompactAdaptation(.popover)
-            }
-            #else
-            Text(verbatim: "\(value)\(unit)")
-                .monospacedDigit()
-                .frame(width: 48, alignment: .trailing)
-            #endif
-        }
-    }
-
-    private var slider: some View {
-        // Snapped, but kept in range: a range that doesn't start on a multiple of the step (a scale
-        // from 1543 K, say) would otherwise snap past its ends.
-        let binding = Binding(
-            get: { Double(value) },
-            set: { value = Int(Stepping.snap($0, to: snapStep, in: doubleRange)) }
-        )
-        #if os(iOS)
-        return Slider(value: binding, in: doubleRange, onEditingChanged: { active in if !active { fine = false } })
-            .modifier(FineDrag(fine: $fine))
-        #else
-        return Slider(value: binding, in: doubleRange)
-        #endif
+        LiveSlider(label: label, tint: tint, range: Double(range.lowerBound)...Double(range.upperBound), unit: unit,
+                   kelvin: kelvin, value: Binding(get: { Double(value) }, set: { value = Int($0.rounded()) }))
     }
 }
 

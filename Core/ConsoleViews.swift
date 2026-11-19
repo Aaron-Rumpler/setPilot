@@ -75,43 +75,21 @@ struct ConsoleComposer: View {
 
             methodInfo
 
-            if rawMode || sendParams {
-                JSONEditor(text: rawMode ? $raw : $params)
-                    .frame(minHeight: 70)
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
-            } else {
-                Text(verbatim: "No params: the request is {\"method\": \"\(trimmedMethod)\"} and nothing else.")
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
-                    .padding(6)
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+            #if os(macOS)
+            // Drag the divider to give the editor or the reply more room.
+            VSplitView {
+                VStack(alignment: .leading, spacing: 10) { editorPane }
+                    .frame(minHeight: 110)
+                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 6) { reply }
+                    .frame(minHeight: 80)
+                    .padding(.top, 8)
             }
-            HStack(spacing: 14) {
-                if !rawMode {
-                    Toggle("Params", isOn: $sendParams)
-                        .help("Send a params object (turn off to leave the key out of the request altogether)")
-                }
-                if rawMode || sendParams { parseStatus }
-                Spacer()
-                if !rawMode && trimmedMethod == "setPilot" {
-                    Toggle("Don't switch on", isOn: $keepOff)
-                        .help(#"A setPilot without "state" switches the bulb on. While the bulb is off, this adds "state": false, as the app's own controls do, so the change waits for the bulb to be switched on"#)
-                }
-                Toggle("Retry", isOn: $retry)
-                    .disabled(rawMode && currentMethod.isEmpty)
-                    .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands); needs a method to recognise the reply")
-                Button("Format") { format() }
-                    .disabled(rawMode ? rawObject == nil : !sendParams || (try? parsed.get()) == nil)
-                    .help("Tidy the JSON into indented form")
-            }
-            .font(.callout)
-            #if os(iOS)
-            .toggleStyle(.button) // a row of switches doesn't fit on a phone
-            #endif
-
+            #else
+            editorPane
             Divider()
             reply
+            #endif
         }
         .padding(14)
         .confirmationDialog(currentMethod.isEmpty ? "Send this message?" : "Send \(currentMethod)?",
@@ -120,6 +98,50 @@ struct ConsoleComposer: View {
         } message: {
             Text(confirming ?? "")
         }
+    }
+
+    /// The params (or raw message) editor and its options.
+    @ViewBuilder private var editorPane: some View {
+        if rawMode || sendParams {
+            JSONEditor(text: rawMode ? $raw : $params)
+                .frame(minHeight: 70)
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+        } else {
+            Text(verbatim: "No params: the request is {\"method\": \"\(trimmedMethod)\"} and nothing else.")
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+                .padding(6)
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+        }
+        HStack(spacing: 14) {
+            if !rawMode {
+                Toggle("Params", isOn: $sendParams)
+                    .help("Send a params object (turn off to leave the key out of the request altogether)")
+            }
+            if rawMode || sendParams { parseStatus }
+            Spacer()
+            if !rawMode && trimmedMethod == "setPilot" {
+                Toggle("Don't switch on", isOn: $keepOff)
+                    .help(#"A setPilot without "state" switches the bulb on. While the bulb is off, this adds "state": false, as the app's own controls do, so the change waits for the bulb to be switched on"#)
+            }
+            Toggle("Retry", isOn: $retry)
+                .disabled(rawMode && currentMethod.isEmpty)
+                .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands); needs a method to recognise the reply")
+            Menu("Format") {
+                Button("Indented") { format(compact: false) }
+                Button("Compact") { format(compact: true) }
+            } primaryAction: {
+                format(compact: false)
+            }
+            .fixedSize()
+            .disabled(rawMode ? rawObject == nil : !sendParams || (try? parsed.get()) == nil)
+            .help("Tidy the JSON into indented form (or, from the menu, onto one line)")
+        }
+        .font(.callout)
+        #if os(iOS)
+        .toggleStyle(.button) // a row of switches doesn't fit on a phone
+        #endif
     }
 
     private var canSend: Bool {
@@ -287,11 +309,12 @@ struct ConsoleComposer: View {
         }
     }
 
-    private func format() {
+    private func format(compact: Bool) {
+        func text(_ v: Any) -> String { compact ? JSONText.compact(v) : JSONText.pretty(v) }
         if rawMode {
-            if let obj = rawObject { raw = JSONText.pretty(obj) }
+            if let obj = rawObject { raw = text(obj) }
         } else if let p = try? parsed.get() {
-            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+            params = p.isEmpty ? "{}" : text(p)
         }
     }
 
@@ -321,6 +344,9 @@ struct ConsoleLog: View {
     @AppStorage("consoleRaw") private var raw = ""
     @AppStorage("consoleRawMode") private var rawMode = false
     @AppStorage("consoleSendParams") private var sendParams = true
+    @AppStorage(Model.logLimitKey) private var limit = 1000
+    /// Rows indented over several lines, rather than one line each.
+    @AppStorage("logPretty") private var pretty = false
     /// After "Edit in Console" has loaded a request (the iPhone switches to the console with it).
     var onEdit: () -> Void = {}
 
@@ -340,11 +366,15 @@ struct ConsoleLog: View {
                     .help("Show syncPilot pushes")
                 Toggle("Registration", isOn: $showRegistration)
                     .help("Show the registration sent every 20 s for live updates, and its replies")
+                Toggle("Indented", isOn: $pretty)
+                    .help("Show each message indented over several lines")
                 #if os(macOS)
+                keepPicker
                 copyAll
                 clear
                 #else
                 Menu {
+                    keepPicker
                     copyAll
                     clear
                 } label: {
@@ -368,7 +398,7 @@ struct ConsoleLog: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(shown.reversed())) { entry in
-                            LogRow(entry: entry)
+                            LogRow(entry: entry, pretty: pretty) { load(entry) }
                                 .contextMenu { menu(entry) }
                             Divider()
                         }
@@ -376,6 +406,17 @@ struct ConsoleLog: View {
                 }
             }
         }
+    }
+
+    private var keepPicker: some View {
+        Picker("Keep", selection: Binding(get: { limit }, set: { new in
+            limit = new
+            model.trimLog()
+        })) {
+            ForEach(Model.logLimitChoices, id: \.self) { Text(verbatim: "\($0) entries").tag($0) }
+        }
+        .fixedSize()
+        .help("How many entries the log keeps; the oldest go first")
     }
 
     private var copyAll: some View {
@@ -392,25 +433,32 @@ struct ConsoleLog: View {
         Button("Copy") {
             Pasteboard.copy(entry.text)
         }
-        if entry.kind == .sent {
-            Button("Edit in Console") {
-                raw = Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text
-                if let request = entry.request {
-                    method = request.method
-                    sendParams = request.params != nil
-                    let p = request.params ?? [:]
-                    params = p.isEmpty ? "{}" : JSONText.pretty(p)
-                } else {
-                    rawMode = true // a raw message without a method only fits there
-                }
-                onEdit()
-            }
+        if entry.kind != .failure {
+            Button("Edit in Console") { load(entry) }
         }
+    }
+
+    /// Puts a message into the console: a request as method and params (or as a raw message, in
+    /// raw mode or if it has no method); anything else (a reply, a push) as a raw message.
+    private func load(_ entry: LogEntry) {
+        raw = Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text
+        if let request = entry.request {
+            method = request.method
+            sendParams = request.params != nil
+            let p = request.params ?? [:]
+            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+        } else {
+            rawMode = true
+        }
+        onEdit()
     }
 }
 
 struct LogRow: View {
     let entry: LogEntry
+    var pretty = false
+    /// Loads the message into the console (nil: no button, e.g. for failures).
+    var onLoad: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -424,12 +472,20 @@ struct LogRow: View {
                 if entry.kind == .failure {
                     Text(entry.text).foregroundStyle(.red)
                 } else {
-                    Text(JSONHighlighter.highlight(entry.text))
+                    Text(JSONHighlighter.highlight(pretty ? (Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text) : entry.text))
                 }
             }
-            .lineLimit(4)
+            .lineLimit(pretty ? nil : 4)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
+            if entry.kind != .failure, let onLoad {
+                Button(action: onLoad) {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                }
+                .buttonStyle(.borderless)
+                .help("Put this message into the console")
+                .accessibilityLabel("Edit in console")
+            }
         }
         .font(.system(.caption, design: .monospaced))
         .padding(.horizontal, 14)

@@ -137,6 +137,7 @@ struct RootView: View {
                 MobileSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
             MobileSlider(label: "Dimming", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
+            ControlsFadeRow(model: model)
         } header: {
             HStack {
                 Text("Light")

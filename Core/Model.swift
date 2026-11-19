@@ -40,6 +40,19 @@ final class Model {
     }
     static let fadeKey = "fadeMs"
 
+    /// The fade for changes made with the main controls (sliders, presets, power on, brighter or
+    /// dimmer): the setting above, none, or a value of their own, as in Compose. Remembered.
+    var controlsFade = FadeChoice(rawValue: UserDefaults.standard.string(forKey: Model.controlsFadeKey) ?? "") ?? .setting {
+        didSet { UserDefaults.standard.set(controlsFade.rawValue, forKey: Self.controlsFadeKey) }
+    }
+    static let controlsFadeKey = "controlsFade"
+    var controlsFadeMs = UserDefaults.standard.object(forKey: Model.controlsFadeMsKey) as? Int ?? 1000 {
+        didSet { UserDefaults.standard.set(controlsFadeMs, forKey: Self.controlsFadeMsKey) }
+    }
+    static let controlsFadeMsKey = "controlsFadeMs"
+    /// The `trans` the main controls send, if any.
+    var fadeForControls: Int? { controlsFade.trans(setting: Self.fade, custom: controlsFadeMs) }
+
     // From getModelConfig / getUserConfig
     var minDimming = 10.0
     var tempRange: ClosedRange<Double> = 2200...6500
@@ -652,7 +665,7 @@ final class Model {
         if fields.contains(.dimming) { p["dimming"] = Int(dimming) }
         if fields.contains(.colour) { p.merge(colourParams()) { $1 } }
         let speed = fields.contains(.speed) && mode == .scene ? Int(speed) : nil
-        if !p.isEmpty, let fade = Self.fade { p["trans"] = fade }
+        if !p.isEmpty, let fade = fadeForControls { p["trans"] = fade }
         transmit(p, speed: speed, power: nil, retry: retry)
     }
 
@@ -746,13 +759,14 @@ final class Model {
     }
 
     /// Plays one of setPilot's custom scenes (sent inline: nothing is stored on the bulb).
-    func playCustom(_ scene: CustomScene, switchOn: Bool = false) {
-        send(LightChange(colour: .custom(scene.id, speed: nil), power: switchOn ? true : nil, fade: Self.fade))
+    /// `speed`, if given, follows in a setPilot of its own (the scene editor's preview plays at 100).
+    func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) {
+        send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
     /// Applies a preset, switching the bulb on if it's off.
     func apply(_ preset: Preset) {
-        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: Self.fade))
+        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
     }
 
     /// Sends several changes as one setPilot, with their own fade time (`trans`).
@@ -888,7 +902,7 @@ final class Model {
     func adjustDimming(by delta: Int) {
         guard delta != 0 else { return }
         var p: [String: Any] = ["dimDelta": delta]
-        if let fade = Self.fade { p["trans"] = fade }
+        if let fade = fadeForControls { p["trans"] = fade }
         if isOn == false { p["state"] = false }
         dimming = min(max(dimming + Double(delta), minDimming), 100)
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {

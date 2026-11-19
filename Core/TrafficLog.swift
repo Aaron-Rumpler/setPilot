@@ -45,12 +45,23 @@ struct LogEntry: Identifiable, Sendable {
 }
 
 extension Model {
-    /// The most entries the log keeps (oldest dropped first).
-    static let logLimit = 1000
+    /// How many entries the log keeps (oldest dropped first); set in the console.
+    static let logLimitKey = "logLimit"
+    static let logLimitChoices = [100, 500, 1000, 5000, 20_000]
+    static var logLimit: Int {
+        let v = UserDefaults.standard.integer(forKey: logLimitKey)
+        return v > 0 ? v : 1000
+    }
 
     func appendLog(_ kind: LogEntry.Kind, method: String, text: String) {
         log.append(LogEntry(kind: kind, method: method, text: text))
-        if log.count > Self.logLimit { log.removeFirst(log.count - Self.logLimit) }
+        trimLog()
+    }
+
+    /// Drops the oldest entries beyond the limit (also when the limit is lowered).
+    func trimLog() {
+        let limit = Self.logLimit
+        if log.count > limit { log.removeFirst(log.count - limit) }
     }
 
     /// The log as text, oldest first.

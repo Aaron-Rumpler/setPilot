@@ -48,3 +48,48 @@ struct FadeSetting: View {
         }
     }
 }
+
+/// The main controls' fade, under Dimming: the fade time setting, none, or a value just for them
+/// (as Compose has for one change).
+struct ControlsFadeRow: View {
+    let model: Model
+
+    /// "The setting" isn't offered while there's no fade time setting; it then means none.
+    private var choice: Binding<FadeChoice> {
+        Binding(get: { model.controlsFade == .setting && Model.fade == nil ? .none : model.controlsFade },
+                set: { model.controlsFade = $0 })
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            #if os(macOS)
+            Text("Fade").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+            #endif
+            Picker("Fade", selection: choice) {
+                ForEach(FadeChoice.options(setting: Model.fade), id: \.self) {
+                    Text($0.title(setting: Model.fade)).tag($0)
+                }
+            }
+            #if os(macOS)
+            .labelsHidden()
+            .fixedSize()
+            #endif
+            if choice.wrappedValue == .custom {
+                TextField("Fade time", value: Binding(get: { model.controlsFadeMs },
+                                                      set: { model.controlsFadeMs = min(max($0, 0), 60_000) }),
+                          format: .number.grouping(.never))
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 70)
+                    #if os(iOS)
+                    .keyboardType(.numberPad)
+                    #endif
+                Text("ms").foregroundStyle(.secondary)
+            }
+            #if os(macOS)
+            Spacer(minLength: 0)
+            #endif
+        }
+        .help("The fade (trans) for changes made with these controls")
+    }
+}

@@ -143,7 +143,7 @@ struct LightChange: Codable, Hashable, Sendable {
 
 /// How a composed change fades: the fade time setting (only offered when one is set), none
 /// (no `trans`: the bulb's own fade), or a value just for this change.
-enum FadeChoice: Hashable, Sendable {
+enum FadeChoice: String, Hashable, Sendable {
     case setting, none, custom
 
     /// The choices that mean different things: without a fade setting, "the setting" and "none"
@@ -206,8 +206,11 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
 
         /// Firmware 1.38.0's 13-number step: mode, R, G, B, warm, cool, kelvin, level, hold, fade,
         /// then three the firmware manages or ignores.
+        /// The fields the step doesn't use are sent as 0: the channels for a temperature step, the
+        /// kelvin for an RGBCW one.
         var elm: [Int] {
-            [useTemp ? 1 : 0, r, g, b, w, c, temp, min(max(level, 1), 100), max(hold, 0), max(fade, 0), 0, 0, 0]
+            let channels = useTemp ? [0, 0, 0, 0, 0] : [r, g, b, w, c]
+            return [useTemp ? 1 : 0] + channels + [useTemp ? temp : 0, min(max(level, 1), 100), max(hold, 0), max(fade, 0), 0, 0, 0]
         }
     }
 
