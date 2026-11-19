@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var composing = false
     @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -131,6 +132,13 @@ struct ContentView: View {
     private var commandPanel: some View {
         Panel("Last Command") {
             Button {
+                openWindow(id: "console")
+            } label: {
+                Label("Console…", systemImage: "terminal")
+            }
+            .buttonStyle(.borderless)
+            .help("Send any method and see every message to and from the bulb (⌥⌘K)")
+            Button {
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.setString(model.lastCommandJSON, forType: .string)
@@ -232,10 +240,11 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Device Configuration").font(.headline)
-                if model.info.isEmpty {
+                let read = configOrder.filter { model.info[$0] != nil }.count
+                if read < configOrder.count {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Reading…").foregroundStyle(.secondary)
+                        Text(verbatim: "Reading… \(read) of \(configOrder.count)").foregroundStyle(.secondary)
                     }
                 }
                 ForEach(configOrder.filter { model.info[$0] != nil }, id: \.self) { key in
@@ -254,11 +263,11 @@ struct ContentView: View {
             })
         }
         // Hug the content; scroll only when it's taller than this.
-        .frame(width: 400, height: min(configHeight, 520))
+        .frame(width: 440, height: min(configHeight, 640))
     }
 
-    /// Identity first, then capabilities, settings and power.
-    private let configOrder = ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"]
+    /// Every read the bulb answers over UDP: identity first, then capabilities, settings and the rest.
+    private var configOrder: [String] { BulbAPI.deviceInfo }
 }
 
 /// The mode control and the current mode's sliders, plus Dimming. Shared by the window and the

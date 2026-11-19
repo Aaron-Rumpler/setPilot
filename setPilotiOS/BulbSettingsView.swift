@@ -139,12 +139,17 @@ struct BulbSettingsView: View {
 /// The raw replies to the config requests.
 struct ConfigView: View {
     let model: Model
-    private let order = ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"]
+    /// Every read the bulb answers over UDP.
+    private var order: [String] { BulbAPI.deviceInfo }
 
     var body: some View {
         List {
-            if model.info.isEmpty {
-                HStack { ProgressView(); Text("Reading…").foregroundStyle(.secondary) }
+            let read = order.filter { model.info[$0] != nil }.count
+            if read < order.count {
+                HStack {
+                    ProgressView()
+                    Text(verbatim: "Reading… \(read) of \(order.count)").foregroundStyle(.secondary)
+                }
             }
             ForEach(order.filter { model.info[$0] != nil }, id: \.self) { key in
                 Section(key) {

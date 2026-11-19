@@ -54,7 +54,13 @@ final class Model {
     var module: String?
     var firmware: String?
     var rssi: Int?
-    var info: [String: String] = [:] // method -> pretty-printed result
+    var info: [String: String] = [:] // method -> pretty-printed result (or why there isn't one)
+    /// Every message to and from the bulb (and pushes), oldest first, for the console.
+    var log: [LogEntry] = []
+    /// The console's last request: its method while waiting, and the reply (pretty JSON) or what
+    /// went wrong.
+    var consoleWaiting: String?
+    var consoleReply: String?
     enum Link { case none, connecting, connected, unreachable }
     /// Whether the bulb has answered since the last Connect.
     var link: Link = .none
@@ -124,8 +130,27 @@ final class Model {
             namesFromCloud = false
         }
         bulb.onReply = { [weak self] in self?.handleReply($0) }
+        bulb.onSent = { [weak self] method, text in self?.appendLog(.sent, method: method, text: text) }
+        bulb.onReceived = { [weak self] text in
+            guard let self else { return }
+            let obj = Net.json(Data(text.utf8))
+            let method = obj?["method"] as? String ?? ""
+            appendLog(.received, method: method, text: text)
+            if let waiting = consoleWaiting, method == waiting {
+                consoleWaiting = nil
+                consoleReply = obj.map(JSONText.pretty) ?? text
+            }
+        }
         bulb.onError = { [weak self] method, message in
             guard let self else { return }
+            appendLog(.failure, method: method ?? "", text: message)
+            if let method, BulbAPI.deviceInfo.contains(method), info[method] == nil {
+                info[method] = JSONText.pretty(["error": message])
+            }
+            if let waiting = consoleWaiting, method == waiting {
+                consoleWaiting = nil
+                consoleReply = message
+            }
             if method == "registration" { // live updates only; not worth the status line
                 live = false
                 liveStatus = "Live updates off — \(message)"
@@ -163,7 +188,10 @@ final class Model {
                 break
             }
         }
-        push.onMessage = { [weak self] in self?.handlePush($0) }
+        push.onMessage = { [weak self] obj, text in
+            self?.appendLog(.push, method: obj["method"] as? String ?? "", text: text)
+            self?.handlePush(obj)
+        }
         push.onFailure = { [weak self] reason in
             self?.registerTask?.cancel()
             self?.live = false
@@ -488,9 +516,58 @@ final class Model {
         sendPilot([.colour], retry: true)
     }
 
+    /// Reads everything the bulb will tell over UDP (device info), a little apart so the bulb
+    /// isn't sent 22 requests at once.
     func readConfig() {
-        for m in ["getSystemConfig", "getModelConfig", "getUserConfig", "getPower"] {
-            bulb.send(m, retry: true)
+        configTask?.cancel()
+        configTask = Task {
+            for m in BulbAPI.deviceInfo {
+                guard !Task.isCancelled else { return }
+                bulb.send(m, retry: true)
+                try? await Task.sleep(for: .milliseconds(60))
+            }
+        }
+    }
+    @ObservationIgnored private var configTask: Task<Void, Never>?
+
+    /// Sends any method from the console. A setPilot is tracked like the controls' own (read
+    /// back, mismatches shown), with `"state": false` added while the bulb is off if
+    /// `keepOff` (leaving it out switches the bulb on); a setState updates the power switch.
+    func sendRaw(_ method: String, _ params: [String: Any], keepOff: Bool, retry: Bool) {
+        var p = params
+        consoleWaiting = method
+        consoleReply = nil
+        switch method {
+        case "setPilot":
+            let lightKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "dimming", "dimDelta", "ratio"]
+            let changesLight = p.keys.contains(where: lightKeys.contains)
+            if keepOff, isOn == false, p["state"] == nil, changesLight { p["state"] = false }
+            if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
+                lastSent = String(decoding: data, as: UTF8.self)
+            }
+            lastMethod = "setPilot"
+            // Read back only what getPilot reports (not trans, elm or dimDelta).
+            let reported: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "speed", "dimming"]
+            // With dimDelta the resulting dimming depends on the bulb's level, so it isn't checked.
+            lastPilot = p.filter { reported.contains($0.key) && !($0.key == "dimming" && p["dimDelta"] != nil) }
+                .compactMapValues { ($0 as? NSNumber)?.intValue }
+            if let s = p["state"] as? Bool { isOn = s } else if changesLight { isOn = true }
+            lastState = isOn
+            sendSeq += 1
+            pending = true
+            bulb.send(method, p, retry: retry)
+            scheduleVerify()
+        case "setState":
+            if let s = p["state"] as? Bool {
+                powerBefore = isOn
+                isOn = s
+                lastState = s
+            }
+            lastMethod = "setState"
+            lastSent = JSONText.compact(p)
+            bulb.send(method, p, retry: retry)
+        default:
+            bulb.send(method, p, retry: retry)
         }
     }
 
@@ -937,12 +1014,16 @@ final class Model {
         if let err = reply["error"] as? [String: Any] {
             link = .connected
             let text = (err["code"] as? Int) == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
-            if method.hasPrefix("get") && method != "getPilot" { info[method] = text }
+            // Device info shows the error as the bulb sent it (code and message).
+            if BulbAPI.deviceInfo.contains(method) { info[method] = JSONText.pretty(["error": err]) }
             status = "\(method): \(text)"
             return
         }
-        guard let result = reply["result"] as? [String: Any] else { return }
-        if let replyMAC = result["mac"] as? String, !isChosenBulb(replyMAC) { return }
+        let anyResult = reply["result"]
+        if let r = anyResult as? [String: Any], let replyMAC = r["mac"] as? String, !isChosenBulb(replyMAC) { return }
+        // Device info: every read's reply, as it came.
+        if BulbAPI.deviceInfo.contains(method), let anyResult { info[method] = JSONText.pretty(anyResult) }
+        guard let result = anyResult as? [String: Any] else { return }
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.
         if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
         link = .connected
@@ -962,12 +1043,10 @@ final class Model {
             }
         case "getModelConfig", "getUserConfig":
             applyLimits(result)
-            info[method] = pretty(result)
         case "getSystemConfig", "getPower":
             if let m = result["mac"] as? String { mac = m }
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
-            info[method] = pretty(result)
         case "setState":
             status = isOn == false ? "Switched off" : "Switched on"
         case "registration":
@@ -978,7 +1057,8 @@ final class Model {
                 }
             }
         default:
-            status = "\(method) ok"
+            // Reads (device info) aren't worth the status line.
+            if !method.hasPrefix("get") { status = "\(method) ok" }
         }
     }
 
@@ -1038,11 +1118,5 @@ final class Model {
            let lo = range.first?.doubleValue, let hi = range.last?.doubleValue, lo < hi {
             tempRange = lo...hi
         }
-    }
-
-    private func pretty(_ obj: [String: Any]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
-        else { return "\(obj)" }
-        return String(decoding: data, as: UTF8.self)
     }
 }

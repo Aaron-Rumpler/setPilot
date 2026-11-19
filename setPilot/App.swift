@@ -23,6 +23,9 @@ struct SetPilotApp: App {
             .defaultSize(width: 720, height: 640)
         Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
             .defaultSize(width: 720, height: 680)
+        Window("Console", id: "console") { ConsoleWindow(model: model) }
+            .defaultSize(width: 760, height: 760)
+            .keyboardShortcut("k", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
     }
 }

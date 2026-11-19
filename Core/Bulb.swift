@@ -8,6 +8,9 @@ final class Bulb {
     /// Replies seen per method; retry loops stop once this changes.
     private var replyCount: [String: Int] = [:]
     var onReply: (([String: Any]) -> Void)?
+    /// Every request as sent (once, not each retry) and every message received, as text, for the log.
+    var onSent: ((String, String) -> Void)?
+    var onReceived: ((String) -> Void)?
     /// The failed request's method (nil for the connection itself) and a message to show.
     var onError: ((String?, String) -> Void)?
 
@@ -27,10 +30,12 @@ final class Bulb {
         guard !host.isEmpty else { return }
         let c = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: Net.port)!, using: .udp)
         conn = c
-        Bulb.receive(c) { [weak self] obj, error in
+        Bulb.receive(c) { [weak self] data, error in
+            let text = data.map { String(decoding: $0, as: UTF8.self) }
             Task { @MainActor in
                 guard let self, c === self.conn else { return }
-                if let obj {
+                if let text { self.onReceived?(text) }
+                if let obj = text.flatMap({ Net.json(Data($0.utf8)) }) {
                     if let method = obj["method"] as? String { self.replyCount[method, default: 0] += 1 }
                     self.onReply?(obj)
                 }
@@ -44,8 +49,10 @@ final class Bulb {
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     func send(_ method: String, _ params: [String: Any] = [:], retry: Bool = false) {
         guard let conn,
-              let data = try? JSONSerialization.data(withJSONObject: ["method": method, "params": params])
+              let data = try? JSONSerialization.data(withJSONObject: ["method": method, "params": params],
+                                                     options: [.sortedKeys, .withoutEscapingSlashes])
         else { return }
+        onSent?(method, String(decoding: data, as: UTF8.self))
 
         guard retry else {
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
@@ -70,10 +77,10 @@ final class Bulb {
     }
 
     nonisolated private static func receive(
-        _ c: NWConnection, _ handler: @escaping @Sendable ([String: Any]?, NWError?) -> Void
+        _ c: NWConnection, _ handler: @escaping @Sendable (Data?, NWError?) -> Void
     ) {
         c.receiveMessage { data, _, _, error in
-            handler(data.flatMap(Net.json), error)
+            handler(data, error)
             if error == nil { Bulb.receive(c, handler) }
         }
     }
@@ -82,10 +89,11 @@ final class Bulb {
 /// Listens on UDP 38900 for `syncPilot` pushes from bulbs we've registered with.
 @MainActor
 final class PushListener {
-    enum Event { case message([String: Any]), failed(String) }
+    enum Event { case message([String: Any], String), failed(String) }
 
     private var listener: NWListener?
-    var onMessage: (([String: Any]) -> Void)?
+    /// A push, parsed and as text.
+    var onMessage: (([String: Any], String) -> Void)?
     var onFailure: ((String) -> Void)?
 
     var isRunning: Bool { listener != nil }
@@ -99,7 +107,7 @@ final class PushListener {
                 Task { @MainActor in
                     guard let self else { return }
                     switch event {
-                    case .message(let obj): self.onMessage?(obj)
+                    case let .message(obj, text): self.onMessage?(obj, text)
                     case .failed(let reason):
                         self.listener = nil
                         self.onFailure?(reason)
@@ -128,7 +136,7 @@ final class PushListener {
 
     nonisolated private static func receive(_ c: NWConnection, _ handler: @escaping @Sendable (Event) -> Void) {
         c.receiveMessage { data, _, _, error in
-            if let data, let obj = Net.json(data) { handler(.message(obj)) }
+            if let data, let obj = Net.json(data) { handler(.message(obj, String(decoding: data, as: UTF8.self))) }
             if error == nil { PushListener.receive(c, handler) } else { c.cancel() }
         }
     }

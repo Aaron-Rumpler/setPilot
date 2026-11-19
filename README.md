@@ -36,8 +36,17 @@ raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongsid
   follow changes made from the WiZ app or a remote. The status shows "none yet" until the first
   push arrives, since registering doesn't prove pushes get through a firewall.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
-  shows the MAC address, module and firmware, the raw `getSystemConfig` / `getModelConfig` /
-  `getUserConfig` / `getPower` results (in a popover from the ⓘ button), and a reboot button.
+  shows the MAC address, module and firmware, the raw replies to every read the bulb answers over
+  UDP (all 22 of firmware 1.38.0's, Wi-Fi ones included; in a popover from the ⓘ button, and Bulb &
+  Settings › Configuration on iPhone), and a reboot button.
+- **Console** (Mac; Window › Console, ⌥⌘K, or Console… on the Last Command panel): send any method
+  with any params. Known methods (all 70 in firmware 1.38.0's table) are in a menu with params to
+  start from, a description, whether the bulb takes them over UDP, and a confirmation for anything
+  that changes what the bulb stores. Params are edited as syntax-highlighted JSON, checked as you
+  type. A `setPilot` from the console is read back like the controls' own, with `"state": false`
+  added while the bulb is off unless you turn that off. Below it, a log of every request, reply and
+  live update (with times to the millisecond), filterable, copyable, and loadable back into the
+  console.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
 - Keyboard: arrow keys step sliders (50 K for temperature), ⌘R syncs.
 - **Presets**: save the light as it is (colour, temperature, scene or custom scene, with its
