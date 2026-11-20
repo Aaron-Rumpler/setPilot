@@ -372,6 +372,7 @@ final class Model {
         pending = false
         mismatch = nil
         wrongBulb = false
+        unsent = [] // a slider move still waiting was for the previous bulb
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -806,9 +807,12 @@ final class Model {
             if p.isEmpty {
                 bulb.send("setPilot", speedParams, retry: retry)
             } else {
-                // After the scene has started (and so retries of the two don't overlap).
+                // After the scene has started (and so retries of the two don't overlap). Not if
+                // another bulb has been chosen meanwhile.
+                let generation = connectGeneration
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
+                    guard connectGeneration == generation else { return }
                     bulb.send("setPilot", speedParams, retry: retry)
                 }
             }
