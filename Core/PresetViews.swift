@@ -23,7 +23,7 @@ struct PresetGrid: View {
                     ForEach(lib.presets) { preset in
                         Button { model.apply(preset) } label: {
                             PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
-                                       isScene: preset.colour.isScene, dimming: preset.dimming)
+                                       isScene: preset.colour.isScene)
                         }
                         .buttonStyle(.plain)
                         .disabled(model.link != .connected)
@@ -81,7 +81,6 @@ struct PresetTile: View {
     let name: String
     let swatch: RGB?
     var isScene = false
-    var dimming: Int?
 
     var body: some View {
         VStack(spacing: 4) {
