@@ -118,6 +118,13 @@ final class PhoneLink: NSObject {
         })
     }
 
+    /// Reads the bulb's device info afresh: what an earlier read showed (perhaps of another bulb)
+    /// goes until the new one arrives.
+    func readDeviceInfo() {
+        deviceInfo = []
+        send(.deviceInfo)
+    }
+
     /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach.
     func refresh() {
         guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }

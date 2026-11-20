@@ -394,7 +394,7 @@ struct WatchDeviceInfoView: View {
         .onAppear {
             guard !requested else { return }
             requested = true
-            link.send(.deviceInfo)
+            link.readDeviceInfo()
         }
     }
 }
