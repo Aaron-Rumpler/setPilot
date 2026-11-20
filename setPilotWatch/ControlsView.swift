@@ -184,6 +184,8 @@ struct WatchComposeView: View {
     /// Temperature's scale (nil: the bulb's own).
     @State private var scaleID: UUID?
     @State private var scene = WatchScene.builtin(1)
+    @State private var includeSpeed = false
+    @State private var speed = 100.0
     @State private var includeDimming = true
     @State private var dimming = 100.0
     @State private var power = Power.leave
@@ -224,6 +226,8 @@ struct WatchComposeView: View {
                             ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
                             ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
                         }
+                        Toggle("Speed", isOn: $includeSpeed)
+                        if includeSpeed { ValueRow(label: "Speed", value: $speed, range: 10...200) }
                     }
                 }
             }
@@ -246,8 +250,6 @@ struct WatchComposeView: View {
                 if fadeChoice == .custom {
                     ValueRow(label: "Fade time", value: $fade, range: 0...60_000, unit: " ms")
                 }
-            } footer: {
-                if power == .off { Text("Turning off uses the bulb's own fade-out.") }
             }
             Section {
                 Button {
@@ -256,7 +258,16 @@ struct WatchComposeView: View {
                 } label: {
                     Label("Send", systemImage: "paperplane.fill")
                 }
-                .disabled(s?.canControl != true)
+                .disabled(s?.canControl != true || change(s).isEmpty)
+                Button { load() } label: { Label("From Bulb", systemImage: "arrow.uturn.backward") }
+            } footer: {
+                let ch = change(s)
+                VStack(alignment: .leading, spacing: 4) {
+                    // The scale's channels are worked out on the iPhone.
+                    Text(ch.preview(isOn: s?.isOn) { _, _ in nil })
+                        .font(.system(.caption2, design: .monospaced))
+                    if let note = ch.note(isOn: s?.isOn) { Text(note) }
+                }
             }
         }
         .navigationTitle("Compose")
@@ -276,8 +287,8 @@ struct WatchComposeView: View {
                 }
             case .scenes:
                 switch scene {
-                case .builtin(let id): ch.colour = .scene(id: id, speed: nil)
-                case .custom(let id): ch.colour = .custom(id, speed: nil)
+                case .builtin(let id): ch.colour = .scene(id: id, speed: includeSpeed ? Int(speed) : nil)
+                case .custom(let id): ch.colour = .custom(id, speed: includeSpeed ? Int(speed) : nil)
                 }
             }
         }
@@ -306,6 +317,9 @@ struct WatchComposeView: View {
         let range = kelvinRange(s)
         kelvin = min(max(kelvin, range.lowerBound), range.upperBound)
         dimming = s.dimming
+        speed = min(max(s.speed, 10), 200)
+        includeSpeed = false
+        power = .leave
         if let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
             scene = .custom(id)
         } else if Scenes.isKnown(s.sceneId) {

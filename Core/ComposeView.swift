@@ -72,53 +72,16 @@ extension Model {
         return ch
     }
 
-    var draftHasChange: Bool {
-        let ch = draftChange
-        return ch.colour != nil || ch.dimming != nil || ch.power != nil
-    }
+    var draftHasChange: Bool { !draftChange.isEmpty }
 
-    /// Roughly what will be sent (custom scenes' definitions shortened).
+    /// Roughly what will be sent.
     var draftPreview: String {
-        let ch = draftChange
-        var parts: [String] = []
-        switch ch.colour {
-        case let .rgbcw(r, g, b, c, w)?: parts.append("\"r\":\(r),\"g\":\(g),\"b\":\(b),\"c\":\(c),\"w\":\(w)")
-        case let .temp(k)?: parts.append("\"temp\":\(k)")
-        case let .scene(id, _)?: parts.append("\"sceneId\":\(id)")
-        case .custom?: parts.append("\"sceneId\":\(Scenes.inlineCustom),\"elm\":{…}")
-        case let .customCCT(id, k)?:
-            if let v = library.scale(id)?.scale.channels(at: k) {
-                parts.append("\"r\":\(v.r),\"g\":\(v.g),\"b\":\(v.b),\"c\":\(v.c),\"w\":\(v.w)")
-            }
-        case nil: break
+        draftChange.preview(isOn: isOn) { id, k in
+            library.scale(id)?.scale.channels(at: k).map { "\"r\":\($0.r),\"g\":\($0.g),\"b\":\($0.b),\"c\":\($0.c),\"w\":\($0.w)" }
         }
-        if let d = ch.dimming { parts.append("\"dimming\":\(d)") }
-        // As send(_:): a fade only goes with a change or with switching on, never alone when
-        // switching off.
-        if let f = ch.fade, !parts.isEmpty || ch.power == true { parts.append("\"trans\":\(f)") }
-        if parts.isEmpty && ch.power == true { return "setState {\"state\":true}" }
-        if ch.power == false || (ch.power == nil && isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
-        if parts.isEmpty { return "Nothing to send" }
-        var text = "setPilot {" + parts.joined(separator: ",") + "}"
-        switch ch.colour {
-        case let .scene(_, s?)?, let .custom(_, s?)?: text += "\nthen setPilot {\"speed\":\(s)}"
-        default: break
-        }
-        return text
     }
 
-    /// Something worth saying about the draft, if anything.
-    var draftNote: String? {
-        let d = draft
-        if d.power == .off { return "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead." }
-        if isOn == false && d.power == .leave && (d.includeColour || d.includeDimming) {
-            return "The bulb is off and stays off; the change shows when it's switched on."
-        }
-        if d.includeColour, d.kind == .scenes, d.includeSpeed {
-            return "The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else."
-        }
-        return nil
-    }
+    var draftNote: String? { draftChange.note(isOn: isOn) }
 
     /// Starts the draft from the bulb's current state.
     func loadDraft() {
