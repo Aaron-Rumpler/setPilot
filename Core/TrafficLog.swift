@@ -21,10 +21,13 @@ struct LogEntry: Identifiable, Sendable {
     /// The message as JSON text (for failures, what went wrong).
     let text: String
 
-    /// The request as method and params (nil if it had none), to send again.
+    /// The request as method and params (nil if it had none), to send again. A signed request's
+    /// `sigTs` is left out: it's added afresh when the request is signed again.
     var request: (method: String, params: [String: Any]?)? {
         guard kind == .sent, let obj = Net.json(Data(text.utf8)), let method = obj["method"] as? String else { return nil }
-        return (method, obj["params"] as? [String: Any])
+        var params = obj["params"] as? [String: Any]
+        if obj["hmac"] != nil { params?["sigTs"] = nil }
+        return (method, params)
     }
 
     /// 24-hour time with milliseconds, whatever the locale's clock.
