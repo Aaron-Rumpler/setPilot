@@ -38,7 +38,9 @@ final class PhoneLink: NSObject {
 
     /// A live change (the Crown) is on its way, or waiting for the one before it.
     private(set) var liveBusy = false
-    private var liveInFlight = false
+    /// Live changes sent and not yet answered: normally at most one, but a command sent meanwhile
+    /// sends the waiting one alongside.
+    private var liveInFlight = 0
     private var livePending: (values: LightValues, fields: Set<PilotField>)?
 
     /// For values changed continuously: the first change goes at once, and while one is on its
@@ -46,7 +48,7 @@ final class PhoneLink: NSObject {
     /// fast as the link allows, without a backlog of old values arriving after you've stopped.
     func sendLive(_ values: LightValues, fields: Set<PilotField>) {
         liveBusy = true
-        if liveInFlight {
+        if liveInFlight > 0 {
             livePending = (values, fields.union(livePending?.fields ?? []))
             return
         }
@@ -54,10 +56,11 @@ final class PhoneLink: NSObject {
     }
 
     private func transmitLive(_ values: LightValues, fields: Set<PilotField>) {
-        liveInFlight = true
+        liveInFlight += 1
         transmit(.set(values, fields: Array(fields)), quiet: false) { [weak self] in
             guard let self else { return }
-            self.liveInFlight = false
+            self.liveInFlight -= 1
+            guard self.liveInFlight == 0 else { return } // the latest is still on its way
             if let next = self.livePending {
                 self.livePending = nil
                 self.transmitLive(next.values, fields: next.fields)
