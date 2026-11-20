@@ -4,6 +4,8 @@ A small native app (SwiftUI) for controlling a single WiZ RGB bulb, mainly for e
 raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongside. It's named after
 `setPilot`, the bulb's command for setting the light.
 
+setPilot was written entirely by Claude, Anthropic's AI model, working in Claude Code.
+
 setPilot is an independent project, not affiliated with or endorsed by Signify or WiZ. WiZ is a
 trademark of Signify.
 
