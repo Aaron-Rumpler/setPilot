@@ -37,11 +37,15 @@ enum RequestSigning {
             if let params { request["params"] = params }
             return try? JSONSerialization.data(withJSONObject: request, options: options)
         }
-        var signed = params ?? [:]
-        signed["sigTs"] = Int(now.timeIntervalSince1970)
-        guard let body = try? JSONSerialization.data(withJSONObject: signed, options: options),
+        // sigTs goes last, as pywizlight adds it, so a request pywizlight would send with its keys
+        // in this order is the same byte for byte.
+        var rest = params ?? [:]
+        rest["sigTs"] = nil
+        guard let restJSON = try? JSONSerialization.data(withJSONObject: rest, options: options),
               let name = try? JSONSerialization.data(withJSONObject: method, options: [.fragmentsAllowed])
         else { return nil }
+        let sigTs = Data(#""sigTs":\#(Int(now.timeIntervalSince1970))}"#.utf8)
+        let body = rest.isEmpty ? Data("{".utf8) + sigTs : restJSON.dropLast() + Data(",".utf8) + sigTs
         let mac = HMAC<SHA256>.authenticationCode(for: body, using: SymmetricKey(data: secret))
         // Built by hand so the params go out byte for byte as signed.
         var out = Data(#"{"method":"#.utf8)

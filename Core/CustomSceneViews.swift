@@ -155,9 +155,10 @@ struct StepEditor: View {
 
     var body: some View {
         HStack {
-            Picker("Colour", selection: $step.useTemp) {
-                Text("RGBCW").tag(false)
-                Text("Temperature").tag(true)
+            Picker("Colour", selection: $step.kind) {
+                Text("RGBCW").tag(CustomScene.Step.Kind.rgbcw)
+                Text("Temperature").tag(CustomScene.Step.Kind.temperature)
+                Text("Dark").tag(CustomScene.Step.Kind.dark)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -167,7 +168,11 @@ struct StepEditor: View {
                 .frame(width: 36, height: 22)
                 .accessibilityHidden(true)
         }
-        if step.useTemp {
+        if step.dark {
+            Text("No light: every channel at 0.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } else if step.useTemp {
             IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange, kelvin: true,
                          tint: ColourTemperature.color(kelvin: Double(step.temp)))
         } else {
@@ -177,7 +182,9 @@ struct StepEditor: View {
             IntSliderRow(label: "Cool white", value: $step.c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
             IntSliderRow(label: "Warm white", value: $step.w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
         }
-        IntSliderRow(label: "Level", value: $step.level, range: levelRange, unit: "%")
+        if !step.dark {
+            IntSliderRow(label: "Level", value: $step.level, range: levelRange, unit: "%")
+        }
         Group {
             MillisecondsRow(label: "Hold", value: $step.hold)
             MillisecondsRow(label: "Fade", value: $step.fade)

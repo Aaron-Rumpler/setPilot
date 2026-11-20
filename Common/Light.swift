@@ -208,6 +208,8 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
     struct Step: Codable, Hashable, Identifiable, Sendable {
         var id = UUID()
         var useTemp = false
+        /// No light: all five channels at 0. The colour settings are kept for switching back.
+        var dark = false
         var r = 255
         var g = 0
         var b = 0
@@ -242,15 +244,30 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
             return fade << 5 | hold << 2 | chance
         }
 
-        var colour: LightColour { useTemp ? .temp(temp) : .rgbcw(r: r, g: g, b: b, c: c, w: w) }
+        enum Kind: CaseIterable, Sendable { case rgbcw, temperature, dark }
+
+        var kind: Kind {
+            get { dark ? .dark : useTemp ? .temperature : .rgbcw }
+            set {
+                dark = newValue == .dark
+                if newValue != .dark { useTemp = newValue == .temperature }
+            }
+        }
+
+        var colour: LightColour {
+            if dark { return .rgbcw(r: 0, g: 0, b: 0, c: 0, w: 0) }
+            return useTemp ? .temp(temp) : .rgbcw(r: r, g: g, b: b, c: c, w: w)
+        }
 
         /// Firmware 1.38.0's 13-number step: mode, R, G, B, warm, cool, kelvin, level, hold, fade,
         /// jitter, then two with no known effect.
         /// The fields the step doesn't use are sent as 0: the channels for a temperature step, the
-        /// kelvin for an RGBCW one.
+        /// kelvin for an RGBCW one. A dark step is a colour step with every channel at 0.
         var elm: [Int] {
-            let channels = useTemp ? [0, 0, 0, 0, 0] : [r, g, b, w, c]
-            return [useTemp ? 1 : 0] + channels + [useTemp ? temp : 0, min(max(level, 1), 100), max(hold, 0), max(fade, 0), jitterByte, 0, 0]
+            let temperature = useTemp && !dark
+            let channels = temperature || dark ? [0, 0, 0, 0, 0] : [r, g, b, w, c]
+            let level = dark ? 100 : min(max(self.level, 1), 100)
+            return [temperature ? 1 : 0] + channels + [temperature ? temp : 0, level, max(hold, 0), max(fade, 0), jitterByte, 0, 0]
         }
 
         init(useTemp: Bool = false, r: Int = 255, g: Int = 0, b: Int = 0, c: Int = 0, w: Int = 0, temp: Int = 2700,
@@ -264,6 +281,7 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decode(UUID.self, forKey: .id)
             useTemp = try c.decode(Bool.self, forKey: .useTemp)
+            dark = try c.decodeIfPresent(Bool.self, forKey: .dark) ?? false
             r = try c.decode(Int.self, forKey: .r)
             g = try c.decode(Int.self, forKey: .g)
             b = try c.decode(Int.self, forKey: .b)
@@ -310,7 +328,7 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         return elm
     }
 
-    var swatch: RGB? { steps.first?.colour.swatch }
+    var swatch: RGB? { (steps.first { !$0.dark } ?? steps.first)?.colour.swatch }
 }
 
 /// A colour-temperature scale: RGBCW values at some kelvin points, interpolated between them the
