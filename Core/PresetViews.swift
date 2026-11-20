@@ -67,8 +67,10 @@ struct PresetGrid: View {
         Button("Update to Current Light") { model.updatePreset(preset.id) }
         .disabled(model.currentColour == nil || !model.canControl)
         Divider()
-        Button("Move Earlier") { lib.presets.swapAt(i, i - 1) }.disabled(i == 0)
-        Button("Move Later") { lib.presets.swapAt(i, i + 1) }.disabled(i >= lib.presets.count - 1)
+        // By ID, not the index the menu was built with: the presets can change while it's open
+        // (iCloud, or the watch).
+        Button("Move Earlier") { model.movePreset(preset.id, by: -1) }.disabled(i == 0)
+        Button("Move Later") { model.movePreset(preset.id, by: 1) }.disabled(i >= lib.presets.count - 1)
         Divider()
         Button("Delete…", role: .destructive) { deleting = preset }
     }

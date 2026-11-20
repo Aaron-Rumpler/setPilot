@@ -61,7 +61,7 @@ struct CustomSceneEditor: View {
                         HStack {
                             Text("Step \(i + 1)")
                             Spacer()
-                            stepMenu(binding, index: i)
+                            stepMenu(binding, index: i, id: step.id)
                         }
                     }
                 }
@@ -108,19 +108,25 @@ struct CustomSceneEditor: View {
         )
     }
 
-    private func stepMenu(_ scene: Binding<CustomScene>, index i: Int) -> some View {
-        Menu {
+    /// The step's actions. Each looks the step up again by `id` when chosen, as the steps can
+    /// change while the menu is open (iCloud).
+    private func stepMenu(_ scene: Binding<CustomScene>, index: Int, id: UUID) -> some View {
+        let i = index
+        return Menu {
             Button("Duplicate") {
+                guard let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) else { return }
                 var copy = scene.wrappedValue.steps[i]
                 copy.id = UUID()
                 scene.wrappedValue.steps.insert(copy, at: i + 1)
                 if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep += 1 }
             }
             .disabled(scene.wrappedValue.steps.count >= CustomScene.maxSteps)
-            Button("Move Up") { move(scene, i, to: i - 1) }.disabled(i == 0)
-            Button("Move Down") { move(scene, i, to: i + 1) }
+            Button("Move Up") { move(scene, id, by: -1) }.disabled(i == 0)
+            Button("Move Down") { move(scene, id, by: 1) }
                 .disabled(i >= scene.wrappedValue.steps.count - 1)
             Button("Delete", role: .destructive) {
+                guard scene.wrappedValue.steps.count > 1,
+                      let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) else { return }
                 scene.wrappedValue.steps.remove(at: i)
                 if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep -= 1 }
                 scene.wrappedValue.startStep = min(scene.wrappedValue.startStep, scene.wrappedValue.steps.count - 1)
@@ -135,8 +141,11 @@ struct CustomSceneEditor: View {
         .accessibilityLabel("Step \(i + 1) actions")
     }
 
-    /// Swaps two steps, the start step going with its step.
-    private func move(_ scene: Binding<CustomScene>, _ i: Int, to j: Int) {
+    /// Swaps a step with the one before (-1) or after (1), the start step going with its step.
+    private func move(_ scene: Binding<CustomScene>, _ id: UUID, by offset: Int) {
+        guard let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) else { return }
+        let j = i + offset
+        guard scene.wrappedValue.steps.indices.contains(j) else { return }
         scene.wrappedValue.steps.swapAt(i, j)
         let start = scene.wrappedValue.startStep
         if start == i { scene.wrappedValue.startStep = j } else if start == j { scene.wrappedValue.startStep = i }
