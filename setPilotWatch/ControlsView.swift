@@ -124,7 +124,7 @@ struct ControlsView: View {
 
     /// Takes the bulb's values, unless a live change is still on its way.
     private func follow(_ s: LightSnapshot?) {
-        guard !link.liveBusy, let s else { return }
+        guard values == nil || !link.liveBusy, let s else { return }
         values = s.values
     }
 
@@ -354,6 +354,8 @@ struct ControlsFadePicker: View {
                     link.send(.controlsFade(.custom, ms: Int(new)))
                 }
             }), range: 0...60_000, unit: " ms")
+            // Once the iPhone has it (or it changed there), show its value.
+            .onChange(of: s.controlsFadeMs) { ms = nil }
         }
     }
 }

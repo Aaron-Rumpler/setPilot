@@ -43,11 +43,17 @@ final class Model {
     /// The fade for changes made with the main controls (sliders, presets, power on, brighter or
     /// dimmer): the setting above, none, or a value of their own, as in Compose. Remembered.
     var controlsFade = FadeChoice(rawValue: UserDefaults.standard.string(forKey: Model.controlsFadeKey) ?? "") ?? .setting {
-        didSet { UserDefaults.standard.set(controlsFade.rawValue, forKey: Self.controlsFadeKey) }
+        didSet {
+            UserDefaults.standard.set(controlsFade.rawValue, forKey: Self.controlsFadeKey)
+            library.onChange?() // widgets' ready-made preset requests carry it
+        }
     }
     static let controlsFadeKey = "controlsFade"
     var controlsFadeMs = UserDefaults.standard.object(forKey: Model.controlsFadeMsKey) as? Int ?? 1000 {
-        didSet { UserDefaults.standard.set(controlsFadeMs, forKey: Self.controlsFadeMsKey) }
+        didSet {
+            UserDefaults.standard.set(controlsFadeMs, forKey: Self.controlsFadeMsKey)
+            library.onChange?()
+        }
     }
     static let controlsFadeMsKey = "controlsFadeMs"
     /// The `trans` the main controls send, if any.
@@ -902,7 +908,8 @@ final class Model {
     }
 
     /// A preset as a ready-made setPilot (for widgets and controls, which send it themselves if
-    /// they can't use the app). Speed is left out; dimming and the fade setting are in.
+    /// they can't use the app). Speed is left out; dimming and the controls' fade are in, as when
+    /// the app applies it.
     func pilotParams(for preset: Preset) -> [String: Any]? {
         var p: [String: Any] = ["dimming": min(max(preset.dimming, 1), 100)]
         switch preset.colour {
@@ -917,7 +924,7 @@ final class Model {
             guard let ch = library.scale(id)?.scale.channels(at: k) else { return nil }
             p.merge(["r": ch.r, "g": ch.g, "b": ch.b, "c": ch.c, "w": ch.w]) { $1 }
         }
-        if let fade = Self.fade { p["trans"] = fade }
+        if let fade = fadeForControls { p["trans"] = fade }
         return p
     }
 
@@ -1070,19 +1077,36 @@ final class Model {
     @ObservationIgnored private var liveHost: String?
     @ObservationIgnored private var lastRegistration = Date.distantPast
 
+    /// When something was last heard from the bulb (a reply or a push).
+    @ObservationIgnored private var lastHeard = Date.distantPast
+    /// When `ensureLive` last read the state because the bulb had gone quiet.
+    @ObservationIgnored private var lastStaleRead = Date.distantPast
+
     /// Woken in the background (by the watch, Shortcuts or a widget): iOS suspends the app's
     /// sockets and timers in between, so make sure it's connected and registered for pushes again,
-    /// so changes made elsewhere reach it (and the watch) while it's awake.
-    func ensureLive() {
+    /// so changes made elsewhere reach it (and the watch) while it's awake. Pushes sent while it was
+    /// suspended are lost, so if nothing has been heard from the bulb for longer than the
+    /// registration interval (it answers each one), the state is read again too. True if a read of
+    /// the state is on its way.
+    @discardableResult
+    func ensureLive() -> Bool {
         guard started, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else {
+            let was = started
             startIfSaved()
-            return
+            return started && !was
         }
         if !push.isRunning || link == .unreachable || link == .none {
             connect(a)
-        } else if let liveHost, Date.now.timeIntervalSince(lastRegistration) > 15 {
-            startLiveUpdates(liveHost)
+            return true
         }
+        var reading = false
+        if Date.now.timeIntervalSince(max(lastHeard, lastStaleRead)) > 25 {
+            lastStaleRead = .now
+            sync()
+            reading = true
+        }
+        if let liveHost, Date.now.timeIntervalSince(lastRegistration) > 15 { startLiveUpdates(liveHost) }
+        return reading
     }
 
     /// Updates a preset to the light as it is now.
@@ -1114,10 +1138,16 @@ final class Model {
     }
 
     /// Connects to the saved bulb if needed and waits until it can be controlled (or `timeout`).
+    /// If the state is being read again (see `ensureLive`), waits for that too, so what's sent and
+    /// reported starts from the bulb's real state.
     func waitUntilControllable(timeout: Double = 4) async -> Bool {
-        ensureLive()
+        let reads = pilotReads
+        let reading = ensureLive()
         let end = Date().addingTimeInterval(timeout)
         while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        if reading {
+            while pilotReads == reads && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        }
         return canControl
     }
 
@@ -1159,6 +1189,7 @@ final class Model {
 
     private func handleReply(_ reply: [String: Any]) {
         guard !wrongBulb else { return }
+        lastHeard = .now
         let method = reply["method"] as? String ?? "?"
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
@@ -1233,6 +1264,7 @@ final class Model {
               let params = msg["params"] as? [String: Any],
               let from = params["mac"] as? String, let mac, from.lowercased() == mac.lowercased()
         else { return }
+        lastHeard = .now
         let time = Date().formatted(date: .omitted, time: .standard)
         liveStatus = "Live updates on — last push \(time)"
         live = true

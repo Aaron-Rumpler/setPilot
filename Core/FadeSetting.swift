@@ -8,7 +8,8 @@ struct FadeSetting: View {
 
     var body: some View {
         Group { rows }
-            // Presets' ready-made requests for widgets (iPhone) carry the fade: pass the change on,
+            // Presets' ready-made requests for widgets (iPhone) carry the controls' fade, which may
+            // be this setting: pass the change on,
             // as for a change to the presets. Nothing listens on the Mac.
             .onChange(of: stored) { model.library.onChange?() }
     }

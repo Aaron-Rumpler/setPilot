@@ -20,6 +20,8 @@ enum SharedStore {
     /// The chosen bulb's signing key, if it has one.
     static let signingKeyKey = "shared.signingKey"
     static let customScenesKey = "shared.customScenes"
+    /// The controls' fade (trans, ms), if any, for widget actions that send themselves.
+    static let controlsTransKey = "shared.controlsTrans"
 
     static func save<T: Encodable>(_ value: T, _ key: String) {
         if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }

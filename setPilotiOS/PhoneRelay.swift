@@ -175,6 +175,7 @@ final class PhoneRelay: NSObject {
             }
         }
         SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
+        SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
         reloadWidgets()
     }
 
@@ -223,9 +224,9 @@ extension PhoneRelay: WCSessionDelegate {
         }
         let reply = UncheckedSendable(replyHandler)
         Task { @MainActor in
-            // Woken for this, perhaps from the background: get live updates going again, so
-            // changes from elsewhere reach the watch while the app stays awake.
-            self.model?.ensureLive()
+            // Woken for this, perhaps from the background: commands for the bulb get live updates
+            // going again (and the state read again if the app was suspended) through
+            // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
             let snapshot = await self.run(command)
             // The presets changed: the watch's copy for when the iPhone is out of reach.
             switch command {

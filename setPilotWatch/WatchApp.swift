@@ -361,6 +361,8 @@ struct BulbNameView: View {
 /// Every read the bulb answers, as it sent them, one per screen.
 struct WatchDeviceInfoView: View {
     let link: PhoneLink
+    /// Read once per visit, not again on coming back from a read's screen.
+    @State private var requested = false
 
     var body: some View {
         List {
@@ -389,6 +391,10 @@ struct WatchDeviceInfoView: View {
             }
         }
         .navigationTitle("Device Info")
-        .onAppear { link.send(.deviceInfo) }
+        .onAppear {
+            guard !requested else { return }
+            requested = true
+            link.send(.deviceInfo)
+        }
     }
 }
