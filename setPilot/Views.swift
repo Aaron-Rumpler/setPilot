@@ -4,7 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage(Model.addressKey) private var address = ""
     let model: Model
-    @State private var composing = false
     @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
     @Environment(\.openWindow) private var openWindow
@@ -36,18 +35,6 @@ struct ContentView: View {
             } else {
                 model.startIfSaved()
             }
-        }
-        // Here, not on the Light panel: that is disabled while the bulb is unknown.
-        .sheet(isPresented: $composing) {
-            VStack(spacing: 0) {
-                ComposeView(model: model) { composing = false }
-                HStack {
-                    Spacer()
-                    Button("Close") { composing = false }.keyboardShortcut(.cancelAction)
-                }
-                .padding(12)
-            }
-            .frame(width: 480, height: 640)
         }
     }
 
@@ -98,19 +85,10 @@ struct ContentView: View {
 
     private var lightPanel: some View {
         Panel("Light") {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                    .opacity(model.pending ? 1 : 0)
-                    .help("Waiting for the bulb to confirm")
-                Button {
-                    composing = true
-                } label: {
-                    Label("Compose…", systemImage: "square.and.pencil")
-                }
-                .buttonStyle(.borderless)
-                .help("Prepare a change (colour, brightness, power) and send it in one go, with its own fade time")
-            }
+            ProgressView()
+                .controlSize(.small)
+                .opacity(model.pending ? 1 : 0)
+                .help("Waiting for the bulb to confirm")
         } content: {
             LightControls(model: model)
         }
@@ -282,16 +260,37 @@ struct LightControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
-            Picker("Mode", selection: Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
+            // Compose picks the kind of colour for its draft; live, it changes the bulb's mode.
+            Picker("Mode", selection: model.composing
+                   ? Binding(get: { model.draft.kind }, set: { model.draft.kind = $0 })
+                   : Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
                 ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            .disabled(model.composing && !model.draft.includeColour)
             .frame(maxWidth: .infinity) // centred
+            .overlay(alignment: .trailing) { ComposeToggle(model: model).labelStyle(.iconOnly) }
+
+            if model.composing {
+                Text("Composing: nothing is sent until you press Send.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
 
             Divider()
 
+            if model.composing {
+                ComposeControls(model: model)
+            } else {
+                liveControls
+            }
+        }
+    }
+
+    @ViewBuilder private var liveControls: some View {
             switch model.mode {
             case .rgbcw:
                 ChannelSlider(label: "Red", tint: .red, range: 0...255, value: model.binding(\.r))
@@ -350,8 +349,6 @@ struct LightControls: View {
             }
             ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
             ControlsFadeRow(model: model)
-
-        }
     }
 }
 

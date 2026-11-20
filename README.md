@@ -81,10 +81,13 @@ trademark of Signify.
   step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
   definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
-- **Compose a change** (Compose… on the Light panel): prepare a new state (any of colour,
-  brightness and power) and send it as one `setPilot`. Its fade is the fade time setting (shown, if
+- **Compose a change** (the Compose button by the mode picker, in the window and the menu bar
+  panel, or Compose on the Light section on iPhone): the Light controls switch to a draft that
+  isn't sent until you press Send (⌘Return on the Mac). Prepare a new state (any of colour,
+  brightness and power) and send it as one `setPilot`; the controls then go back to live. The draft
+  is kept if you switch back without sending. Its fade is the fade time setting (shown, if
   there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
-  from the bulb's current state. A scene can have a speed too, which goes in a `setPilot` of its
+  from the bulb's current state, and From Bulb starts it again. A scene can have a speed too, which goes in a `setPilot` of its
   own just after (the firmware ignores speed alongside anything else).
 - **Signed requests**, for newer firmware that refuses unsigned changes: set a bulb's signing key
   (the home's `udp_signing_key`, from the WiZ app's export for local integration) with the key

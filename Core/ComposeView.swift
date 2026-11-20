@@ -1,191 +1,85 @@
 import SwiftUI
 
-/// Prepares a change (any of colour, brightness and power, with its own fade time) and sends it
-/// as one setPilot. Starts from the bulb's current state.
-struct ComposeView: View {
-    let model: Model
-    /// Called after sending (to close a sheet).
-    var onSend: () -> Void = {}
-
-    private enum Power: String, CaseIterable, Identifiable {
+/// A change being prepared in Compose: any of colour, brightness and power, with its own fade
+/// time, sent as one setPilot. Shared by the window and the menu bar panel, and kept while
+/// switching back to the live controls.
+@MainActor @Observable
+final class ComposeDraft {
+    enum Power: String, CaseIterable, Identifiable {
         case leave = "Leave", on = "On", off = "Off"
         var id: Self { self }
     }
 
-    @State private var includeColour = true
-    @State private var kind = ModeChoice.temperature
-    @State private var r = 255
-    @State private var g = 0
-    @State private var b = 0
-    @State private var c = 0
-    @State private var w = 0
-    @State private var kelvin = 2700
+    var includeColour = true
+    var kind = ModeChoice.temperature
+    var r = 255
+    var g = 0
+    var b = 0
+    var c = 0
+    var w = 0
+    var kelvin = 2700
     /// Temperature's scale, chosen here (nil: the bulb's own): picking one mustn't change the
     /// bulb until Send.
-    @State private var scaleID: UUID?
-    @State private var scene = SceneChoice.builtin(1)
-    @State private var includeSpeed = false
-    @State private var speed = 100
-    @State private var includeDimming = true
-    @State private var dimming = 100
-    @State private var power = Power.leave
-    @State private var fadeChoice = FadeChoice.none
-    @State private var fade = 10_000
-    @State private var loaded = false
+    var scaleID: UUID?
+    var scene = SceneChoice.builtin(1)
+    var includeSpeed = false
+    var speed = 100
+    var includeDimming = true
+    var dimming = 100
+    var power = Power.leave
+    var fadeChoice = FadeChoice.none
+    var fade = 10_000
+    /// Filled in from the bulb's state (once Compose is first used for this bulb, or on request).
+    var loaded = false
+}
 
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Colour", isOn: $includeColour)
-                if includeColour {
-                    Picker("Kind", selection: $kind) {
-                        ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    colourControls
-                }
-            }
-            Section {
-                Toggle("Brightness", isOn: $includeDimming)
-                if includeDimming {
-                    IntSliderRow(label: "Dimming", value: $dimming, range: Int(model.minDimming)...100, unit: "%")
-                }
-            }
-            Section {
-                Picker("Power", selection: $power) {
-                    ForEach(Power.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-            } header: {
-                Text("Power")
-            } footer: {
-                if model.isOn == false && power == .leave && (includeColour || includeDimming) {
-                    Text("The bulb is off and stays off; the change shows when it's switched on.")
-                }
-            }
-            Section {
-                Picker("Fade", selection: $fadeChoice) {
-                    ForEach(FadeChoice.options(setting: Model.fade), id: \.self) {
-                        Text($0.title(setting: Model.fade)).tag($0)
-                    }
-                }
-                if fadeChoice == .custom { MillisecondsRow(label: "Fade time", value: $fade) }
-            } footer: {
-                Text(power == .off
-                     ? "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead."
-                     : fadeChoice.trans(setting: Model.fade, custom: fade) != nil
-                        ? "The bulb fades to the new state over this time (trans)."
-                        : "No trans: the bulb uses its own fade" + ownFade + ".")
-            }
-            Section {
-                Text(preview)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Button {
-                    model.send(change)
-                    onSend()
-                } label: {
-                    Label("Send", systemImage: "paperplane.fill")
-                }
-                .disabled(!model.canControl || !hasChange)
-                .keyboardShortcut(.defaultAction)
-                Button("Start from the Bulb's Current State") { load() }
-            } footer: {
-                if change.colour?.isScene == true, includeSpeed {
-                    Text("The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else.")
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .navigationTitle("Compose a Change")
-        // Start from the bulb's state, once it's known (it may arrive after this opens).
-        .onAppear { if !loaded, model.canControl { load() } }
-        .onChange(of: model.canControl) { _, can in if can, !loaded { load() } }
+extension Model {
+    /// The chosen scale (while it still exists); nil for the bulb's own.
+    var draftScale: CCTScale? { usableScales.first { $0.id == draft.scaleID } }
+
+    /// Kelvin within the chosen scale, or the bulb's own range.
+    var draftKelvinRange: ClosedRange<Int> {
+        draftScale?.range ?? Int(tempRange.lowerBound)...Int(tempRange.upperBound)
     }
 
-    @ViewBuilder private var colourControls: some View {
-        switch kind {
-        case .rgbcw:
-            IntSliderRow(label: "Red", value: $r, range: 0...255, tint: .red)
-            IntSliderRow(label: "Green", value: $g, range: 0...255, tint: .green)
-            IntSliderRow(label: "Blue", value: $b, range: 0...255, tint: .blue)
-            IntSliderRow(label: "Cool white", value: $c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
-            IntSliderRow(label: "Warm white", value: $w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
-        case .temperature:
-            Picker("Scale", selection: Binding(get: { scale?.id }, set: { id in
-                scaleID = id
-                kelvin = clamped(kelvin)
-            })) {
-                Text("Bulb's own").tag(UUID?.none)
-                let scales = model.usableScales
-                if !scales.isEmpty {
-                    Divider()
-                    ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
-                }
-            }
-            IntSliderRow(label: "Kelvin", value: $kelvin, range: kelvinRange, kelvin: true,
-                         tint: ColourTemperature.color(kelvin: Double(kelvin)))
-        case .scenes:
-            Picker("Scene", selection: $scene) {
-                ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) }
-                if !model.library.customScenes.isEmpty {
-                    Divider()
-                    ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) }
-                }
-            }
-            Toggle("Speed", isOn: $includeSpeed)
-            if includeSpeed { IntSliderRow(label: "Speed", value: $speed, range: 10...200) }
-        }
+    func clampDraftKelvin() {
+        let range = draftKelvinRange
+        draft.kelvin = min(max(draft.kelvin, range.lowerBound), range.upperBound)
     }
 
-    private var change: LightChange {
+    var draftChange: LightChange {
+        let d = draft
         var ch = LightChange()
-        if includeColour {
-            switch kind {
-            case .rgbcw: ch.colour = .rgbcw(r: r, g: g, b: b, c: c, w: w)
+        if d.includeColour {
+            switch d.kind {
+            case .rgbcw: ch.colour = .rgbcw(r: d.r, g: d.g, b: d.b, c: d.c, w: d.w)
             case .temperature:
-                if let scale { ch.colour = LightColour.customCCT(scale: scale.id, kelvin: kelvin) } else { ch.colour = .temp(kelvin) }
+                if let scale = draftScale { ch.colour = .customCCT(scale: scale.id, kelvin: d.kelvin) } else { ch.colour = .temp(d.kelvin) }
             case .scenes:
-                switch scene {
-                case .builtin(let id): ch.colour = .scene(id: id, speed: includeSpeed ? speed : nil)
-                case .custom(let id): ch.colour = .custom(id, speed: includeSpeed ? speed : nil)
+                switch d.scene {
+                case .builtin(let id): ch.colour = .scene(id: id, speed: d.includeSpeed ? d.speed : nil)
+                case .custom(let id): ch.colour = .custom(id, speed: d.includeSpeed ? d.speed : nil)
                 }
             }
         }
-        if includeDimming { ch.dimming = dimming }
-        ch.power = switch power {
+        if d.includeDimming { ch.dimming = d.dimming }
+        ch.power = switch d.power {
         case .leave: nil
         case .on: true
         case .off: false
         }
-        ch.fade = fadeChoice.trans(setting: Model.fade, custom: fade)
+        ch.fade = d.fadeChoice.trans(setting: Model.fade, custom: d.fade)
         return ch
     }
 
-    /// The chosen scale (while it still exists); nil for the bulb's own.
-    private var scale: CCTScale? { model.usableScales.first { $0.id == scaleID } }
-
-    /// Kelvin within the chosen scale, or the bulb's own range.
-    private var kelvinRange: ClosedRange<Int> {
-        scale?.range ?? Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound)
+    var draftHasChange: Bool {
+        let ch = draftChange
+        return ch.colour != nil || ch.dimming != nil || ch.power != nil
     }
-
-    private func clamped(_ k: Int) -> Int { min(max(k, kelvinRange.lowerBound), kelvinRange.upperBound) }
-
-    /// The bulb's own fade-in, for the footer.
-    private var ownFade: String {
-        switch model.fadeIn {
-        case 0?: ", which is off"
-        case let ms?: " (\(ms) ms)"
-        case nil: ""
-        }
-    }
-
-    private var hasChange: Bool { change.colour != nil || change.dimming != nil || change.power != nil }
 
     /// Roughly what will be sent (custom scenes' definitions shortened).
-    private var preview: String {
-        let ch = change
+    var draftPreview: String {
+        let ch = draftChange
         var parts: [String] = []
         switch ch.colour {
         case let .rgbcw(r, g, b, c, w)?: parts.append("\"r\":\(r),\"g\":\(g),\"b\":\(b),\"c\":\(c),\"w\":\(w)")
@@ -193,17 +87,17 @@ struct ComposeView: View {
         case let .scene(id, _)?: parts.append("\"sceneId\":\(id)")
         case .custom?: parts.append("\"sceneId\":\(Scenes.inlineCustom),\"elm\":{…}")
         case let .customCCT(id, k)?:
-            if let v = model.library.scale(id)?.scale.channels(at: k) {
+            if let v = library.scale(id)?.scale.channels(at: k) {
                 parts.append("\"r\":\(v.r),\"g\":\(v.g),\"b\":\(v.b),\"c\":\(v.c),\"w\":\(v.w)")
             }
         case nil: break
         }
         if let d = ch.dimming { parts.append("\"dimming\":\(d)") }
-        // As Model.send: a fade only goes with a change or with switching on, never alone when
+        // As send(_:): a fade only goes with a change or with switching on, never alone when
         // switching off.
         if let f = ch.fade, !parts.isEmpty || ch.power == true { parts.append("\"trans\":\(f)") }
         if parts.isEmpty && ch.power == true { return "setState {\"state\":true}" }
-        if ch.power == false || (ch.power == nil && model.isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
+        if ch.power == false || (ch.power == nil && isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
         if parts.isEmpty { return "Nothing to send" }
         var text = "setPilot {" + parts.joined(separator: ",") + "}"
         switch ch.colour {
@@ -213,26 +107,207 @@ struct ComposeView: View {
         return text
     }
 
-    private func load() {
-        loaded = true
-        r = Int(model.r); g = Int(model.g); b = Int(model.b); c = Int(model.c); w = Int(model.w)
-        if model.mode == .custom, let id = model.activeScale?.id {
-            scaleID = id
-            kelvin = Int(model.customKelvin)
-        } else {
-            scaleID = nil
-            kelvin = Int(model.temp)
+    /// Something worth saying about the draft, if anything.
+    var draftNote: String? {
+        let d = draft
+        if d.power == .off { return "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead." }
+        if isOn == false && d.power == .leave && (d.includeColour || d.includeDimming) {
+            return "The bulb is off and stays off; the change shows when it's switched on."
         }
-        kelvin = clamped(kelvin)
-        dimming = Int(model.dimming)
-        scene = model.sceneChoice.wrappedValue
-        speed = min(max(Int(model.speed), 10), 200)
-        includeSpeed = false
-        if case .builtin(let id) = scene, !Scenes.isKnown(id) { scene = .builtin(1) }
-        if case .custom(let id) = scene, model.library.customScene(id) == nil { scene = .builtin(1) }
-        kind = model.mode.choice
-        power = .leave
+        if d.includeColour, d.kind == .scenes, d.includeSpeed {
+            return "The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else."
+        }
+        return nil
+    }
+
+    /// Starts the draft from the bulb's current state.
+    func loadDraft() {
+        let d = draft
+        d.loaded = true
+        d.r = Int(r); d.g = Int(g); d.b = Int(b); d.c = Int(c); d.w = Int(w)
+        if mode == .custom, let id = activeScale?.id {
+            d.scaleID = id
+            d.kelvin = Int(customKelvin)
+        } else {
+            d.scaleID = nil
+            d.kelvin = Int(temp)
+        }
+        clampDraftKelvin()
+        d.dimming = Int(dimming)
+        d.scene = sceneChoice.wrappedValue
+        d.speed = min(max(Int(speed), 10), 200)
+        d.includeSpeed = false
+        if case .builtin(let id) = d.scene, !Scenes.isKnown(id) { d.scene = .builtin(1) }
+        if case .custom(let id) = d.scene, library.customScene(id) == nil { d.scene = .builtin(1) }
+        d.kind = mode.choice
+        d.power = .leave
         // Start from the fade time setting, if there is one.
-        fadeChoice = Model.fade == nil ? .none : .setting
+        d.fadeChoice = Model.fade == nil ? .none : .setting
+    }
+
+    /// Sends the draft and goes back to the live controls, which then show the result. The next
+    /// Compose starts from the bulb's new state.
+    func sendDraft() {
+        send(draftChange)
+        draft.loaded = false
+        composing = false
+    }
+}
+
+/// The Light controls' Live/Compose switch.
+struct ComposeToggle: View {
+    let model: Model
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { model.composing }, set: { model.composing = $0 })) {
+            Label("Compose", systemImage: "square.and.pencil")
+        }
+        .toggleStyle(.button)
+        .help("Prepare a change (colour, brightness, power) without sending it, then send it in one go with its own fade time")
+    }
+}
+
+/// Compose's controls, in place of the live sliders: the same rows, but nothing is sent until
+/// Send. On iPhone each is a list row.
+struct ComposeControls: View {
+    let model: Model
+
+    var body: some View {
+        @Bindable var d = model.draft
+
+        #if os(macOS)
+        HStack(spacing: 8) {
+            Text("Change").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+            Toggle("Colour", isOn: $d.includeColour)
+            Toggle("Brightness", isOn: $d.includeDimming)
+            Spacer()
+        }
+        .toggleStyle(.checkbox)
+        #else
+        Toggle("Change Colour", isOn: $d.includeColour)
+        #endif
+
+        if d.includeColour { colourRows }
+
+        #if os(iOS)
+        Toggle("Change Brightness", isOn: $d.includeDimming)
+        #endif
+        if d.includeDimming {
+            IntSliderRow(label: "Dimming", value: $d.dimming, range: Int(model.minDimming)...100, unit: "%")
+        }
+
+        HStack(spacing: 8) {
+            #if os(macOS)
+            Text("Power").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+            #else
+            Text("Power")
+            Spacer()
+            #endif
+            Picker("Power", selection: $d.power) {
+                ForEach(ComposeDraft.Power.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            #if os(macOS)
+            Spacer()
+            #endif
+        }
+        FadeRow(choice: $d.fadeChoice, ms: $d.fade)
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text(model.draftPreview)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let note = model.draftNote {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
+        HStack {
+            Button("From Bulb") { model.loadDraft() }
+                .help("Start again from the bulb's current state")
+            Spacer()
+            Button {
+                model.sendDraft()
+            } label: {
+                Label("Send", systemImage: "paperplane.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!model.canControl || !model.draftHasChange)
+            #if os(macOS)
+            .keyboardShortcut(.return, modifiers: .command)
+            .help("Send this change (⌘Return)")
+            #endif
+        }
+        #if os(iOS)
+        .buttonStyle(.borderless)
+        #endif
+    }
+
+    @ViewBuilder private var colourRows: some View {
+        @Bindable var d = model.draft
+        switch d.kind {
+        case .rgbcw:
+            IntSliderRow(label: "Red", value: $d.r, range: 0...255, tint: .red)
+            IntSliderRow(label: "Green", value: $d.g, range: 0...255, tint: .green)
+            IntSliderRow(label: "Blue", value: $d.b, range: 0...255, tint: .blue)
+            IntSliderRow(label: "Cool white", value: $d.c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
+            IntSliderRow(label: "Warm white", value: $d.w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
+        case .temperature:
+            row("Scale") {
+                Picker("Scale", selection: Binding(get: { model.draftScale?.id }, set: { id in
+                    d.scaleID = id
+                    model.clampDraftKelvin()
+                })) {
+                    Text("Bulb's own").tag(UUID?.none)
+                    let scales = model.usableScales
+                    if !scales.isEmpty {
+                        Divider()
+                        ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                }
+            }
+            IntSliderRow(label: "Kelvin", value: $d.kelvin, range: model.draftKelvinRange, kelvin: true,
+                         tint: ColourTemperature.color(kelvin: Double(d.kelvin)))
+        case .scenes:
+            row("Scene") {
+                Picker("Scene", selection: $d.scene) {
+                    ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) }
+                    if !model.library.customScenes.isEmpty {
+                        Divider()
+                        ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) }
+                    }
+                }
+            }
+            #if os(macOS)
+            HStack(spacing: 8) {
+                Color.clear.frame(width: ChannelSlider.labelWidth, height: 1)
+                Toggle("Change speed", isOn: $d.includeSpeed).toggleStyle(.checkbox)
+                Spacer()
+            }
+            #else
+            Toggle("Change Speed", isOn: $d.includeSpeed)
+            #endif
+            if d.includeSpeed { IntSliderRow(label: "Speed", value: $d.speed, range: 10...200) }
+        }
+    }
+
+    /// A picker row: labelled like the sliders on the Mac, a plain picker on iPhone.
+    @ViewBuilder private func row<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        #if os(macOS)
+        HStack(spacing: 8) {
+            Text(label).frame(width: ChannelSlider.labelWidth, alignment: .leading)
+            content().labelsHidden().fixedSize()
+            Spacer()
+        }
+        #else
+        content()
+        #endif
     }
 }

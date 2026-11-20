@@ -3,7 +3,6 @@ import SwiftUI
 struct RootView: View {
     let model: Model
     @AppStorage(Model.addressKey) private var address = ""
-    @State private var composing = false
 
     var body: some View {
         NavigationStack {
@@ -34,7 +33,6 @@ struct RootView: View {
             }
             .navigationTitle(model.currentName ?? "setPilot")
             .refreshable { await model.refresh() }
-            .navigationDestination(isPresented: $composing) { ComposeView(model: model) { composing = false } }
         }
     }
 
@@ -106,12 +104,37 @@ struct RootView: View {
 
     private var lightSection: some View {
         Section {
-            Picker("Mode", selection: Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
+            // Compose picks the kind of colour for its draft; live, it changes the bulb's mode.
+            Picker("Mode", selection: model.composing
+                   ? Binding(get: { model.draft.kind }, set: { model.draft.kind = $0 })
+                   : Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
                 ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
+            .disabled(model.composing && !model.draft.includeColour)
 
+            if model.composing {
+                ComposeControls(model: model)
+            } else {
+                liveRows
+            }
+        } header: {
+            HStack {
+                Text("Light")
+                Spacer()
+                ComposeToggle(model: model)
+                    .font(.subheadline)
+                    .textCase(nil)
+                    .disabled(!model.canControl)
+            }
+        } footer: {
+            if model.composing { Text("Composing: nothing is sent until you tap Send.") }
+        }
+        .disabled(!model.canControl)
+    }
+
+    @ViewBuilder private var liveRows: some View {
             switch model.mode {
             case .rgbcw:
                 MobileSlider(label: "Red", tint: .red, range: 0...255, value: model.binding(\.r))
@@ -138,17 +161,6 @@ struct RootView: View {
             }
             MobileSlider(label: "Dimming", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
             ControlsFadeRow(model: model)
-        } header: {
-            HStack {
-                Text("Light")
-                Spacer()
-                Button("Compose") { composing = true }
-                    .font(.subheadline)
-                    .textCase(nil)
-                    .disabled(!model.canControl)
-            }
-        }
-        .disabled(!model.canControl)
     }
 
     // MARK: Last command

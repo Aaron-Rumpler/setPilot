@@ -54,10 +54,21 @@ struct FadeSetting: View {
 struct ControlsFadeRow: View {
     let model: Model
 
+    var body: some View {
+        FadeRow(choice: Binding(get: { model.controlsFade }, set: { model.controlsFade = $0 }),
+                ms: Binding(get: { model.controlsFadeMs }, set: { model.controlsFadeMs = $0 }))
+            .help("The fade (trans) for changes made with these controls")
+    }
+}
+
+/// A fade choice with its time when it's Custom, as one row.
+struct FadeRow: View {
+    @Binding var choice: FadeChoice
+    @Binding var ms: Int
+
     /// "The setting" isn't offered while there's no fade time setting; it then means none.
-    private var choice: Binding<FadeChoice> {
-        Binding(get: { model.controlsFade == .setting && Model.fade == nil ? .none : model.controlsFade },
-                set: { model.controlsFade = $0 })
+    private var shown: Binding<FadeChoice> {
+        Binding(get: { choice == .setting && Model.fade == nil ? .none : choice }, set: { choice = $0 })
     }
 
     var body: some View {
@@ -65,7 +76,7 @@ struct ControlsFadeRow: View {
             #if os(macOS)
             Text("Fade").frame(width: ChannelSlider.labelWidth, alignment: .leading)
             #endif
-            Picker("Fade", selection: choice) {
+            Picker("Fade", selection: shown) {
                 ForEach(FadeChoice.options(setting: Model.fade), id: \.self) {
                     Text($0.title(setting: Model.fade)).tag($0)
                 }
@@ -74,9 +85,8 @@ struct ControlsFadeRow: View {
             .labelsHidden()
             .fixedSize()
             #endif
-            if choice.wrappedValue == .custom {
-                TextField("Fade time", value: Binding(get: { model.controlsFadeMs },
-                                                      set: { model.controlsFadeMs = min(max($0, 0), 60_000) }),
+            if shown.wrappedValue == .custom {
+                TextField("Fade time", value: Binding(get: { ms }, set: { ms = min(max($0, 0), 60_000) }),
                           format: .number.grouping(.never))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
@@ -90,6 +100,5 @@ struct ControlsFadeRow: View {
             Spacer(minLength: 0)
             #endif
         }
-        .help("The fade (trans) for changes made with these controls")
     }
 }

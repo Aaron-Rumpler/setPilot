@@ -119,6 +119,13 @@ final class Model {
     }
 
     private let bulb = Bulb()
+
+    /// The Light controls show Compose (a change prepared, then sent in one go) instead of the
+    /// live sliders. In the window and the menu bar panel alike.
+    var composing = false {
+        didSet { if composing, !draft.loaded { loadDraft() } }
+    }
+    let draft = ComposeDraft()
     private let push = PushListener()
     @ObservationIgnored private var sendScheduled = false
     /// What has changed since the last setPilot (coalesced slider moves).
@@ -369,6 +376,8 @@ final class Model {
         cctRange = nil
         renderFactor = nil
         mac = nil
+        composing = false
+        draft.loaded = false
         refreshSigning()
         bulbSigns = false
         module = nil
