@@ -135,12 +135,15 @@ The Watch app's main screen is power and the presets (tap to apply). Below them:
   your custom scenes) and speed, brightness, brighter/dimmer. Each value opens an editor: the
   Digital Crown moves it one step per detent (1, or 10 K for temperatures, with a haptic tick), −
   and + do the same, and a keypad enters an exact number (its display is also a text field, which
-  offers the system's input, a number pad where watchOS provides one).
-- **Compose**: a change with its own fade time, sent in one go.
+  offers the system's input, a number pad where watchOS provides one). Then the controls' fade,
+  and the last command sent with its status.
+- **Compose**: a change with its own fade time (and a scene's speed), sent in one go, with a
+  preview of what it sends.
 - **Presets**: tap to apply; swipe one, then Edit, to rename it, update it to the current light,
-  or delete it.
-- **Custom Scenes** to play, **Save Current Light** as a preset, and **Bulb** to switch between the
-  iPhone's bulbs.
+  move it, or delete it.
+- **Custom Scenes** to play, with speed and brightness for the one playing; **Save Current Light**
+  as a preset; and **Bulb** to switch between the iPhone's bulbs (swipe one to name it), with the
+  bulb's details and its device info.
 - Read-back mismatches ("Bulb didn't apply: …") show as on the iPhone.
 - While it's in the foreground it asks the iPhone for the state every 4 seconds. Each request wakes the iPhone
   app if needed, which reconnects and re-registers with the bulb for pushes, then forwards changes
