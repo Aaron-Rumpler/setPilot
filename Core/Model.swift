@@ -958,16 +958,6 @@ final class Model {
         return CCTScale.bulbDefault(cctRange: cctRange, renderFactor: renderFactor)
     }
 
-    /// Switches Custom CCT to another of this bulb's scales (and re-sends, if it's in use).
-    func useScale(_ id: UUID) {
-        guard let mac = chosenMAC else { return }
-        library.setActiveScale(id, for: mac)
-        if mode == .custom, let range = activeScale?.range {
-            customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
-            sendPilot([.colour], retry: true)
-        }
-    }
-
     /// Relative brightness (`dimDelta`): the bulb adds it to its own level, so concurrent changes
     /// from elsewhere aren't overwritten.
     func adjustDimming(by delta: Int) {
