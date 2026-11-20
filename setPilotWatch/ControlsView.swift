@@ -40,7 +40,7 @@ struct ControlsView: View {
                         .accessibilityLabel("Brighter")
                     }
                     .listRowBackground(Color.clear)
-                    ValueRow(label: "Brightness", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
+                    ValueRow(label: "Dimming", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
                 Section {
                     Picker("Mode", selection: Binding(get: { v.mode.choice }, set: { choice in

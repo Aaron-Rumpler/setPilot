@@ -195,7 +195,7 @@ struct CustomScenesView: View {
             if let s, s.canControl, let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
                 Section("Playing") {
                     ValueRow(label: "Speed", value: binding(s, \.speed, .speed), range: 10...200)
-                    ValueRow(label: "Brightness", value: binding(s, \.dimming, .dimming), range: s.minDimming...100, unit: "%")
+                    ValueRow(label: "Dimming", value: binding(s, \.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
             }
         }
