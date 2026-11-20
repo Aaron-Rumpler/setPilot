@@ -157,7 +157,7 @@ struct CCTScaleEditor: View {
                         let last = scale.sorted.last
                         var p = last ?? CCTScale.Point(kelvin: 2700)
                         p.id = UUID()
-                        p.kelvin = (last?.kelvin ?? 2600) + 100
+                        p.kelvin = min((last?.kelvin ?? 2600) + 100, 20000) // as a point's kelvin field allows
                         binding.wrappedValue.points.append(p)
                     } label: {
                         Label("Add Point", systemImage: "plus")
