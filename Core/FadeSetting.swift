@@ -66,10 +66,14 @@ struct ControlsFadeRow: View {
 struct FadeRow: View {
     @Binding var choice: FadeChoice
     @Binding var ms: Int
+    /// The fade time setting (-1 for none), observed so the choices follow it when it changes.
+    @AppStorage(Model.fadeKey) private var stored: Int = -1
+
+    private var setting: Int? { stored >= 0 ? stored : nil }
 
     /// "The setting" isn't offered while there's no fade time setting; it then means none.
     private var shown: Binding<FadeChoice> {
-        Binding(get: { choice == .setting && Model.fade == nil ? .none : choice }, set: { choice = $0 })
+        Binding(get: { choice == .setting && setting == nil ? .none : choice }, set: { choice = $0 })
     }
 
     var body: some View {
@@ -78,8 +82,8 @@ struct FadeRow: View {
             Text("Fade").frame(width: ChannelSlider.labelWidth, alignment: .leading)
             #endif
             Picker("Fade", selection: shown) {
-                ForEach(FadeChoice.options(setting: Model.fade), id: \.self) {
-                    Text($0.title(setting: Model.fade)).tag($0)
+                ForEach(FadeChoice.options(setting: setting), id: \.self) {
+                    Text($0.title(setting: setting)).tag($0)
                 }
             }
             #if os(macOS)

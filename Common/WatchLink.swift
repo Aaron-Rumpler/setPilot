@@ -15,8 +15,7 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var w = 0.0
     var temp = 2700.0
     var customKelvin = 2700.0
-    /// The bulb's custom CCT scale, if it has one, and its range.
-    var cctScaleName: String?
+    /// The range of the CCT scale Temperature uses, if any.
     var customMin = 2200.0
     var customMax = 6500.0
     var sceneId = 0

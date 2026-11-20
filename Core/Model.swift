@@ -357,6 +357,10 @@ final class Model {
         UserDefaults.standard.set(a, forKey: Self.addressKey)
         savedMAC = mac?.lowercased()
         rememberBulb(address: a, mac: mac)
+        // A draft is for the bulb it was started on (its scales, its state). Reconnecting to the
+        // same bulb (coming back from the background, a new IP) keeps it.
+        composing = false
+        draft.loaded = false
         started = true
         connect(a)
     }
@@ -383,8 +387,6 @@ final class Model {
         cctRange = nil
         renderFactor = nil
         mac = nil
-        composing = false
-        draft.loaded = false
         refreshSigning()
         bulbSigns = false
         module = nil
@@ -1027,8 +1029,7 @@ final class Model {
         s.tempMax = tempRange.upperBound
         s.customScene = mode == .scene && sceneId == Scenes.inlineCustom ? customSceneId : nil
         s.customKelvin = customKelvin
-        if let scale = activeScale, let range = scale.range {
-            s.cctScaleName = scale.name
+        if let range = activeScale?.range {
             s.customMin = Double(range.lowerBound)
             s.customMax = Double(range.upperBound)
         }
