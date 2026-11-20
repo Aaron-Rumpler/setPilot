@@ -1,6 +1,6 @@
 # WiZ local UDP API
 
-How a WiZ bulb is controlled over the local network, as setPilot uses it. Written against an RGB
+How a WiZ bulb is controlled over the local network, as the setPilot app uses it. Written against an RGB
 bulb (module ESP25_SHRGB_01) on firmware 1.38.0; other models and firmware may differ. It covers the
 local API only: the WiZ app's account, cloud and setup aren't involved.
 
@@ -25,7 +25,7 @@ The bulb answers the sender with the same `method` and either a `result` or an `
 `-32601` ("Method not found") means the bulb doesn't take that method, at least not over UDP.
 
 UDP can drop messages, so one-off requests are worth resending until a reply with the same
-method arrives. setPilot follows pywizlight: up to six sends, 0.75 s apart at first, doubling to
+method arrives. The app follows pywizlight: up to six sends, 0.75 s apart at first, doubling to
 at most 3 s. Rapid changes (dragging a slider) aren't resent; the next one supersedes them.
 
 ## Finding bulbs
@@ -91,7 +91,7 @@ Things worth knowing:
 ## Scenes
 
 `sceneId` 1–40 are the built-in scenes (Ocean, Romance, Sunset, … Dim-to-warm). The bulb also
-plays a scene sent with the request, which is how setPilot's custom scenes work:
+plays a scene sent with the request, which is how the app's custom scenes work:
 
 ```json
 {"method": "setPilot", "params": {"sceneId": 300, "elm": {"modifier": 1, "support": 17, "steps": [
@@ -117,7 +117,7 @@ To hear about changes made elsewhere (the WiZ app, a remote, a schedule), regist
 ```
 
 The bulb then sends `syncPilot` messages to **port 38900** at `phoneIp` whenever its state changes,
-with the same keys as `getPilot`. Registration lapses, so repeat it (setPilot re-registers every
+with the same keys as `getPilot`. Registration lapses, so repeat it (the app re-registers every
 20 s). A firewall can block the pushes even when registration succeeds.
 
 ## What the bulb takes over UDP
@@ -137,4 +137,4 @@ Firmware 1.38.0 accepts these 35 methods over the local network:
 Its other methods, including reboot, factory reset and the configuration setters (user settings,
 model configuration, Wi-Fi), aren't available over UDP.
 
-setPilot's console lists these methods with starting params, and sends any other name as typed.
+The app's console lists these methods with starting params, and sends any other name as typed.

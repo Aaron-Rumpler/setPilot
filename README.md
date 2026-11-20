@@ -1,7 +1,11 @@
 # setPilot
 
 A small native app (SwiftUI) for controlling a single WiZ RGB bulb, mainly for experimenting with
-raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongside.
+raw RGBCW values: on the Mac, with an iPhone app and an Apple Watch app alongside. It's named after
+`setPilot`, the bulb's command for setting the light.
+
+setPilot is an independent project, not affiliated with or endorsed by Signify or WiZ. WiZ is a
+trademark of Signify.
 
 ## Features
 
@@ -234,7 +238,7 @@ xattr -dr com.apple.quarantine setPilot.app
   by DNS name is resolved to its IPv4 address for them.
 - R, G, B, C and W don't correspond directly to LED drive: the firmware remaps them (with a white
   LED lit they act more like proportions), and dimming is applied separately.
-- Scene `speed` only takes effect when sent on its own (a firmware bug), so setPilot sends it as a
+- Scene `speed` only takes effect when sent on its own (a firmware bug), so the app sends it as a
   separate `setPilot`.
 - Setting R, G, B, C and W all to 0 makes the bulb return an error rather than turn off; use the
   power switch.
@@ -247,5 +251,5 @@ JSON over UDP port 38899, e.g.:
 {"method":"setPilot","params":{"r":255,"g":0,"b":0,"c":0,"w":128}}
 ```
 
-[docs/UDP-API.md](docs/UDP-API.md) describes the local API as setPilot uses it: messages and
+[docs/UDP-API.md](docs/UDP-API.md) describes the local API as the app uses it: messages and
 replies, `setPilot`, live updates, scenes, and the methods the bulb takes over UDP.
