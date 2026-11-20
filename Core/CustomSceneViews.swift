@@ -277,7 +277,7 @@ struct MillisecondsRow: View {
     }
 }
 
-/// The list of custom scenes with add, duplicate, play and delete.
+/// A custom scene in a list: its swatch, name and number of steps.
 struct CustomSceneRow: View {
     let scene: CustomScene
 

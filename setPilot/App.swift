@@ -194,7 +194,7 @@ struct SettingsView: View {
             } header: {
                 Text("Fade")
             } footer: {
-                Text("How long each change takes to fade in (setPilot's trans). Turning off always uses the bulb's own fade-out.")
+                Text("The fade (setPilot's trans) that the controls' Fade and Compose offer as the default. Turning off always uses the bulb's own fade-out.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
