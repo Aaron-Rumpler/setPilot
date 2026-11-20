@@ -72,6 +72,9 @@ final class PhoneRelay: NSObject {
             if let preset = model.library.presets.first(where: { $0.id == id }) { model.apply(preset) }
         case .set(let values, let fields):
             model.apply(values, fields: fields)
+            // Answered once sent, not after the read-back: the watch sends the next live change
+            // when this answers. Later state reaches it as the iPhone's usual updates.
+            return model.snapshot
         case .dimDelta(let delta):
             model.adjustDimming(by: delta)
         case .playCustom(let id):

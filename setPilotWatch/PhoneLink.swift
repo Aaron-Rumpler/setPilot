@@ -34,15 +34,61 @@ final class PhoneLink: NSObject {
         WCSession.default.activate()
     }
 
+    // MARK: Live changes
+
+    /// A live change (the Crown) is on its way, or waiting for the one before it.
+    private(set) var liveBusy = false
+    private var liveInFlight = false
+    private var livePending: (values: LightValues, fields: Set<PilotField>)?
+
+    /// For values changed continuously: the first change goes at once, and while one is on its
+    /// way only the latest is kept, going as soon as the iPhone answers. So the bulb follows as
+    /// fast as the link allows, without a backlog of old values arriving after you've stopped.
+    func sendLive(_ values: LightValues, fields: Set<PilotField>) {
+        liveBusy = true
+        if liveInFlight {
+            livePending = (values, fields.union(livePending?.fields ?? []))
+            return
+        }
+        transmitLive(values, fields: fields)
+    }
+
+    private func transmitLive(_ values: LightValues, fields: Set<PilotField>) {
+        liveInFlight = true
+        transmit(.set(values, fields: Array(fields)), quiet: false) { [weak self] in
+            guard let self else { return }
+            self.liveInFlight = false
+            if let next = self.livePending {
+                self.livePending = nil
+                self.transmitLive(next.values, fields: next.fields)
+            } else {
+                self.liveBusy = false
+            }
+        }
+    }
+
     /// Sends a command; the reply updates `snapshot`. Errors show in `error`, unless `quiet`
-    /// (background refreshes).
+    /// (background refreshes). A live change still waiting goes first, so it isn't lost or
+    /// applied after this.
     func send(_ command: WatchCommand, quiet: Bool = false) {
+        if !quiet, let next = livePending {
+            livePending = nil
+            transmitLive(next.values, fields: next.fields)
+        }
+        transmit(command, quiet: quiet)
+    }
+
+    private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor () -> Void)? = nil) {
         let session = WCSession.default
         guard session.activationState == .activated, session.isReachable else {
             if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
+            done?()
             return
         }
-        guard let data = try? JSONEncoder().encode(command) else { return }
+        guard let data = try? JSONEncoder().encode(command) else {
+            done?()
+            return
+        }
         if !quiet {
             busy = true
             error = nil
@@ -55,11 +101,13 @@ final class PhoneLink: NSObject {
                 if !quiet { self.busy = false }
                 if let snapshot { self.apply(snapshot) }
                 if let info { self.deviceInfo = info }
+                done?()
                 if let message, !quiet { self.error = message }
             }
         }, errorHandler: { error in
             let text = error.localizedDescription
             Task { @MainActor in
+                done?()
                 guard !quiet else { return }
                 self.busy = false
                 self.error = "Your iPhone didn't answer: \(text)"

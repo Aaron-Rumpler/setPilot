@@ -172,10 +172,8 @@ struct Swatch: View {
 
 struct CustomScenesView: View {
     let link: PhoneLink
-    /// Values being adjusted, until they've been sent.
+    /// Values being adjusted, until the last live change has been answered.
     @State private var pending: LightValues?
-    @State private var fields: Set<PilotField> = []
-    @State private var sendTask: Task<Void, Never>?
 
     var body: some View {
         let s = link.snapshot
@@ -202,6 +200,7 @@ struct CustomScenesView: View {
             }
         }
         .navigationTitle("Custom Scenes")
+        .onChange(of: link.liveBusy) { _, busy in if !busy { pending = nil } }
     }
 
     private func binding(_ s: LightSnapshot, _ kp: WritableKeyPath<LightValues, Double>, _ field: PilotField) -> Binding<Double> {
@@ -211,16 +210,7 @@ struct CustomScenesView: View {
                 var v = pending ?? s.values
                 v[keyPath: kp] = new
                 pending = v
-                fields.insert(field)
-                // Sent once the Crown pauses.
-                sendTask?.cancel()
-                sendTask = Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    guard !Task.isCancelled, let v = pending else { return }
-                    link.send(.set(v, fields: Array(fields)))
-                    pending = nil
-                    fields = []
-                }
+                link.sendLive(v, fields: [field])
             }
         )
     }

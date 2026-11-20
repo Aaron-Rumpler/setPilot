@@ -13,8 +13,6 @@ struct ControlsView: View {
     let link: PhoneLink
     /// What's being edited; follows the bulb when nothing's waiting to be sent.
     @State private var values: LightValues?
-    @State private var unsent: Set<PilotField> = []
-    @State private var sendTask: Task<Void, Never>?
 
     var body: some View {
         let s = link.snapshot
@@ -47,7 +45,6 @@ struct ControlsView: View {
                 Section {
                     Picker("Mode", selection: Binding(get: { v.mode.choice }, set: { choice in
                         guard choice != v.mode.choice else { return }
-                        flush()
                         // The iPhone decides Temperature's scale (as last used); its reply updates the controls.
                         link.send(.modeChoice(choice))
                     })) {
@@ -71,7 +68,8 @@ struct ControlsView: View {
         .navigationTitle("Controls")
         .onAppear { follow(s) }
         .onChange(of: link.snapshot) { _, new in follow(new) }
-        .onDisappear { flush() }
+        // Once the last live change has been answered, show the bulb's values again.
+        .onChange(of: link.liveBusy) { _, busy in if !busy { follow(link.snapshot) } }
     }
 
     @ViewBuilder private func modeControls(_ s: LightSnapshot, _ v: LightValues) -> some View {
@@ -87,7 +85,6 @@ struct ControlsView: View {
         case .temp, .custom:
             let scales = s.scales ?? []
             Picker("Scale", selection: Binding(get: { v.mode == .custom ? s.activeScale : nil }, set: { id in
-                flush()
                 link.send(.temperatureScale(id))
             })) {
                 Text("Bulb's own").tag(UUID?.none)
@@ -105,7 +102,7 @@ struct ControlsView: View {
                 switch choice {
                 case .builtin(let id):
                     update { $0.sceneId = id }
-                    queue(.colour, now: true)
+                    queue(.colour)
                 case .custom(let id):
                     link.send(.playCustom(id))
                 }
@@ -125,9 +122,9 @@ struct ControlsView: View {
         return .builtin(v.sceneId)
     }
 
-    /// Takes the bulb's values, unless an edit is waiting to go.
+    /// Takes the bulb's values, unless a live change is still on its way.
     private func follow(_ s: LightSnapshot?) {
-        guard unsent.isEmpty, let s else { return }
+        guard !link.liveBusy, let s else { return }
         values = s.values
     }
 
@@ -147,21 +144,10 @@ struct ControlsView: View {
         )
     }
 
-    /// Sends after a short pause, so turning the Crown doesn't send every step.
-    private func queue(_ field: PilotField, now: Bool = false) {
-        unsent.insert(field)
-        sendTask?.cancel()
-        sendTask = Task {
-            if !now { try? await Task.sleep(for: .milliseconds(350)) }
-            guard !Task.isCancelled else { return }
-            flush()
-        }
-    }
-
-    private func flush() {
-        guard !unsent.isEmpty, let v = values else { return }
-        link.send(.set(v, fields: Array(unsent)))
-        unsent = []
+    /// Sends straight away, or once the change before it has been answered (see `sendLive`).
+    private func queue(_ field: PilotField) {
+        guard let v = values else { return }
+        link.sendLive(v, fields: [field])
     }
 }
 
