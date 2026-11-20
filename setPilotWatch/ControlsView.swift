@@ -8,7 +8,7 @@ enum WatchScene: Hashable {
 
 /// Everything the iPhone app can set: mode, channels, temperatures, scales, scenes and speed,
 /// brightness. Each value opens an editor (Digital Crown, − and +, or the keypad); changes go to
-/// the iPhone once you pause.
+/// the iPhone as you go (see `PhoneLink.sendLive`).
 struct ControlsView: View {
     let link: PhoneLink
     /// What's being edited; follows the bulb when nothing's waiting to be sent.
