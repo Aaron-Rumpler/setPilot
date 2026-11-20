@@ -104,6 +104,9 @@ struct SnappingSlider: NSViewRepresentable {
         init(_ parent: SnappingSlider) { self.parent = parent }
 
         @objc func moved(_ sender: SnapSlider) {
+            // Pressing the knob without moving it (say, to hold it for a fine drag) changes nothing:
+            // snapping now would move a value that's off the round steps before it's dragged.
+            if sender.atPressPosition { return }
             let snapped = sender.snap(sender.value)
             sender.value = snapped // knob jumps between steps
             if parent.value != snapped { parent.value = snapped }
@@ -150,7 +153,7 @@ final class SnapSlider: NSSlider {
         // Fires during the tracking loop below (common modes include event tracking).
         let hold = Timer(timeInterval: 0.35, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
-                // Still where it was pressed (allowing for the first snap): a fine drag.
+                // Still where it was pressed: a fine drag.
                 guard let self, abs(self.doubleValue - start) < 0.002 else { return }
                 self.fineDrag = true
                 self.showFine(self.step > 1)
@@ -159,8 +162,10 @@ final class SnapSlider: NSSlider {
         }
         RunLoop.current.add(hold, forMode: .common)
         tracking = true
+        pressPosition = start
         super.mouseDown(with: event) // tracks until mouse-up
         tracking = false
+        pressPosition = nil
         hold.invalidate()
         fineDrag = false
         showFine(false)
@@ -175,6 +180,14 @@ final class SnapSlider: NSSlider {
 
     /// The mouse is down on the slider.
     private var tracking = false
+    /// The knob's position when the mouse went down, while it's down.
+    private var pressPosition: Double?
+
+    /// The mouse is down and the knob hasn't moved from where it was.
+    var atPressPosition: Bool {
+        guard tracking, let pressPosition else { return false }
+        return abs(doubleValue - pressPosition) < 1e-9
+    }
 
     private func showFine(_ on: Bool) {
         guard let cell = cell as? SnapSliderCell, cell.fine != on else { return }
