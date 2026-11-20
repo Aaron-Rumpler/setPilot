@@ -76,10 +76,10 @@ trademark of Signify.
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
   switches the bulb on. Right-click a preset to rename, update, move or delete it.
 - **Custom scenes** (Window › Custom Scenes, or the pencil next to the scene picker): up to 12
-  steps, each with a colour (RGBCW or a temperature), a level, how long it holds and how long it
-  fades into the next, and optionally a random variation of those times. A scene can start on any
-  step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
-  definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
+  steps, each with a colour (RGBCW, a temperature, or dark), a level, how long it holds and how
+  long it fades into the next, and optionally a random variation of those times. A scene can start
+  on any step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're
+  played inline (`setPilot` with `sceneId` 300 and an `elm` definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
 - **Compose a change** (the Compose button by the mode picker, in the window and the menu bar
   panel, or Compose on the Light section on iPhone): the Light controls switch to a draft that
@@ -133,12 +133,15 @@ bulb (if the system runs them in the widget extension instead, it sends the requ
 The Watch app's main screen is power and the presets (tap to apply). Below them:
 - **Controls**: mode, channels, temperature, Custom CCT (and which scale), scene (the bulb's and
   your custom scenes) and speed, brightness, brighter/dimmer. Each value opens an editor: the
-  Digital Crown moves it one step per detent (1, or 10 K for temperatures, with a haptic tick), −
-  and + do the same, and a keypad enters an exact number (its display is also a text field, which
+  Digital Crown moves it one round step per detent (as the sliders snap, or 1 with snapping off on
+  the iPhone; with a haptic tick), − and + go to the next round number, and a keypad enters an
+  exact number (its display is also a text field, which
   offers the system's input, a number pad where watchOS provides one). Then the controls' fade,
   and the last command sent with its status.
 - **Compose**: a change with its own fade time (and a scene's speed), sent in one go, with a
   preview of what it sends.
+- Changes from the Crown go to the bulb as you turn: the first at once, then the latest each time
+  the iPhone answers the one before, so nothing queues up behind you.
 - **Presets**: tap to apply; swipe one, then Edit, to rename it, update it to the current light,
   move it, or delete it.
 - **Custom Scenes** to play, with speed and brightness for the one playing; **Save Current Light**
@@ -146,7 +149,8 @@ The Watch app's main screen is power and the presets (tap to apply). Below them:
   bulb's details and its device info.
 - Read-back mismatches ("Bulb didn't apply: …") show as on the iPhone.
 - While it's in the foreground it asks the iPhone for the state every 4 seconds. Each request wakes the iPhone
-  app if needed, which reconnects and re-registers with the bulb for pushes, then forwards changes
+  app if needed, which reconnects and re-registers with the bulb for pushes (and reads its state
+  again if it may have missed some while suspended), then forwards changes
   to the watch as they arrive for as long as iOS keeps it awake. (iOS doesn't let it listen in the
   background indefinitely.)
 
