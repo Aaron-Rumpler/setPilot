@@ -74,6 +74,9 @@ struct ValueEditor: View {
             set(Stepping.snap(new, to: snapStep, in: range))
         }
         .onAppear { crown = value }
+        // A change from elsewhere (the iPhone, the bulb) while this is open: the Crown carries on
+        // from the new value, not from where it was.
+        .onChange(of: value) { _, new in if crown != new { crown = new } }
         .navigationTitle(label)
         .sheet(isPresented: $typing) {
             NumberPad(title: label, range: range, unit: unit, initial: value) { set($0) }
