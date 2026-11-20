@@ -103,6 +103,8 @@ struct BulbSettingsView: View {
 
             Section {
                 Toggle("Snap Sliders to Round Numbers", isOn: $snaps)
+                    // The watch's Crown follows this: pass it on (as for a change to the presets).
+                    .onChange(of: snaps) { model.library.onChange?() }
             } header: {
                 Text("Sliders")
             } footer: {
