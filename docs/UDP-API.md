@@ -4,6 +4,10 @@ How a WiZ bulb is controlled over the local network, as the setPilot app uses it
 bulb (module ESP25_SHRGB_01) on firmware 1.38.0; other models and firmware may differ. It covers the
 local API only: the WiZ app's account, cloud and setup aren't involved.
 
+> **Only partly tested, on one bulb.** Much of what's here has been tried on that one bulb, but
+> not all of it, and nothing on any other model or firmware. Treat it as a guide, not a
+> specification. Sections that haven't been tried at all say so.
+
 ## Messages
 
 Requests are JSON sent by UDP to the bulb's **port 38899**, one message per datagram:
@@ -162,6 +166,8 @@ with the same keys as `getPilot`. Registration lapses, so repeat it (the app re-
 
 ## The bulb's settings: setUserConfig
 
+> **Untested:** `setUserConfig` hasn't been tried on a bulb yet.
+
 `getUserConfig` reads the bulb's own settings and `setUserConfig` changes them. setPilot only
 offers it in the console: a mistake here changes how the bulb behaves for every app, and some of
 it only shows at the next power-on.
@@ -193,7 +199,10 @@ say) is refused as an invalid parameter.
 
 Some newer firmware answers with `"env": "pro"` and an `hmac` key, and wants writes signed:
 unsigned, `setPilot` fails with "Invalid parameter"; with a bad signature, with code `-32605`
-("Security error"). Reads still work unsigned. This is as pywizlight implements it.
+("Security error"). Reads still work unsigned.
+
+> **Untested:** this is how pywizlight signs requests; it hasn't been tried here on a bulb that
+> needs signing.
 
 The key is the home's `udp_signing_key` (32 hex digits), from the WiZ app's export of the home
 for local integration. To sign a request, add `sigTs` (the current Unix time in seconds) to
