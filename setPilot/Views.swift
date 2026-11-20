@@ -237,8 +237,8 @@ struct ContentView: View {
     }
 }
 
-/// The mode control and the current mode's sliders, plus Dimming. Shared by the window and the
-/// menu bar panel.
+/// The mode control and the current mode's sliders, plus Dimming and Fade, or Compose's draft in
+/// their place. Shared by the window and the menu bar panel.
 struct LightControls: View {
     let model: Model
     var compact = false

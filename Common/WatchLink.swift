@@ -90,7 +90,6 @@ enum WatchCommand: Codable, Sendable {
     case compose(LightChange)
     case renamePreset(UUID, name: String)
     case updatePreset(UUID)
-    case useScale(UUID)
     /// Switches between RGBCW, Temperature and Scenes (Temperature as last used).
     case modeChoice(ModeChoice)
     /// Temperature's scale: nil for the bulb's own.
@@ -129,7 +128,6 @@ struct CustomSceneSummary: Codable, Hashable, Identifiable, Sendable {
     var name: String
     var swatch: RGB?
 }
-
 
 /// A bulb the app has been used with.
 struct KnownBulb: Codable, Hashable, Identifiable, Sendable {

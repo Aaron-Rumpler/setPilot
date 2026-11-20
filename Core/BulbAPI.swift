@@ -98,7 +98,7 @@ enum BulbAPI {
                summary: "Effects and sync modes: pulse (pulse, duration, pulseCount, stepOff, preview), autobrightness (no sensor on this bulb), ambienceSync, musicSync, sportsSync. Shared keys: devices, type, state."),
         Method(name: "setExtendedLightMode", kind: .write,
                summary: "Stores a scene in a permanent slot: id 1–20 (slot), elmId (the sceneId it plays as, ≥ 256), elm {modifier, support 17, steps of 13 numbers}, or delete: true.",
-               template: #"{"id": 20, "elmId": 266, "elm": {"modifier": 1, "support": 17, "steps": [[0, 255, 60, 0, 0, 0, 2700, 100, 2000, 2000, 0, 0, 0], [0, 0, 40, 255, 0, 0, 2700, 100, 2000, 2000, 0, 0, 0]]}}"#,
+               template: #"{"id": 20, "elmId": 266, "elm": {"modifier": 1, "support": 17, "steps": [[0, 255, 60, 0, 0, 0, 0, 100, 2000, 2000, 0, 0, 0], [0, 0, 40, 255, 0, 0, 0, 100, 2000, 2000, 0, 0, 0]]}}"#,
                caution: "Writes one of the bulb's stored scene slots, which may hold one of the WiZ app's custom scenes."),
         Method(name: "setSystemConfig", kind: .write,
                summary: "homeId, env and rgn (region), plus section version stamps.",

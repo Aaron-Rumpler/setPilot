@@ -18,8 +18,9 @@ trademark of Signify.
 - Each `setPilot` carries only what changed: the colour (all five channels, the temperature or the
   scene), dimming or speed. The firmware ignores some valid parameters when they're combined with
   others, and this doesn't undo changes made meanwhile by other apps.
-- Changes never switch the bulb on or off: a `setPilot` to a bulb that's off carries
-  `"state": false` (one without `state` switches it on), and only the power switch changes it.
+- The sliders never switch the bulb on or off: a `setPilot` to a bulb that's off carries
+  `"state": false` (one without `state` switches it on). Only the power switch, applying a preset,
+  and Compose with Power set change it.
 - Three modes, by the same names everywhere: **RGBCW**, **Temperature** and **Scenes** (with speed).
   Temperature's Scale is the bulb's own (`temp`) or one of your CCT scales (Custom CCT, below); the
   kelvin carries over when you switch. The slider's track shows the colour of each temperature,
@@ -52,7 +53,7 @@ trademark of Signify.
   from the Shortcuts app, Spotlight and Siri.
 - **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
   Settings › Console, with the log on its own page): send any method with any params. Known
-  methods (the 35 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
+  methods (the 36 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
   start from, a description, and a confirmation for anything that changes what the bulb stores.
   Params are edited as syntax-highlighted JSON, checked as you type, and can be left out
   altogether. A `setPilot` from the console is read back like the controls' own; with "Don't switch
@@ -79,16 +80,16 @@ trademark of Signify.
   steps, each with a colour (RGBCW, a temperature, or dark), a level, how long it holds and how
   long it fades into the next, and optionally a random variation of those times. A scene can start
   on any step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're
-  played inline (`setPilot` with `sceneId` 300 and an `elm` definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
-  they're kept in setPilot. They appear in the scene picker after the bulb's own.
+  played inline (`setPilot` with `sceneId` 300 and an `elm` definition), so nothing stored on the
+  bulb is touched; the bulb can't read definitions back, so they're kept in setPilot. They appear in the scene picker after the bulb's own.
 - **Compose a change** (the Compose button by the mode picker, in the window and the menu bar
   panel, or Compose on the Light section on iPhone): the Light controls switch to a draft that
   isn't sent until you press Send (⌘Return on the Mac). Prepare a new state (any of colour,
   brightness and power) and send it as one `setPilot`; the controls then go back to live. The draft
-  is kept if you switch back without sending. Its fade is the fade time setting (shown, if
-  there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
-  from the bulb's current state, and From Bulb starts it again. A scene can have a speed too, which goes in a `setPilot` of its
-  own just after (the firmware ignores speed alongside anything else).
+  is kept if you switch back without sending. Its fade is the fade time setting (shown, if there
+  is one), none (no `trans`), or a value just for this change, say 10 s. It starts from the bulb's
+  current state, and From Bulb starts it again. A scene can have a speed too, which goes in a
+  `setPilot` of its own just after (the firmware ignores speed alongside anything else).
 - **Signed requests**, for newer firmware that refuses unsigned changes: set a bulb's signing key
   (the home's `udp_signing_key`, from the WiZ app's export for local integration) with the key
   button in the Device panel on the Mac, or Signing in Bulb & Settings on iPhone, and every request
@@ -108,8 +109,9 @@ trademark of Signify.
   `setCctTable`, is cloud-only.)
 - **Fade** under Dimming: what the main controls send as `trans` (sliders, presets, brighter and
   dimmer): the fade time setting, none, or a value of their own, as in Compose.
-- **Fade time** (Settings; off by default, so no `trans` is sent): the `trans` parameter, in milliseconds, for every change, or the bulb's
-  own fade (shown from `getUserConfig`). Turning off always uses the bulb's fade-out.
+- **Fade time** (Settings; off by default, so no `trans` is sent): the `trans`, in milliseconds,
+  that the controls' Fade and Compose offer as the default; the bulb's own fades (from
+  `getUserConfig`) are shown alongside. Turning off always uses the bulb's fade-out.
 
 ## iPhone and Apple Watch
 

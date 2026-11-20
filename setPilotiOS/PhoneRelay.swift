@@ -81,8 +81,6 @@ final class PhoneRelay: NSObject {
             if let scene = model.library.customScene(id) { model.playCustom(scene, switchOn: true) }
         case .compose(let change):
             model.send(change)
-        case .useScale(let id):
-            model.useScale(id)
         case .modeChoice(let choice):
             model.setModeChoice(choice)
         case .temperatureScale(let id):

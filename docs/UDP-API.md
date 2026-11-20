@@ -1,8 +1,8 @@
 # WiZ local UDP API
 
-How a WiZ bulb is controlled over the local network, as the setPilot app uses it. Written against an RGB
-bulb (module ESP25_SHRGB_01) on firmware 1.38.0; other models and firmware may differ. It covers the
-local API only: the WiZ app's account, cloud and setup aren't involved.
+How a WiZ bulb is controlled over the local network, as the setPilot app uses it. Written against
+an RGB bulb (module ESP25_SHRGB_01) on firmware 1.38.0; other models and firmware may differ. It
+covers the local API only: the WiZ app's account, cloud and setup aren't involved.
 
 > **Only partly tested, on one bulb.** Much of what's here has been tried on that one bulb, but
 > not all of it, and nothing on any other model or firmware. Treat it as a guide, not a

@@ -152,7 +152,8 @@ struct CustomSceneEditor: View {
     }
 }
 
-/// One keyframe: colour (RGBCW or a temperature), level, hold and fade.
+/// One keyframe: colour (RGBCW, a temperature, or dark), level, hold and fade, and how much the
+/// hold and fade vary.
 struct StepEditor: View {
     @Binding var step: CustomScene.Step
     /// The bulb's colour-temperature range (from getModelConfig; 2200–6500 K until it's known).
