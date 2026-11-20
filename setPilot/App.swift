@@ -139,7 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keep running in the menu bar when the window is closed.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// Our normal windows (the main window and Settings), not the menu bar panel.
+    /// Our normal windows (the main window, Settings, the console, scenes and scales), not the menu
+    /// bar panel.
     private var appWindows: [NSWindow] {
         NSApp.windows.filter { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }
     }

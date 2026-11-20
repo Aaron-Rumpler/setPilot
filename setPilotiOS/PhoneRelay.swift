@@ -133,7 +133,8 @@ final class PhoneRelay: NSObject {
 
     private var contextScheduled = false
 
-    /// Presets or custom scenes changed: pass them on to the watch (and Siri), at most twice a second.
+    /// The library changed, or a setting the watch and widgets carry (the fades, snapping): pass
+    /// it on to them (and Siri), at most twice a second.
     func libraryChanged() {
         guard !contextScheduled else { return }
         contextScheduled = true

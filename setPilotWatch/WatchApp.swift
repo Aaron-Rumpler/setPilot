@@ -279,7 +279,7 @@ struct BulbsView: View {
     }
 }
 
-/// One preset: apply, rename, update to the current light, delete.
+/// One preset: apply, rename, update to the current light, move, delete.
 struct PresetEditView: View {
     let link: PhoneLink
     let presetID: UUID

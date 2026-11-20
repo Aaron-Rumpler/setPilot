@@ -29,7 +29,7 @@ final class Model {
         didSet { UserDefaults.standard.set(customSceneId?.uuidString, forKey: Self.customSceneKey) }
     }
     static let customSceneKey = "customScene"
-    /// Presets and custom scenes.
+    /// Presets, custom scenes and CCT scales.
     let library = Library()
 
     /// The fade time setting, in ms (`trans`): the default the controls' Fade and Compose offer;
