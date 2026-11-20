@@ -157,9 +157,33 @@ final class PhoneLink: NSObject {
     /// The app is in the foreground (screen on, app showing). Only then does it poll the iPhone.
     var isActive = true
 
+    /// A complication tap that arrived before the link to the iPhone was up (the app launched
+    /// by it): acted on once the session is reachable, if that's within half a minute.
+    private var waitingURL: (url: URL, at: Date)?
+
     /// Links from the complications.
     func open(_ url: URL) {
         guard url.scheme == "setpilot" else { return }
+        let session = WCSession.default
+        if session.activationState != .activated || !session.isReachable {
+            waitingURL = (url, .now)
+            // Unreachable for real: say so now, rather than leave the tap looking ignored.
+            if session.activationState == .activated {
+                error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+            }
+            return
+        }
+        perform(url)
+    }
+
+    /// Acts on a complication tap that was waiting for the iPhone.
+    private func openWaitingURL() {
+        guard let waiting = waitingURL else { return }
+        waitingURL = nil
+        if Date.now.timeIntervalSince(waiting.at) < 30 { perform(waiting.url) }
+    }
+
+    private func perform(_ url: URL) {
         switch url.host() {
         case "preset":
             if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
@@ -200,7 +224,10 @@ extension PhoneLink: WCSessionDelegate {
         Task { @MainActor in
             self.applyContext(box.value)
             self.reachable = reachable
-            if reachable { self.refresh() }
+            if reachable {
+                self.refresh()
+                self.openWaitingURL()
+            }
         }
     }
 
@@ -211,6 +238,7 @@ extension PhoneLink: WCSessionDelegate {
             if reachable {
                 self.error = nil
                 self.refresh()
+                self.openWaitingURL()
             }
         }
     }
