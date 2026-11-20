@@ -40,8 +40,9 @@ final class Model {
     }
     static let fadeKey = "fadeMs"
 
-    /// The fade for changes made with the main controls (sliders, presets, power on, brighter or
-    /// dimmer): the setting above, none, or a value of their own, as in Compose. Remembered.
+    /// The fade for changes made with the main controls (sliders, presets, brighter or dimmer; the
+    /// power switch is a setState, which has none): the setting above, none, or a value of their
+    /// own, as in Compose. Remembered.
     var controlsFade = FadeChoice(rawValue: UserDefaults.standard.string(forKey: Model.controlsFadeKey) ?? "") ?? .setting {
         didSet {
             UserDefaults.standard.set(controlsFade.rawValue, forKey: Self.controlsFadeKey)
