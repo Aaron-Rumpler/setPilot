@@ -32,8 +32,8 @@ final class Model {
     /// Presets and custom scenes.
     let library = Library()
 
-    /// Fade time for every change, in ms (the `trans` parameter); nil (or -1 stored) leaves it to
-    /// the bulb.
+    /// The fade time setting, in ms (`trans`): the default the controls' Fade and Compose offer;
+    /// nil (-1 stored) when there isn't one.
     static var fade: Int? {
         get { (UserDefaults.standard.object(forKey: fadeKey) as? Int).flatMap { $0 >= 0 ? $0 : nil } }
         set { UserDefaults.standard.set(newValue, forKey: fadeKey) }
