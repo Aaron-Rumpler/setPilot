@@ -333,6 +333,8 @@ struct ControlsFadePicker: View {
     let s: LightSnapshot
     @State private var ms: Double?
     @State private var sendTask: Task<Void, Never>?
+    /// A turn of the Crown hasn't been sent yet.
+    @State private var unsent = false
 
     var body: some View {
         let options = FadeChoice.options(setting: s.fade)
@@ -346,16 +348,19 @@ struct ControlsFadePicker: View {
         if current == .custom {
             ValueRow(label: "Fade time", value: Binding(get: { time }, set: { new in
                 ms = new
+                unsent = true
                 // Sent once the Crown pauses.
                 sendTask?.cancel()
                 sendTask = Task {
                     try? await Task.sleep(for: .milliseconds(350))
                     guard !Task.isCancelled else { return }
+                    unsent = false
                     link.send(.controlsFade(.custom, ms: Int(new)))
                 }
             }), range: 0...60_000, unit: " ms")
-            // Once the iPhone has it (or it changed there), show its value.
-            .onChange(of: s.controlsFadeMs) { ms = nil }
+            // Once the iPhone has it (or it changed there), show its value; not while a newer
+            // turn is still to be sent, or the value would jump back to an older one.
+            .onChange(of: s.controlsFadeMs) { if !unsent { ms = nil } }
         }
     }
 }
