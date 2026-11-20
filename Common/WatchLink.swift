@@ -41,8 +41,25 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var fade: Int?
     /// Sliders snap to round numbers (the iPhone's setting; the watch's Crown follows it).
     var snapSliders: Bool?
+    /// The live controls' fade: the fade time setting, none, or `controlsFadeMs`.
+    var controlsFade: FadeChoice?
+    var controlsFadeMs: Int?
+    /// Live updates: registered, and whether a push has arrived yet.
+    var live: Bool?
+    var pushSeen: Bool?
+    var mac: String?
+    var module: String?
+    var firmware: String?
+    /// The last request: its method and params, as sent.
+    var lastMethod: String?
+    var lastSent: String?
 
     var canControl: Bool { link == .connected && isOn != nil }
+
+    var values: LightValues {
+        LightValues(mode: mode, r: r, g: g, b: b, c: c, w: w, temp: temp, customKelvin: customKelvin,
+                    sceneId: sceneId, speed: speed, dimming: dimming)
+    }
 }
 
 /// The values a control sets; which of them are sent is given separately.
@@ -80,6 +97,20 @@ enum WatchCommand: Codable, Sendable {
     case temperatureScale(UUID?)
     case chooseBulb(address: String, mac: String?)
     case deletePreset(UUID)
+    /// Moves a preset up (-1) or down (1).
+    case movePreset(UUID, by: Int)
+    case controlsFade(FadeChoice, ms: Int)
+    case renameBulb(mac: String, name: String)
+    /// Reads the device info; the reply carries it.
+    case deviceInfo
+}
+
+/// One read for the watch's device info: the bulb's reply as text, or its error.
+struct DeviceInfoEntry: Codable, Hashable, Identifiable, Sendable {
+    var method: String
+    var text: String
+    var error: String?
+    var id: String { method }
 }
 
 /// The keys of WatchConnectivity messages and application contexts. Values are JSON `Data`.
@@ -89,6 +120,7 @@ enum WatchKey {
     static let presets = "presets"
     static let customScenes = "customScenes"
     static let error = "error"
+    static let deviceInfo = "deviceInfo"
 }
 
 /// A custom scene's name and swatch, which is all the watch needs.

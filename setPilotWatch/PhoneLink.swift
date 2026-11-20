@@ -15,6 +15,8 @@ final class PhoneLink: NSObject {
     /// A command is waiting for the iPhone's reply.
     private(set) var busy = false
     var error: String?
+    /// The bulb's reads, from the last device info request.
+    private(set) var deviceInfo: [DeviceInfoEntry] = []
 
     private let defaults = UserDefaults.standard
 
@@ -48,9 +50,11 @@ final class PhoneLink: NSObject {
         session.sendMessage([WatchKey.command: data], replyHandler: { reply in
             let snapshot = (reply[WatchKey.snapshot] as? Data).flatMap { try? JSONDecoder().decode(LightSnapshot.self, from: $0) }
             let message = reply[WatchKey.error] as? String
+            let info = (reply[WatchKey.deviceInfo] as? Data).flatMap { try? JSONDecoder().decode([DeviceInfoEntry].self, from: $0) }
             Task { @MainActor in
                 if !quiet { self.busy = false }
                 if let snapshot { self.apply(snapshot) }
+                if let info { self.deviceInfo = info }
                 if let message, !quiet { self.error = message }
             }
         }, errorHandler: { error in

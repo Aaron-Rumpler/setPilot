@@ -172,31 +172,77 @@ struct Swatch: View {
 
 struct CustomScenesView: View {
     let link: PhoneLink
+    /// Values being adjusted, until they've been sent.
+    @State private var pending: LightValues?
+    @State private var fields: Set<PilotField> = []
+    @State private var sendTask: Task<Void, Never>?
 
     var body: some View {
-        List(link.scenes) { scene in
-            Button { link.send(.playCustom(scene.id)) } label: {
-                HStack(spacing: 10) {
-                    Swatch(rgb: scene.swatch, isScene: true)
-                    Text(scene.name)
-                    Spacer()
-                    if link.snapshot?.customScene == scene.id {
-                        Image(systemName: "play.fill").foregroundStyle(.secondary).accessibilityLabel("Playing")
+        let s = link.snapshot
+        List {
+            ForEach(link.scenes) { scene in
+                Button { link.send(.playCustom(scene.id)) } label: {
+                    HStack(spacing: 10) {
+                        Swatch(rgb: scene.swatch, isScene: true)
+                        Text(scene.name)
+                        Spacer()
+                        if s?.customScene == scene.id {
+                            Image(systemName: "play.fill").foregroundStyle(.secondary).accessibilityLabel("Playing")
+                        }
                     }
                 }
+                .disabled(s?.canControl != true)
             }
-            .disabled(link.snapshot?.canControl != true)
+            // While one of these is playing: the two settings that apply to it.
+            if let s, s.canControl, let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
+                Section("Playing") {
+                    ValueRow(label: "Speed", value: binding(s, \.speed, .speed), range: 10...200)
+                    ValueRow(label: "Brightness", value: binding(s, \.dimming, .dimming), range: s.minDimming...100, unit: "%")
+                }
+            }
         }
         .navigationTitle("Custom Scenes")
+    }
+
+    private func binding(_ s: LightSnapshot, _ kp: WritableKeyPath<LightValues, Double>, _ field: PilotField) -> Binding<Double> {
+        Binding(
+            get: { (pending ?? s.values)[keyPath: kp] },
+            set: { new in
+                var v = pending ?? s.values
+                v[keyPath: kp] = new
+                pending = v
+                fields.insert(field)
+                // Sent once the Crown pauses.
+                sendTask?.cancel()
+                sendTask = Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled, let v = pending else { return }
+                    link.send(.set(v, fields: Array(fields)))
+                    pending = nil
+                    fields = []
+                }
+            }
+        )
     }
 }
 
 /// The bulbs the iPhone has been used with; choosing one switches the iPhone (and watch) to it.
 struct BulbsView: View {
     let link: PhoneLink
+    @State private var renaming: KnownBulb?
+
+    private func connectionText(_ s: LightSnapshot) -> String {
+        switch s.link {
+        case .none: "No bulb"
+        case .connecting: "Connecting"
+        case .connected: "Connected"
+        case .unreachable: "Not answering"
+        }
+    }
 
     var body: some View {
-        let bulbs = link.snapshot?.bulbs ?? []
+        let s = link.snapshot
+        let bulbs = s?.bulbs ?? []
         List {
             ForEach(bulbs) { bulb in
                 Button { link.send(.chooseBulb(address: bulb.address, mac: bulb.mac)) } label: {
@@ -208,18 +254,38 @@ struct BulbsView: View {
                             }
                         }
                         Spacer()
-                        if bulb.address == link.snapshot?.address {
+                        if bulb.address == s?.address {
                             Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("In use")
                         }
                     }
                 }
+                .swipeActions {
+                    if bulb.mac != nil {
+                        Button { renaming = bulb } label: { Label("Name", systemImage: "pencil") }
+                            .tint(.blue)
+                    }
+                }
             }
-            Text(bulbs.isEmpty ? "Add a bulb in setPilot on your iPhone." : "Add bulbs in setPilot on your iPhone.")
+            Text(bulbs.isEmpty ? "Add a bulb in setPilot on your iPhone." : "Swipe a bulb to name it. Add bulbs in setPilot on your iPhone.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .listRowBackground(Color.clear)
+            if let s, s.link != .none {
+                Section("This Bulb") {
+                    LabeledContent("Connection", value: connectionText(s))
+                    if s.link == .connected {
+                        LabeledContent("Live updates", value: s.live != true ? "Off" : s.pushSeen == true ? "On" : "On (none yet)")
+                    }
+                    LabeledContent("MAC", value: s.mac ?? "—")
+                    LabeledContent("Module", value: s.module ?? "—")
+                    LabeledContent("Firmware", value: s.firmware ?? "—")
+                    NavigationLink("Device Info") { WatchDeviceInfoView(link: link) }
+                        .disabled(s.link != .connected)
+                }
+            }
         }
         .navigationTitle("Bulb")
+        .navigationDestination(item: $renaming) { bulb in BulbNameView(link: link, bulb: bulb) }
     }
 }
 
@@ -246,6 +312,11 @@ struct PresetEditView: View {
                     Label("Update to Current Light", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(link.snapshot?.canControl != true)
+                let i = link.presets.firstIndex { $0.id == presetID } ?? 0
+                Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Up", systemImage: "arrow.up") }
+                    .disabled(i == 0)
+                Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Down", systemImage: "arrow.down") }
+                    .disabled(i >= link.presets.count - 1)
                 Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
             } else {
                 Text("This preset has been deleted.").foregroundStyle(.secondary)
@@ -263,5 +334,71 @@ struct PresetEditView: View {
                 dismiss()
             }
         }
+    }
+}
+
+/// Names a bulb (kept on the iPhone, by MAC).
+struct BulbNameView: View {
+    let link: PhoneLink
+    let bulb: KnownBulb
+    @State private var name = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            TextField("Name", text: $name)
+                .onSubmit(save)
+            Button("Save", action: save)
+            if bulb.name != nil {
+                Button("Remove Name", role: .destructive) {
+                    name = ""
+                    save()
+                }
+            }
+            Text(bulb.address).font(.footnote).foregroundStyle(.secondary).listRowBackground(Color.clear)
+        }
+        .navigationTitle("Name")
+        .onAppear { name = bulb.name ?? "" }
+    }
+
+    private func save() {
+        guard let mac = bulb.mac else { return }
+        link.send(.renameBulb(mac: mac, name: name))
+        dismiss()
+    }
+}
+
+/// Every read the bulb answers, as it sent them, one per screen.
+struct WatchDeviceInfoView: View {
+    let link: PhoneLink
+
+    var body: some View {
+        List {
+            if link.deviceInfo.isEmpty {
+                HStack {
+                    if link.busy { ProgressView().frame(width: 20) }
+                    Text(link.busy ? "Reading…" : "Nothing read yet").foregroundStyle(.secondary)
+                }
+            }
+            ForEach(link.deviceInfo) { entry in
+                NavigationLink {
+                    ScrollView {
+                        Text(entry.text)
+                            .font(.system(.caption2, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .navigationTitle(entry.method)
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(entry.method).lineLimit(1).minimumScaleFactor(0.7)
+                        if let error = entry.error {
+                            Text(error).font(.caption2).foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Device Info")
+        .onAppear { link.send(.deviceInfo) }
     }
 }

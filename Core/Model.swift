@@ -1032,6 +1032,17 @@ final class Model {
         s.activeScale = activeScale?.id
         s.fade = Self.fade
         s.snapSliders = Stepping.snaps
+        s.controlsFade = controlsFade
+        s.controlsFadeMs = controlsFadeMs
+        s.live = live
+        s.pushSeen = pushSeen
+        s.mac = mac
+        s.module = module
+        s.firmware = firmware
+        if !lastSent.isEmpty {
+            s.lastMethod = lastMethod
+            s.lastSent = lastSent
+        }
         return s
     }
 
@@ -1079,6 +1090,21 @@ final class Model {
         guard let colour = currentColour, let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
         library.presets[i].colour = colour
         library.presets[i].dimming = Int(dimming)
+    }
+
+    /// Moves a preset up (-1) or down (1) in the list.
+    func movePreset(_ id: UUID, by offset: Int) {
+        guard let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
+        let j = i + offset
+        guard library.presets.indices.contains(j) else { return }
+        library.presets.swapAt(i, j)
+    }
+
+    /// The device info, in order, for the watch.
+    var deviceInfoEntries: [DeviceInfoEntry] {
+        BulbAPI.deviceInfo.compactMap { m in
+            info[m].map { DeviceInfoEntry(method: m, text: $0, error: infoErrors[m]) }
+        }
     }
 
     func renamePreset(_ id: UUID, to name: String) {

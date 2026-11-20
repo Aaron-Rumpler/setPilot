@@ -143,7 +143,7 @@ struct LightChange: Codable, Hashable, Sendable {
 
 /// How a composed change fades: the fade time setting (only offered when one is set), none
 /// (no `trans`: the bulb's own fade), or a value just for this change.
-enum FadeChoice: String, Hashable, Sendable {
+enum FadeChoice: String, Codable, Hashable, Sendable {
     case setting, none, custom
 
     /// The choices that mean different things: without a fade setting, "the setting" and "none"

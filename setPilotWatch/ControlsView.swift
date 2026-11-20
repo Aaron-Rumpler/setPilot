@@ -56,8 +56,12 @@ struct ControlsView: View {
                     modeControls(s, v)
                 }
                 Section {
+                    ControlsFadePicker(link: link, s: s)
+                }
+                Section {
                     Button { link.send(.sync) } label: { Label("Read from Bulb", systemImage: "arrow.clockwise") }
                 }
+                LastCommandSection(s: s)
             } else {
                 Text(link.reachable ? (s?.link == .connected ? "The bulb's state isn't known yet." : "The bulb isn't connected on your iPhone.")
                                     : "Can't reach your iPhone.")
@@ -124,8 +128,7 @@ struct ControlsView: View {
     /// Takes the bulb's values, unless an edit is waiting to go.
     private func follow(_ s: LightSnapshot?) {
         guard unsent.isEmpty, let s else { return }
-        values = LightValues(mode: s.mode, r: s.r, g: s.g, b: s.b, c: s.c, w: s.w, temp: s.temp,
-                             customKelvin: s.customKelvin, sceneId: s.sceneId, speed: s.speed, dimming: s.dimming)
+        values = s.values
     }
 
     private func update(_ change: (inout LightValues) -> Void) {
@@ -334,5 +337,56 @@ struct WatchComposeView: View {
     private func kelvinRange(_ s: LightSnapshot) -> ClosedRange<Double> {
         if let chosen = scale(s), chosen.min < chosen.max { return chosen.min...chosen.max }
         return s.tempMin...s.tempMax
+    }
+}
+
+/// The live controls' fade (the iPhone's setting for them): the fade time setting, none, or a
+/// time of its own.
+struct ControlsFadePicker: View {
+    let link: PhoneLink
+    let s: LightSnapshot
+    @State private var ms: Double?
+    @State private var sendTask: Task<Void, Never>?
+
+    var body: some View {
+        let options = FadeChoice.options(setting: s.fade)
+        let stored: FadeChoice = s.controlsFade ?? .setting
+        // "The setting" isn't offered while there's no fade time setting; it then means none.
+        let current: FadeChoice = stored == .setting && s.fade == nil ? FadeChoice.none : stored
+        let time = ms ?? Double(s.controlsFadeMs ?? 1000)
+        Picker("Fade", selection: Binding(get: { current }, set: { link.send(.controlsFade($0, ms: Int(time))) })) {
+            ForEach(options, id: \.self) { Text($0.title(setting: s.fade)).tag($0) }
+        }
+        if current == .custom {
+            ValueRow(label: "Fade time", value: Binding(get: { time }, set: { new in
+                ms = new
+                // Sent once the Crown pauses.
+                sendTask?.cancel()
+                sendTask = Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { return }
+                    link.send(.controlsFade(.custom, ms: Int(new)))
+                }
+            }), range: 0...60_000, unit: " ms")
+        }
+    }
+}
+
+/// The last request the iPhone sent the bulb, and its status.
+struct LastCommandSection: View {
+    let s: LightSnapshot
+
+    var body: some View {
+        if let sent = s.lastSent {
+            Section("Last Command") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(s.lastMethod ?? "setPilot") \(sent)")
+                        .font(.system(.caption2, design: .monospaced))
+                    if s.mismatch == nil, !s.status.isEmpty {
+                        Text(s.status).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 }

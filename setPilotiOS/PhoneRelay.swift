@@ -43,6 +43,16 @@ final class PhoneRelay: NSObject {
         case let .renamePreset(id, name):
             model.renamePreset(id, to: name)
             return model.snapshot
+        case let .movePreset(id, offset):
+            model.movePreset(id, by: offset)
+            return model.snapshot
+        case let .controlsFade(choice, ms):
+            model.controlsFade = choice
+            model.controlsFadeMs = min(max(ms, 0), 60_000)
+            return model.snapshot
+        case let .renameBulb(mac, name):
+            model.rename(mac: mac, to: name)
+            return model.snapshot
         case let .chooseBulb(address, mac):
             model.choose(address, mac: mac)
             _ = await model.waitUntilControllable(timeout: 4)
@@ -76,7 +86,11 @@ final class PhoneRelay: NSObject {
             model.useTemperatureScale(id)
         case .updatePreset(let id):
             model.updatePreset(id)
-        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset:
+        case .deviceInfo:
+            model.readConfig()
+            // The reads go out 60 ms apart; give the replies time to come in.
+            try? await Task.sleep(for: .milliseconds(2500))
+        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .controlsFade, .renameBulb:
             break
         }
         await model.waitUntilSettled()
@@ -212,11 +226,15 @@ extension PhoneRelay: WCSessionDelegate {
             let snapshot = await self.run(command)
             // The presets changed: the watch's copy for when the iPhone is out of reach.
             switch command {
-            case .savePreset, .deletePreset, .renamePreset, .updatePreset: self.updateContext()
+            case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset: self.updateContext()
             default: break
             }
             var response: [String: Any] = [:]
             if let data = try? JSONEncoder().encode(snapshot) { response[WatchKey.snapshot] = data }
+            if case .deviceInfo = command, let model = self.model,
+               let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
+                response[WatchKey.deviceInfo] = data
+            }
             reply.value(response)
         }
     }
