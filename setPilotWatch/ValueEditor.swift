@@ -66,7 +66,13 @@ struct ValueEditor: View {
         .focusable()
         .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: snapStep,
                               sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
-        .onChange(of: crown) { _, new in set(Stepping.snap(new, to: snapStep, in: range)) }
+        .onChange(of: crown) { _, new in
+            // Not when the Crown is just being lined up with the value (opening the editor, or
+            // after − and +): only a turn changes it, or a value off the round steps would be
+            // snapped, and sent, without being touched.
+            guard new != value else { return }
+            set(Stepping.snap(new, to: snapStep, in: range))
+        }
         .onAppear { crown = value }
         .navigationTitle(label)
         .sheet(isPresented: $typing) {
