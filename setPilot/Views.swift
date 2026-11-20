@@ -221,6 +221,13 @@ struct ContentView: View {
                         Text("Firmware").foregroundStyle(.secondary)
                         deviceValue(model.firmware)
                     }
+                    GridRow {
+                        Text("Signing").foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            deviceValue(model.chosenMAC == nil ? nil : model.signingStatus)
+                            if let mac = model.chosenMAC { SigningKeyButton(model: model, mac: mac) }
+                        }
+                    }
                 }
                 .font(.callout)
                 Spacer()

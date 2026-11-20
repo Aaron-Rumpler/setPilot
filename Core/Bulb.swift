@@ -13,6 +13,9 @@ final class Bulb {
     var onReceived: ((String) -> Void)?
     /// The failed request's method (nil for the connection itself) and a message to show.
     var onError: ((String?, String) -> Void)?
+    /// The bulb's signing key (32 hex digits), for firmware that wants signed requests: when set,
+    /// every request but raw ones is signed.
+    var signingKey: String?
 
     /// The system refused the connection because Local Network access was denied.
     var localNetworkDenied: Bool {
@@ -49,14 +52,12 @@ final class Bulb {
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
-        var request: [String: Any] = ["method": method]
-        if let params { request["params"] = params }
-        guard let data = try? JSONSerialization.data(withJSONObject: request, options: [.sortedKeys, .withoutEscapingSlashes])
-        else { return }
+        guard let data = RequestSigning.message(method, params: params, key: signingKey) else { return }
         transmit(data, method: method, retry: retry)
     }
 
-    /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON).
+    /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON, and
+    /// isn't signed).
     /// `method` names it for the log and errors; retrying needs one, as it stops on a reply with
     /// that method.
     func sendRaw(_ text: String, method: String?, retry: Bool) {

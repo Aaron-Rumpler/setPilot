@@ -88,6 +88,13 @@ struct BulbSettingsView: View {
                     LabeledContent("MAC address", value: model.mac ?? "—")
                     LabeledContent("Module", value: model.module ?? "—")
                     LabeledContent("Firmware", value: model.firmware ?? "—")
+                    if let mac = model.chosenMAC {
+                        NavigationLink {
+                            SigningKeyView(model: model, mac: mac)
+                        } label: {
+                            LabeledContent("Signing", value: model.signingStatus)
+                        }
+                    }
                     NavigationLink("Device Info") { ConfigView(model: model) }
                         .disabled(model.link != .connected)
                     NavigationLink("Console") { ConsoleView(model: model) }
@@ -136,6 +143,55 @@ struct BulbSettingsView: View {
         focused = false
         model.choose(a, mac: mac)
         name = model.currentName ?? ""
+    }
+}
+
+/// The chosen bulb's signing key, for firmware that wants signed requests.
+struct SigningKeyView: View {
+    let model: Model
+    let mac: String
+    @State private var draft = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var valid: Bool {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || RequestSigning.normalised(draft) != nil
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("32 hex digits", text: $draft, axis: .vertical)
+                    .font(.body.monospaced())
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+            } footer: {
+                if !valid {
+                    Text("A signing key is 32 hex digits (0–9 and a–f).").foregroundStyle(.red)
+                } else {
+                    Text(SigningHelp.text)
+                }
+            }
+            if model.signingKey(for: mac) != nil {
+                Section {
+                    Button("Remove Key", role: .destructive) {
+                        model.setSigningKey(nil, for: mac)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .navigationTitle("Signing Key")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    if model.setSigningKey(draft, for: mac) { dismiss() }
+                }
+                .disabled(!valid)
+            }
+        }
+        .onAppear { draft = model.signingKey(for: mac) ?? "" }
     }
 }
 

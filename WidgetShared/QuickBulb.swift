@@ -28,7 +28,10 @@ enum QuickBulb {
 
     /// Up to three tries, a second each.
     static func send(_ host: String, _ method: String, _ params: [String: Any]) async throws -> [String: Any] {
-        let data = try JSONSerialization.data(withJSONObject: ["method": method, "params": params])
+        let key = SharedStore.defaults.string(forKey: SharedStore.signingKeyKey)
+        guard let data = RequestSigning.message(method, params: params, key: key) else {
+            throw WidgetError(localizedStringResource: "Couldn't make the request.")
+        }
         for _ in 0..<3 {
             guard let reply = await attempt(host, data) else { continue }
             // An answer, but a refusal (a parameter this firmware doesn't take, say): no use retrying.

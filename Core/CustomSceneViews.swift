@@ -27,6 +27,20 @@ struct CustomSceneEditor: View {
                 } footer: {
                     Text("The bulb steps through these in order and repeats. Changes take effect the next time it's played. The bulb can't store or read back setPilot's scenes, so they're kept on this device.")
                 }
+                Section {
+                    Picker("Timing", selection: binding.timing) {
+                        ForEach(CustomScene.Timing.allCases, id: \.self) { Text($0.name).tag($0) }
+                    }
+                    Picker("Start At", selection: startStep(binding)) {
+                        ForEach(binding.wrappedValue.steps.indices, id: \.self) { Text("Step \($0 + 1)").tag($0) }
+                    }
+                } header: {
+                    Text("Playback")
+                } footer: {
+                    Text(binding.wrappedValue.timing == .steps
+                         ? "Each step holds and fades for as long as it says."
+                         : "The bulb uses these times for every step instead of their own.")
+                }
                 // Live, while previewing: the two settings that apply to a playing scene.
                 Section {
                     LiveSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
@@ -41,7 +55,8 @@ struct CustomSceneEditor: View {
                     let i = binding.wrappedValue.steps.firstIndex { $0.id == step.id } ?? 0
                     Section {
                         StepEditor(step: $step, kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
-                                   levelRange: Int(model.minDimming)...100)
+                                   levelRange: Int(model.minDimming)...100,
+                                   ownTiming: binding.wrappedValue.timing == .steps)
                     } header: {
                         HStack {
                             Text("Step \(i + 1)")
@@ -60,7 +75,7 @@ struct CustomSceneEditor: View {
                     }
                     .disabled(binding.wrappedValue.steps.count >= CustomScene.maxSteps)
                 } footer: {
-                    Text("Up to \(CustomScene.maxSteps) steps.")
+                    Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Dimming above.")
                 }
             }
             .formStyle(.grouped)
@@ -68,6 +83,14 @@ struct CustomSceneEditor: View {
         } else {
             Text("No scene selected").foregroundStyle(.secondary)
         }
+    }
+
+    /// The start step, kept to one of the steps.
+    private func startStep(_ scene: Binding<CustomScene>) -> Binding<Int> {
+        Binding(
+            get: { min(max(scene.wrappedValue.startStep, 0), scene.wrappedValue.steps.count - 1) },
+            set: { scene.wrappedValue.startStep = $0 }
+        )
     }
 
     private var isPlaying: Bool {
@@ -91,13 +114,18 @@ struct CustomSceneEditor: View {
                 var copy = scene.wrappedValue.steps[i]
                 copy.id = UUID()
                 scene.wrappedValue.steps.insert(copy, at: i + 1)
+                if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep += 1 }
             }
             .disabled(scene.wrappedValue.steps.count >= CustomScene.maxSteps)
-            Button("Move Up") { scene.wrappedValue.steps.swapAt(i, i - 1) }.disabled(i == 0)
-            Button("Move Down") { scene.wrappedValue.steps.swapAt(i, i + 1) }
+            Button("Move Up") { move(scene, i, to: i - 1) }.disabled(i == 0)
+            Button("Move Down") { move(scene, i, to: i + 1) }
                 .disabled(i >= scene.wrappedValue.steps.count - 1)
-            Button("Delete", role: .destructive) { scene.wrappedValue.steps.remove(at: i) }
-                .disabled(scene.wrappedValue.steps.count <= 1)
+            Button("Delete", role: .destructive) {
+                scene.wrappedValue.steps.remove(at: i)
+                if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep -= 1 }
+                scene.wrappedValue.startStep = min(scene.wrappedValue.startStep, scene.wrappedValue.steps.count - 1)
+            }
+            .disabled(scene.wrappedValue.steps.count <= 1)
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -105,6 +133,13 @@ struct CustomSceneEditor: View {
         .buttonStyle(.borderless)
         .fixedSize()
         .accessibilityLabel("Step \(i + 1) actions")
+    }
+
+    /// Swaps two steps, the start step going with its step.
+    private func move(_ scene: Binding<CustomScene>, _ i: Int, to j: Int) {
+        scene.wrappedValue.steps.swapAt(i, j)
+        let start = scene.wrappedValue.startStep
+        if start == i { scene.wrappedValue.startStep = j } else if start == j { scene.wrappedValue.startStep = i }
     }
 }
 
@@ -115,6 +150,8 @@ struct StepEditor: View {
     var kelvinRange = 2200...6500
     /// The bulb's minimum dimming to 100 (10–100 until it's known).
     var levelRange = 10...100
+    /// The scene uses each step's hold and fade (not one of the bulb's fixed timings).
+    var ownTiming = true
 
     var body: some View {
         HStack {
@@ -141,8 +178,29 @@ struct StepEditor: View {
             IntSliderRow(label: "Warm white", value: $step.w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
         }
         IntSliderRow(label: "Level", value: $step.level, range: levelRange, unit: "%")
-        MillisecondsRow(label: "Hold", value: $step.hold)
-        MillisecondsRow(label: "Fade", value: $step.fade)
+        Group {
+            MillisecondsRow(label: "Hold", value: $step.hold)
+            MillisecondsRow(label: "Fade", value: $step.fade)
+        }
+        .disabled(!ownTiming)
+        Picker("Vary Hold", selection: $step.holdJitter) {
+            ForEach(CustomScene.Step.holdJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
+        }
+        Picker("Vary Fade", selection: $step.fadeJitter) {
+            ForEach(CustomScene.Step.fadeJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
+        }
+        if step.jitters {
+            Picker("How Often", selection: $step.jitterChance) {
+                ForEach(CustomScene.Step.jitterChances, id: \.self) {
+                    Text($0 == 100 ? "Every Time" : "\($0)% of the Time").tag($0)
+                }
+            }
+        }
+    }
+
+    /// Random variation, either way, each time the step plays.
+    private static func jitterName(_ percent: Int) -> String {
+        percent == 0 ? "None" : "Up to ±\(percent)%"
     }
 }
 

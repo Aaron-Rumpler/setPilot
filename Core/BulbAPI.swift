@@ -1,7 +1,7 @@
 import Foundation
 
-/// The methods the bulb takes over local UDP (firmware 1.38.0, ESP25_SHRGB_01): 35 of the 70 in
-/// its method table. The rest are refused over UDP, so they aren't listed (the console still sends
+/// The methods the bulb takes over local UDP (firmware 1.38.0, ESP25_SHRGB_01): 36 of the
+/// 75 or so in its method table. The rest are refused over UDP, so they aren't listed (the console still sends
 /// any name typed). For the console's method menu and templates, and the device info list. See
 /// docs/UDP-API.md.
 enum BulbAPI {
@@ -103,5 +103,9 @@ enum BulbAPI {
         Method(name: "setSystemConfig", kind: .write,
                summary: "homeId, env and rgn (region), plus section version stamps.",
                caution: "Changes the bulb's home, environment or region, which the WiZ app and cloud rely on."),
+        Method(name: "setUserConfig", kind: .write,
+               summary: "The bulb's own settings (see getUserConfig); only the keys sent change. userConfigTs is required: 0 always applies; any other value applies unless it equals the stored one, and is stored. fadeIn, fadeOut (ms), dftDim (power-on %), startupMode (\"default\", \"wizclick\" or \"lastStatus\"), po and poRhy (after a power cut, restore the state and the Rhythm), minDimming, dim2WarmPoints (exactly five [kelvin, dimming] pairs), autoUpd.",
+               template: #"{"userConfigTs": 0, "fadeIn": 450, "fadeOut": 500}"#,
+               caution: "Changes the bulb's own settings for every app that uses it. Power-on settings only show at the next power-on."),
     ]
 }

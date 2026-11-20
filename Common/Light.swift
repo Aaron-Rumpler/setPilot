@@ -183,8 +183,27 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()
     var name: String
     var steps: [Step]
+    /// The step the bulb starts on (elm's initStep), from 0.
+    var startStep = 0
+    var timing = Timing.steps
 
     static let maxSteps = 12
+
+    /// elm's `modifier`: on firmware 1.38.0 only 4 and 5 differ from 1, replacing every step's
+    /// hold and fade.
+    enum Timing: Int, Codable, CaseIterable, Sendable {
+        case steps = 1
+        case slow = 4
+        case quick = 5
+
+        var name: String {
+            switch self {
+            case .steps: "Each Step's Own"
+            case .slow: "Slow: Hold 1.5 s, Fade 1.5 s"
+            case .quick: "Quick: Hold 0.4 s, Fade 0.5 s"
+            }
+        }
+    }
 
     struct Step: Codable, Hashable, Identifiable, Sendable {
         var id = UUID()
@@ -201,17 +220,77 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         var hold = 1000
         /// How long the fade into the next step takes, in ms.
         var fade = 1000
+        /// Random variation of the hold and the fade, at most this many percent either way, on
+        /// this percentage of the times the step plays. The bulb takes only the values in the lists.
+        var holdJitter = 0
+        var fadeJitter = 0
+        var jitterChance = 100
+
+        static let holdJitters = [0, 10, 25, 75, 100]
+        static let fadeJitters = [0, 10, 25, 50, 75, 100]
+        static let jitterChances = [100, 90, 50, 10]
+
+        var jitters: Bool { holdJitter > 0 || fadeJitter > 0 }
+
+        /// elm's per-step jitter byte: bits 0–1 the chance, 2–4 the hold's, 5–7 the fade's (as
+        /// indexes into the firmware's tables, which these lists are reordered from).
+        var jitterByte: Int {
+            guard jitters else { return 0 }
+            let chance = [100: 0, 10: 1, 50: 2, 90: 3][jitterChance] ?? 0
+            let hold = Self.holdJitters.firstIndex(of: holdJitter) ?? 0
+            let fade = Self.fadeJitters.firstIndex(of: fadeJitter) ?? 0
+            return fade << 5 | hold << 2 | chance
+        }
 
         var colour: LightColour { useTemp ? .temp(temp) : .rgbcw(r: r, g: g, b: b, c: c, w: w) }
 
         /// Firmware 1.38.0's 13-number step: mode, R, G, B, warm, cool, kelvin, level, hold, fade,
-        /// then three the firmware manages or ignores.
+        /// jitter, then two with no known effect.
         /// The fields the step doesn't use are sent as 0: the channels for a temperature step, the
         /// kelvin for an RGBCW one.
         var elm: [Int] {
             let channels = useTemp ? [0, 0, 0, 0, 0] : [r, g, b, w, c]
-            return [useTemp ? 1 : 0] + channels + [useTemp ? temp : 0, min(max(level, 1), 100), max(hold, 0), max(fade, 0), 0, 0, 0]
+            return [useTemp ? 1 : 0] + channels + [useTemp ? temp : 0, min(max(level, 1), 100), max(hold, 0), max(fade, 0), jitterByte, 0, 0]
         }
+
+        init(useTemp: Bool = false, r: Int = 255, g: Int = 0, b: Int = 0, c: Int = 0, w: Int = 0, temp: Int = 2700,
+             level: Int = 100, hold: Int = 1000, fade: Int = 1000) {
+            (self.useTemp, self.r, self.g, self.b, self.c, self.w, self.temp) = (useTemp, r, g, b, c, w, temp)
+            (self.level, self.hold, self.fade) = (level, hold, fade)
+        }
+
+        // Steps saved before jitter existed have no jitter keys.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            useTemp = try c.decode(Bool.self, forKey: .useTemp)
+            r = try c.decode(Int.self, forKey: .r)
+            g = try c.decode(Int.self, forKey: .g)
+            b = try c.decode(Int.self, forKey: .b)
+            self.c = try c.decode(Int.self, forKey: .c)
+            w = try c.decode(Int.self, forKey: .w)
+            temp = try c.decode(Int.self, forKey: .temp)
+            level = try c.decode(Int.self, forKey: .level)
+            hold = try c.decode(Int.self, forKey: .hold)
+            fade = try c.decode(Int.self, forKey: .fade)
+            holdJitter = try c.decodeIfPresent(Int.self, forKey: .holdJitter) ?? 0
+            fadeJitter = try c.decodeIfPresent(Int.self, forKey: .fadeJitter) ?? 0
+            jitterChance = try c.decodeIfPresent(Int.self, forKey: .jitterChance) ?? 100
+        }
+    }
+
+    init(id: UUID = UUID(), name: String, steps: [Step], startStep: Int = 0, timing: Timing = .steps) {
+        (self.id, self.name, self.steps, self.startStep, self.timing) = (id, name, steps, startStep, timing)
+    }
+
+    // Scenes saved before these existed have no startStep or timing.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        steps = try c.decode([Step].self, forKey: .steps)
+        startStep = try c.decodeIfPresent(Int.self, forKey: .startStep) ?? 0
+        timing = try c.decodeIfPresent(Timing.self, forKey: .timing) ?? .steps
     }
 
     static func new(name: String) -> CustomScene {
@@ -221,11 +300,14 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         ])
     }
 
-    /// The `elm` object for `setPilot`. `modifier` 1 keeps each step's own hold and fade
-    /// (other values substitute fixed timings); `support` 17 enables the scene on this light
-    /// type (bit 0 must be set, or it never plays).
+    /// The `elm` object for `setPilot`. `modifier` is the timing; `support` 17 enables the scene
+    /// on this light type (bit 0 must be set, or it never plays); `initStep` must be one of the steps.
     var elm: [String: Any] {
-        ["modifier": 1, "support": 17, "steps": steps.prefix(Self.maxSteps).map(\.elm)]
+        let sent = steps.prefix(Self.maxSteps).map(\.elm)
+        var elm: [String: Any] = ["modifier": timing.rawValue, "support": 17, "steps": sent]
+        let start = min(max(startStep, 0), max(sent.count - 1, 0))
+        if start > 0 { elm["initStep"] = start }
+        return elm
     }
 
     var swatch: RGB? { steps.first?.colour.swatch }

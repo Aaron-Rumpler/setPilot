@@ -275,7 +275,54 @@ final class Model {
 
     private var savedMAC: String? {
         get { UserDefaults.standard.string(forKey: Self.macKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.macKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.macKey)
+            refreshSigning()
+        }
+    }
+
+    // MARK: Signing
+
+    static let signingKeysKey = "signingKeys"
+
+    /// Signing keys for bulbs whose firmware wants signed requests, keyed by lower-case MAC: the
+    /// home's udp_signing_key, as 32 hex digits. Kept on this device only.
+    var signingKeys: [String: String] = UserDefaults.standard.dictionary(forKey: Model.signingKeysKey) as? [String: String] ?? [:] {
+        didSet {
+            UserDefaults.standard.set(signingKeys, forKey: Self.signingKeysKey)
+            refreshSigning()
+        }
+    }
+
+    /// The bulb answers with signatures, so it may want its requests signed too.
+    var bulbSigns = false
+
+    func signingKey(for mac: String?) -> String? {
+        guard let mac else { return nil }
+        return signingKeys[mac.lowercased()]
+    }
+
+    /// Sets (or with nil or an empty string, removes) a bulb's key. Returns false, changing
+    /// nothing, if the text isn't 32 hex digits.
+    @discardableResult
+    func setSigningKey(_ text: String?, for mac: String) -> Bool {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            signingKeys[mac.lowercased()] = nil
+            return true
+        }
+        guard let key = RequestSigning.normalised(trimmed) else { return false }
+        signingKeys[mac.lowercased()] = key
+        return true
+    }
+
+    /// Whether requests to the chosen bulb are signed.
+    var signing: Bool { signingKey(for: chosenMAC) != nil }
+
+    private func refreshSigning() {
+        let key = signingKey(for: chosenMAC)
+        bulb.signingKey = key
+        SharedStore.defaults.set(key, forKey: SharedStore.signingKeyKey)
     }
 
     /// The chosen bulb's name, if it has one.
@@ -322,6 +369,8 @@ final class Model {
         cctRange = nil
         renderFactor = nil
         mac = nil
+        refreshSigning()
+        bulbSigns = false
         module = nil
         firmware = nil
         info = [:]
@@ -1076,9 +1125,18 @@ final class Model {
     private func handleReply(_ reply: [String: Any]) {
         guard !wrongBulb else { return }
         let method = reply["method"] as? String ?? "?"
+        if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
             link = .connected
-            let text = (err["code"] as? Int) == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
+            let code = err["code"] as? Int
+            var text = code == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
+            if code == -32605 {
+                text += signing
+                    ? " (check the bulb's signing key, and that this device's clock is right)"
+                    : " (the bulb wants signed requests: add its signing key)"
+            } else if code == -32602, bulbSigns, !signing, !method.hasPrefix("get") {
+                text += " (if the bulb wants signed requests, add its signing key)"
+            }
             if BulbAPI.deviceInfo.contains(method) {
                 // Device info shows the error as the bulb sent it (code and message), flagged; a
                 // failed read isn't worth the status line.
@@ -1192,4 +1250,17 @@ final class Model {
             tempRange = lo...hi
         }
     }
+}
+
+extension Model {
+    /// The chosen bulb's signing, for the device details.
+    var signingStatus: String {
+        if signing { return "On" }
+        return bulbSigns ? "Off (the bulb signs its replies)" : "Off"
+    }
+}
+
+/// What a signing key is, for the places that set one.
+enum SigningHelp {
+    static let text = "Newer firmware can refuse unsigned changes. Its key is the home's udp_signing_key, from the WiZ app's export of the home for local integration. With a key, setPilot signs every request to this bulb (but not the console's raw messages). It's kept on this device only."
 }

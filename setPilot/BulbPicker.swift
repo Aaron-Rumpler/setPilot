@@ -174,3 +174,40 @@ struct RenameButton: View {
         }
     }
 }
+
+/// A key button that sets a bulb's signing key (by MAC), for firmware that wants signed requests.
+struct SigningKeyButton: View {
+    let model: Model
+    let mac: String
+    @State private var editing = false
+    @State private var draft = ""
+    @State private var invalid = false
+
+    var body: some View {
+        Button {
+            draft = model.signingKey(for: mac) ?? ""
+            editing = true
+        } label: {
+            Image(systemName: model.signingKey(for: mac) == nil ? "key" : "key.fill")
+        }
+        .buttonStyle(.borderless)
+        .help("Set the key for signed requests")
+        .alert("Signing Key", isPresented: $editing) {
+            TextField("32 hex digits", text: $draft)
+            Button("Save") {
+                if !model.setSigningKey(draft, for: mac) { invalid = true }
+            }
+            if model.signingKey(for: mac) != nil {
+                Button("Remove Key", role: .destructive) { model.setSigningKey(nil, for: mac) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(SigningHelp.text)
+        }
+        .alert("That isn't a signing key", isPresented: $invalid) {
+            Button("OK") { editing = true }
+        } message: {
+            Text("A signing key is 32 hex digits (0–9 and a–f).")
+        }
+    }
+}

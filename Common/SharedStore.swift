@@ -17,6 +17,8 @@ enum SharedStore {
     static let presetsKey = "shared.presets"
     static let presetParamsKey = "shared.presetParams"
     static let addressKey = "shared.address"
+    /// The chosen bulb's signing key, if it has one.
+    static let signingKeyKey = "shared.signingKey"
     static let customScenesKey = "shared.customScenes"
 
     static func save<T: Encodable>(_ value: T, _ key: String) {

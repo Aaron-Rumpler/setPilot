@@ -77,7 +77,8 @@ trademark of Signify.
   switches the bulb on. Right-click a preset to rename, update, move or delete it.
 - **Custom scenes** (Window › Custom Scenes, or the pencil next to the scene picker): up to 12
   steps, each with a colour (RGBCW or a temperature), a level, how long it holds and how long it
-  fades into the next. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
+  fades into the next, and optionally a random variation of those times. A scene can start on any
+  step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're played inline (`setPilot` with `sceneId` 300 and an `elm`
   definition), so nothing stored on the bulb is touched; the bulb can't read definitions back, so
   they're kept in setPilot. They appear in the scene picker after the bulb's own.
 - **Compose a change** (Compose… on the Light panel): prepare a new state (any of colour,
@@ -85,6 +86,10 @@ trademark of Signify.
   there is one), none (no `trans`), or a value just for this change, say 10 s. It starts
   from the bulb's current state. A scene can have a speed too, which goes in a `setPilot` of its
   own just after (the firmware ignores speed alongside anything else).
+- **Signed requests**, for newer firmware that refuses unsigned changes: set a bulb's signing key
+  (the home's `udp_signing_key`, from the WiZ app's export for local integration) with the key
+  button in the Device panel on the Mac, or Signing in Bulb & Settings on iPhone, and every request
+  to it is signed as pywizlight signs them. Keys are kept on each device.
 - **Light menu** (Mac): switch on or off (⇧⌘P), sync, and the first nine presets on ⌘1–⌘9.
 - **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
   and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
@@ -160,8 +165,8 @@ compilation conditions, so the code that needs them is left out otherwise.
 | `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
-back, so writing one could overwrite a scene the WiZ app stored), signed requests (firmware that requires the `udp_signing_key` from the WiZ app),
-multiple bulbs, Rhythm and sync-box scenes (shown when the bulb is in one, but not settable),
+back, so writing one could overwrite a scene the WiZ app stored), changing the bulb's own settings
+(`setUserConfig`, except from the console), multiple bulbs, Rhythm and sync-box scenes (shown when the bulb is in one, but not settable),
 dual-head and fan devices.
 
 ## Colour temperature colours
