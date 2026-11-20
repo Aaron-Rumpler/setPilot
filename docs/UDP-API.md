@@ -143,8 +143,8 @@ as you'd expect. To dim a whole scene, use `dimming`, which can be sent while it
 So `176` (fade 5, hold 4, every time) is the most jitter. The amount is random up to the limit, in
 either direction, and never takes a time below 20 ms.
 
-A colour step with all five channels at 0 should play as dark, which makes a blink in a scene
-(unconfirmed).
+A colour step with all five channels at 0 plays as dark (the bulb stays on), which makes a blink
+in a scene.
 
 Nothing is stored on the bulb; it can't report the steps back, so an app has to keep its own copy.
 
