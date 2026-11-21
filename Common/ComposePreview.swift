@@ -27,7 +27,9 @@ extension LightChange {
         let off = power == false || (power == nil && isOn == false)
         switch colour {
         case let .scene(_, s?)?, let .custom(_, s?)?: if !off { text += "\nthen setPilot {\"speed\":\(s)}" }
-        case nil: if power == true, let s = owedSpeed { text += "\nand setPilot {\"speed\":\(s)}" }
+        case nil:
+            // At the same moment when only switching on; after the change otherwise.
+            if !off, let s = owedSpeed { text += "\n\(dimming == nil ? "and" : "then") setPilot {\"speed\":\(s)}" }
         default: break
         }
         return text
