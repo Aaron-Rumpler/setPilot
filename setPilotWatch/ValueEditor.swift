@@ -70,8 +70,9 @@ struct ValueEditor: View {
         // Steps on multiples of the step (as `Stepping.snap` rounds to), not counted from the
         // bottom of the range, which needn't be one (a CCT scale from 2213 K): a detent to 2263
         // would snap back to 2250, and turning up would do nothing.
+        // (And up to the multiple above the top, so the top itself, 255 say, lines up with a stop.)
         .digitalCrownRotation($crown, from: (range.lowerBound / snapStep).rounded(.down) * snapStep,
-                              through: range.upperBound, by: snapStep,
+                              through: (range.upperBound / snapStep).rounded(.up) * snapStep, by: snapStep,
                               sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { _, new in
             // Not when the Crown is just being lined up with the value (opening the editor, or
@@ -114,7 +115,10 @@ struct ValueEditor: View {
     private func set(_ v: Double) {
         let clamped = min(max(v.rounded(), range.lowerBound), range.upperBound)
         if clamped != value { value = clamped }
-        if crown != clamped { crown = clamped }
+        if crown != clamped {
+            crown = clamped
+            lineUp = clamped // put there, not turned: its rounding onto a step isn't a turn
+        }
     }
 }
 
@@ -212,7 +216,9 @@ struct NumberPad: View {
         }
         .navigationTitle(title)
         .focusable()
-        .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: stepSize,
+        // Stops on multiples of the step, as in ValueEditor.
+        .digitalCrownRotation($crown, from: (range.lowerBound / stepSize).rounded(.down) * stepSize,
+                              through: (range.upperBound / stepSize).rounded(.up) * stepSize, by: stepSize,
                               sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { _, new in
             if let lineUp, abs(new - lineUp) <= stepSize / 2 {

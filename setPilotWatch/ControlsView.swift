@@ -69,7 +69,7 @@ struct ControlsView: View {
         .onAppear { follow(s) }
         .onChange(of: link.snapshot) { _, new in follow(new) }
         // Once the last live change has been answered, show the bulb's values again.
-        .onChange(of: link.liveBusy) { _, busy in if !busy { follow(link.snapshot) } }
+        .onChange(of: link.liveSettled) { follow(link.snapshot) }
     }
 
     @ViewBuilder private func modeControls(_ s: LightSnapshot, _ v: LightValues) -> some View {

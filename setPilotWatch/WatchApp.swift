@@ -200,7 +200,7 @@ struct CustomScenesView: View {
             }
         }
         .navigationTitle("Custom Scenes")
-        .onChange(of: link.liveBusy) { _, busy in if !busy { pending = nil } }
+        .onChange(of: link.liveSettled) { pending = nil }
     }
 
     private func binding(_ s: LightSnapshot, _ kp: WritableKeyPath<LightValues, Double>, _ field: PilotField) -> Binding<Double> {

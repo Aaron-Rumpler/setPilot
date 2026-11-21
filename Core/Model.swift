@@ -641,12 +641,13 @@ final class Model {
         lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
         bulb.send("setState", ["state": on], retry: true)
         if on, speedOwed, mode == .scene {
-            // The speed changed while it was off: now it's on, after the switch-on has landed.
-            speedOwed = false
+            // The speed changed while it was off: now it's on, after the switch-on has landed
+            // (still owed if switching on failed).
             let generation = connectGeneration
             Task {
                 try? await Task.sleep(for: .milliseconds(400))
-                guard connectGeneration == generation, isOn == true, mode == .scene else { return }
+                guard connectGeneration == generation, speedOwed, isOn == true, mode == .scene else { return }
+                speedOwed = false
                 bulb.send("setPilot", ["speed": Int(speed)], retry: true)
             }
         }
@@ -1292,6 +1293,17 @@ final class Model {
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
             link = .connected
+            // A refused change or read-back: nothing to read back (a read that works unsigned would
+            // replace the error below with "didn't apply"), and nothing is pending any more.
+            if method == "setPilot" || method == "setState" || method == "getPilot" {
+                verifyTask?.cancel()
+                pending = false
+                verifyingSeq = nil
+            }
+            if method == "setState" { // as when it doesn't answer: the switch didn't happen
+                isOn = powerBefore
+                lastState = powerBefore
+            }
             let code = err["code"] as? Int
             var text = code == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
             if code == -32605 {
