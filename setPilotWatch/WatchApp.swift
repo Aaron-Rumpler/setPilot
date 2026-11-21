@@ -273,6 +273,9 @@ struct BulbsView: View {
                         .disabled(s.link != .connected)
                 }
             }
+            Section {
+                LabeledContent("setPilot", value: BuildInfo.summary)
+            }
         }
         .navigationTitle("Bulb")
         .navigationDestination(item: $renaming) { bulb in BulbNameView(link: link, bulb: bulb) }

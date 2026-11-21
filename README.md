@@ -241,7 +241,10 @@ file added to a folder is picked up without editing the project:
 | `setPilotiOS/` | the iPhone app (scheme "setPilot iOS", which also builds and embeds the watch app) |
 | `setPilotWatch/` | the Watch app |
 | `Core/` | Mac and iPhone: the bulb protocol, model, presets and custom scenes, shared views |
-| `Common/` | all three: light types, colour maths, the watch messages, the icon |
+| `Common/` | all three: light types, colour maths, the watch messages, the build info, the icon |
+
+Each app records the commit it was built from (from `git describe`, with `-dirty` for uncommitted
+changes) and shows it in Settings and the About panel (on the watch, on the Bulb screen).
 
 To run on your iPhone and watch, choose the "setPilot iOS" scheme, pick your (free or paid) team for
 both the iOS and Watch targets under Signing & Capabilities, and run.

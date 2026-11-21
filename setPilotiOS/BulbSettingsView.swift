@@ -125,6 +125,10 @@ struct BulbSettingsView: View {
             Section {
                 NavigationLink("Shortcuts and Siri") { ShortcutsHelpView() }
             }
+
+            Section {
+                LabeledContent("Version", value: BuildInfo.summary).textSelection(.enabled)
+            }
         }
         .navigationTitle("Bulb & Settings")
         .navigationBarTitleDisplayMode(.inline)

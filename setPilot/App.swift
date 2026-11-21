@@ -17,7 +17,18 @@ struct SetPilotApp: App {
     var body: some Scene {
         Window("setPilot", id: "main") { ContentView(model: model) }
             .windowResizability(.contentSize)
-            .commands { LightCommands(model: model) }
+            .commands {
+                LightCommands(model: model)
+                CommandGroup(replacing: .appInfo) {
+                    Button("About setPilot") {
+                        // The build number's place shows the commit instead.
+                        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+                        if let commit = BuildInfo.commit { options[.version] = commit }
+                        NSApp.orderFrontStandardAboutPanel(options: options)
+                        NSApp.activate()
+                    }
+                }
+            }
         MenuBarExtra {
             MenuBarPanel(model: model)
         } label: {
@@ -240,6 +251,10 @@ struct SettingsView: View {
                         adaptingWhite = ColourTemperature.defaultAdaptingWhite
                     }
                 }
+            }
+
+            Section {
+                LabeledContent("Version", value: BuildInfo.summary).textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
