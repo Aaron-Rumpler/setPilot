@@ -33,6 +33,9 @@ struct SetPilotApp: App {
         Window("Console", id: "console") { ConsoleWindow(model: model) }
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
+        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 560, minHeight: 520) }
+            .defaultSize(width: 820, height: 780)
+            .keyboardShortcut("l", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
     }
 }
@@ -139,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keep running in the menu bar when the window is closed.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// Our normal windows (the main window, Settings, the console, scenes and scales), not the menu
+    /// Our normal windows (the main window, Settings, the console, scenes, scales and the light show), not the menu
     /// bar panel.
     private var appWindows: [NSWindow] {
         NSApp.windows.filter { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }

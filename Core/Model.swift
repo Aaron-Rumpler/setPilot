@@ -979,6 +979,17 @@ final class Model {
         scheduleVerify()
     }
 
+    /// A light show cue: sent once as it is (a late resend would be out of time), and shown as the
+    /// last command. The controls follow from the bulb's live updates.
+    func sendLightCue(_ pilot: [String: Any]) {
+        if let data = try? JSONSerialization.data(withJSONObject: pilot, options: .sortedKeys) {
+            lastSent = String(decoding: data, as: UTF8.self)
+        }
+        lastMethod = "setPilot"
+        if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
+        bulb.send("setPilot", pilot, retry: false)
+    }
+
     /// Sets the given values and sends the fields named (from the watch).
     func apply(_ v: LightValues, fields: [PilotField]) {
         if v.mode != .scene || v.sceneId != Scenes.inlineCustom { customSceneId = nil }

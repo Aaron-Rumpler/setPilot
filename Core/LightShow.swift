@@ -1,0 +1,365 @@
+import AVFoundation
+import Foundation
+
+/// A light show file: setPilot states to send at times in a piece of media. See docs/LIGHT-SHOW.md.
+struct LightShow {
+    struct Cue: Identifiable {
+        /// Its place in the sorted list.
+        let id: Int
+        /// Media time, in seconds.
+        let time: Double
+        /// setPilot params, sent as they are.
+        let pilot: [String: Any]
+        let label: String?
+
+        /// The params as one line of JSON, for the cue list.
+        var summary: String { JSONText.compact(pilot) }
+    }
+
+    var title: String?
+    var media: String?
+    var cues: [Cue]
+    /// Things in the file that will probably misbehave on the bulb (it's still playable).
+    var warnings: [String]
+
+    struct ParseError: Error { let message: String }
+
+    static func parse(_ data: Data) -> Result<LightShow, ParseError> {
+        guard let obj = Net.json(data) else { return .failure(ParseError(message: "Not a JSON object.")) }
+        guard (obj["setPilotLightShow"] as? NSNumber)?.intValue == 1 else {
+            return .failure(ParseError(message: "Not a setPilot light show (no \"setPilotLightShow\": 1)."))
+        }
+        guard let list = obj["cues"] as? [Any] else { return .failure(ParseError(message: "No \"cues\" list.")) }
+        var raw: [(time: Double, pilot: [String: Any], label: String?)] = []
+        for (i, item) in list.enumerated() {
+            guard let cue = item as? [String: Any] else { return .failure(ParseError(message: "Cue \(i + 1) isn't an object.")) }
+            guard let time = cue["t"].flatMap(Self.seconds), time >= 0 else {
+                return .failure(ParseError(message: "Cue \(i + 1) has no valid \"t\" (seconds, or \"m:ss.sss\")."))
+            }
+            guard let pilot = cue["pilot"] as? [String: Any], !pilot.isEmpty else {
+                return .failure(ParseError(message: "Cue \(i + 1) has no \"pilot\" params."))
+            }
+            raw.append((time, pilot, cue["label"] as? String))
+        }
+        // Stable, so cues at the same time keep the file's order.
+        let sorted = raw.enumerated().sorted { ($0.element.time, $0.offset) < ($1.element.time, $1.offset) }.map(\.element)
+        let cues = sorted.enumerated().map { Cue(id: $0.offset, time: $0.element.time, pilot: $0.element.pilot, label: $0.element.label) }
+        return .success(LightShow(title: obj["title"] as? String, media: obj["media"] as? String,
+                                  cues: cues, warnings: warnings(cues)))
+    }
+
+    /// Seconds from a number, or from "m:ss.sss" / "h:mm:ss.sss".
+    static func seconds(_ value: Any) -> Double? {
+        if let n = value as? NSNumber, !(value is Bool) { return n.doubleValue }
+        guard let s = value as? String else { return nil }
+        let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
+        guard (1...3).contains(parts.count) else { return nil }
+        var total = 0.0
+        for part in parts {
+            guard let v = Double(part), v >= 0 else { return nil }
+            total = total * 60 + v
+        }
+        return total
+    }
+
+    private static func warnings(_ cues: [Cue]) -> [String] {
+        var out: [String] = []
+        let close = zip(cues, cues.dropFirst()).filter { $1.time - $0.time < 0.08 }.count
+        if close > 0 { out.append("\(close) cue\(close == 1 ? " comes" : "s come") less than 80 ms after the one before: the bulb may drop some.") }
+        let channels = ["r", "g", "b", "c", "w"]
+        let dark = cues.filter { cue in
+            channels.allSatisfy { cue.pilot[$0] != nil } && channels.allSatisfy { (cue.pilot[$0] as? NSNumber)?.intValue == 0 }
+        }
+        if let first = dark.first {
+            out.append("\(dark.count) cue\(dark.count == 1 ? " sets" : "s set") every channel to 0 (first at \(LightShowPlayer.format(first.time))), which the bulb refuses.")
+        }
+        return out
+    }
+
+    /// The state the show is in after these cues: a colour replaces the previous colour (and its
+    /// scene speed), everything else accumulates. Fades are dropped, to jump straight there.
+    static func state(after cues: some Sequence<Cue>) -> [String: Any] {
+        let colourKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm", "speed"]
+        var state: [String: Any] = [:]
+        for cue in cues {
+            if cue.pilot.keys.contains(where: { ["r", "g", "b", "c", "w", "temp", "sceneId"].contains($0) }) {
+                state = state.filter { !colourKeys.contains($0.key) }
+            }
+            state.merge(cue.pilot) { $1 }
+        }
+        state["trans"] = nil
+        return state
+    }
+}
+
+/// Plays media and sends the bulb the light show's cues as it goes, each `delay` early.
+@MainActor @Observable
+final class LightShowPlayer {
+    let model: Model
+    let player = AVPlayer()
+
+    private(set) var mediaName: String?
+    private(set) var hasVideo = false
+    private(set) var duration = 0.0
+    private(set) var show: LightShow?
+    private(set) var showName: String?
+    var error: String?
+
+    /// The media time, for the transport (updated as it plays).
+    private(set) var time = 0.0
+    private(set) var isPlaying = false
+    /// The cue sent most recently, for the cue list.
+    private(set) var currentCue: Int?
+    /// The show's state as last sent, for the on-screen swatch.
+    private(set) var light: [String: Any] = [:]
+
+    /// How early cues are sent, in ms (negative: late). Remembered.
+    var delay: Double = UserDefaults.standard.object(forKey: LightShowPlayer.delayKey) as? Double ?? 200 {
+        didSet { UserDefaults.standard.set(delay, forKey: Self.delayKey) }
+    }
+    static let delayKey = "lightShowDelay"
+    /// Off: play the show on screen only.
+    var sendsToBulb = UserDefaults.standard.object(forKey: LightShowPlayer.sendKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(sendsToBulb, forKey: Self.sendKey) }
+    }
+    static let sendKey = "lightShowSends"
+    /// Put the light back as it was before the show, when it's stopped or ends.
+    var restores = UserDefaults.standard.object(forKey: LightShowPlayer.restoreKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(restores, forKey: Self.restoreKey) }
+    }
+    static let restoreKey = "lightShowRestores"
+
+    /// The show time cues have been sent up to; nil until playback starts (or after a jump is due).
+    @ObservationIgnored private var sentUpTo: Double?
+    @ObservationIgnored private var nextCue = 0
+    @ObservationIgnored private var saved: Model.SavedLight?
+    @ObservationIgnored private var endObserver: NSObjectProtocol?
+    @ObservationIgnored private var mediaAccess: URL?
+    @ObservationIgnored private var scrubbing = false
+
+    init(model: Model) {
+        self.model = model
+        startTicking()
+    }
+
+    // MARK: Files
+
+    func openMedia(_ url: URL) {
+        stop()
+        mediaAccess?.stopAccessingSecurityScopedResource()
+        mediaAccess = url.startAccessingSecurityScopedResource() ? url : nil
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        #endif
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.ended() }
+        }
+        player.replaceCurrentItem(with: item)
+        mediaName = url.lastPathComponent
+        hasVideo = false
+        duration = 0
+        time = 0
+        error = nil
+        Task {
+            let video = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+            let length = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+            guard player.currentItem === item else { return }
+            hasVideo = !video.isEmpty
+            duration = length.isFinite ? length : 0
+        }
+    }
+
+    func openShow(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            error = "Couldn't read \(url.lastPathComponent)."
+            return
+        }
+        switch LightShow.parse(data) {
+        case .success(let s):
+            show = s
+            showName = url.lastPathComponent
+            error = nil
+            sentUpTo = nil // catch up to wherever the media is, on the next tick that plays
+            currentCue = nil
+        case .failure(let e):
+            error = "\(url.lastPathComponent): \(e.message)"
+        }
+    }
+
+    // MARK: Transport
+
+    func togglePlay() { isPlaying ? pause() : play() }
+
+    func play() {
+        guard player.currentItem != nil else { return }
+        if duration > 0, time >= duration - 0.05 { seek(to: 0) }
+        player.play()
+    }
+
+    func pause() { player.pause() }
+
+    /// Stops, rewinds, and puts the light back (if set to).
+    func stop() {
+        player.pause()
+        player.seek(to: .zero)
+        time = 0
+        sentUpTo = nil
+        currentCue = nil
+        light = [:]
+        restore()
+    }
+
+    func seek(to seconds: Double) {
+        let t = min(max(seconds, 0), max(duration, 0))
+        time = t
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        sentUpTo = nil // a jump: send the state at the new place first
+    }
+
+    /// While the transport slider is dragged, its value isn't overwritten by playback.
+    func setScrubbing(_ on: Bool) { scrubbing = on }
+
+    private func ended() {
+        isPlaying = false
+        restore()
+    }
+
+    private func restore() {
+        guard let saved else { return }
+        self.saved = nil
+        if restores, sendsToBulb { model.restore(saved) }
+    }
+
+    // MARK: Sending
+
+    /// About 100 times a second: follow the media's time and send the cues that are due.
+    private func startTicking() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.tick()
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    private func tick() {
+        let now = CMTimeGetSeconds(player.currentTime())
+        guard now.isFinite else { return }
+        // Observed values change only when they need to: this runs 100 times a second.
+        let playing = player.rate != 0
+        if playing != isPlaying { isPlaying = playing }
+        if !scrubbing, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
+        guard playing, let show, !show.cues.isEmpty else { return }
+        // Started (here or with the video's own controls): remember the light to put back.
+        if saved == nil, restores, sendsToBulb { saved = model.savedLight }
+        let showTime = now + delay / 1000
+        // A jump (seek, a stall, a big change of delay): send the state at the new place.
+        if sentUpTo == nil || showTime < sentUpTo! - 0.05 || showTime > sentUpTo! + 0.5 {
+            catchUp(to: showTime, in: show)
+            return
+        }
+        var due: [LightShow.Cue] = []
+        while nextCue < show.cues.count, show.cues[nextCue].time <= showTime {
+            due.append(show.cues[nextCue])
+            nextCue += 1
+        }
+        sentUpTo = showTime
+        guard let last = due.last else { return }
+        if due.count == 1 || showTime - due[0].time < 0.1 {
+            for cue in due { send(cue.pilot) }
+        } else {
+            // Running behind (a slow tick): just the state they add up to.
+            send(LightShow.state(after: due))
+        }
+        currentCue = last.id
+        light = LightShow.state(after: show.cues[...last.id])
+    }
+
+    private func catchUp(to showTime: Double, in show: LightShow) {
+        nextCue = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+        sentUpTo = showTime
+        guard nextCue > 0 else {
+            currentCue = nil
+            light = [:]
+            return
+        }
+        var state = LightShow.state(after: show.cues[..<nextCue])
+        // Speed only takes in a setPilot of its own, after the scene.
+        let speed = state.removeValue(forKey: "speed")
+        state["trans"] = 0
+        if state.count > 1 || state["state"] != nil { send(state) }
+        if let speed {
+            Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                self.send(["speed": speed])
+            }
+        }
+        currentCue = nextCue - 1
+        light = LightShow.state(after: show.cues[..<nextCue])
+    }
+
+    private func send(_ pilot: [String: Any]) {
+        guard sendsToBulb else { return }
+        model.sendLightCue(pilot)
+    }
+
+    // MARK: Display
+
+    /// Roughly the colour the show has the bulb at now.
+    var swatch: RGB? {
+        if let k = (light["temp"] as? NSNumber)?.intValue { return LightColour.temp(k).swatch }
+        if let id = (light["sceneId"] as? NSNumber)?.intValue { return Scenes.swatch(id) }
+        let ch = ["r", "g", "b", "c", "w"].map { (light[$0] as? NSNumber)?.intValue ?? 0 }
+        return LightColour.rgbcw(r: ch[0], g: ch[1], b: ch[2], c: ch[3], w: ch[4]).swatch
+    }
+
+    var brightness: Double {
+        if light["state"] as? Bool == false { return 0 }
+        return ((light["dimming"] as? NSNumber)?.doubleValue ?? 100) / 100
+    }
+
+    nonisolated static func format(_ seconds: Double) -> String {
+        let s = max(seconds, 0)
+        let m = Int(s) / 60
+        return String(format: "%d:%05.2f", m, s - Double(m * 60))
+    }
+
+    /// The window or screen has gone: stop, and let go of the files. (The ticker ends by itself
+    /// once nothing holds the player.)
+    func close() {
+        stop()
+        player.replaceCurrentItem(with: nil)
+        mediaName = nil
+        hasVideo = false
+        duration = 0
+        mediaAccess?.stopAccessingSecurityScopedResource()
+        mediaAccess = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+    }
+}
+
+extension Model {
+    /// The light as it is, to put back after a light show.
+    struct SavedLight {
+        let values: LightValues
+        let customScene: UUID?
+        let isOn: Bool?
+    }
+
+    var savedLight: SavedLight { SavedLight(values: values, customScene: customSceneId, isOn: isOn) }
+
+    func restore(_ saved: SavedLight) {
+        guard canControl else { return }
+        isOn = true // the show left it on; the colour goes back first, then the power
+        if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
+        apply(saved.values, fields: [.colour, .dimming])
+        if saved.isOn == false { power(false) }
+    }
+}

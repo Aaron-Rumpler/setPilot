@@ -20,6 +20,13 @@ struct RootView: View {
                         Label("Custom Scenes", systemImage: "sparkles")
                     }
                     NavigationLink {
+                        LightShowView(model: model)
+                            .navigationTitle("Light Show")
+                            .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        Label("Light Show", systemImage: "play.rectangle")
+                    }
+                    NavigationLink {
                         CCTScalesList(model: model)
                     } label: {
                         Label("CCT Scales", systemImage: "thermometer.medium")

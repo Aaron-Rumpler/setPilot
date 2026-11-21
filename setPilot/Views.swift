@@ -111,6 +111,13 @@ struct ContentView: View {
     private var commandPanel: some View {
         Panel("Last Command") {
             Button {
+                openWindow(id: "lightshow")
+            } label: {
+                Label("Light Show…", systemImage: "play.rectangle")
+            }
+            .buttonStyle(.borderless)
+            .help("Play audio or video with the bulb following a light show file (⌥⌘L)")
+            Button {
                 openWindow(id: "console")
             } label: {
                 Label("Console…", systemImage: "terminal")
