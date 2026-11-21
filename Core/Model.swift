@@ -987,6 +987,12 @@ final class Model {
         }
         lastMethod = "setPilot"
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
+        // A read-back still due from a change before the show would compare against that change
+        // (a false "didn't apply") and hold back the live updates the controls follow.
+        verifyTask?.cancel()
+        verifyingSeq = nil
+        pending = false
+        mismatch = nil
         bulb.send("setPilot", pilot, retry: false)
     }
 

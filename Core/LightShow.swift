@@ -85,6 +85,8 @@ struct LightShow {
             if cue.pilot.keys.contains(where: { ["r", "g", "b", "c", "w", "temp", "sceneId"].contains($0) }) {
                 state = state.filter { !colourKeys.contains($0.key) }
             }
+            // A setPilot without "state" switches the bulb on: an earlier off no longer holds.
+            if cue.pilot["state"] == nil, cue.pilot.keys.contains(where: { $0 != "trans" }) { state["state"] = nil }
             state.merge(cue.pilot) { $1 }
         }
         state["trans"] = nil
@@ -136,6 +138,11 @@ final class LightShowPlayer {
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var mediaAccess: URL?
     @ObservationIgnored private var scrubbing = false
+    /// A seek is under way: the player's time is still the old one until it finishes.
+    @ObservationIgnored private var seeking = false
+    @ObservationIgnored private var seekGeneration = 0
+    /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
+    @ObservationIgnored private var sentDelay: Double?
 
     init(model: Model) {
         self.model = model
@@ -217,8 +224,16 @@ final class LightShowPlayer {
     func seek(to seconds: Double) {
         let t = min(max(seconds, 0), max(duration, 0))
         time = t
-        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        sentUpTo = nil // a jump: send the state at the new place first
+        sentUpTo = nil // a jump: send the state at the new place first, once the seek has landed
+        seekGeneration += 1
+        let generation = seekGeneration
+        seeking = true
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.seekGeneration == generation else { return }
+                self.seeking = false
+            }
+        }
     }
 
     /// While the transport slider is dragged, its value isn't overwritten by playback.
@@ -256,10 +271,25 @@ final class LightShowPlayer {
         if playing != isPlaying { isPlaying = playing }
         if !scrubbing, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
         guard playing, let show, !show.cues.isEmpty else { return }
-        // Started (here or with the video's own controls): remember the light to put back.
-        if saved == nil, restores, sendsToBulb { saved = model.savedLight }
+        // Started (here or with the video's own controls): remember the light to put back (whether
+        // it's put back is decided when the show stops).
+        if saved == nil, sendsToBulb { saved = model.savedLight }
+        // Nothing while the position is being dragged or a seek is landing: the state at the new
+        // place goes once it's there, not once per step on the way.
+        guard !scrubbing, !seeking else { return }
         let showTime = now + delay / 1000
-        // A jump (seek, a stall, a big change of delay): send the state at the new place.
+        // The delay was changed (likely by dragging its slider): carry on from the new point
+        // without sending, rather than a burst of catch-ups or skipped cues all at once.
+        if let sentUpTo, delay != sentDelay {
+            sentDelay = delay
+            if abs(showTime - sentUpTo) < 2 {
+                nextCue = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+                self.sentUpTo = showTime
+                return
+            }
+        }
+        sentDelay = delay
+        // A jump (seek, a stall, starting): send the state at the new place.
         if sentUpTo == nil || showTime < sentUpTo! - 0.05 || showTime > sentUpTo! + 0.5 {
             catchUp(to: showTime, in: show)
             return
