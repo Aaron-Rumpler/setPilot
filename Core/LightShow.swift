@@ -402,8 +402,10 @@ final class LightShowPlayer {
         state["trans"] = trans // nil leaves it out
         // Anything besides the fade (which is there or not, as given).
         if state.keys.contains(where: { $0 != "trans" }) { send(state) }
-        speedTask?.cancel()
-        speedTask = nil
+        if Self.supersedesSpeed(combined) {
+            speedTask?.cancel()
+            speedTask = nil
+        }
         if let speed {
             speedTask = Task {
                 try? await Task.sleep(for: .milliseconds(300))
@@ -423,12 +425,17 @@ final class LightShowPlayer {
         light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
     }
 
+    /// Whether a state makes a scene's speed still to be sent out of date: a new colour or scene
+    /// (the speed would apply to it), off (it would switch the bulb back on), or a speed of its
+    /// own. A dimming or fade change leaves it to follow.
+    private static func supersedesSpeed(_ pilot: [String: Any]) -> Bool {
+        let keys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm", "speed"]
+        return pilot["state"] as? Bool == false || pilot.keys.contains(where: keys.contains)
+    }
+
     /// `followUp`: a scene's speed, sent separately just after it.
     private func send(_ pilot: [String: Any], followUp: Bool = false) {
-        // A new colour or scene (the speed would apply to it), or off (it would switch the bulb
-        // back on); a dimming or fade change leaves it to follow.
-        let colourKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
-        if !followUp, pilot["state"] as? Bool == false || pilot.keys.contains(where: colourKeys.contains) {
+        if !followUp, Self.supersedesSpeed(pilot) {
             speedTask?.cancel()
             speedTask = nil
         }
