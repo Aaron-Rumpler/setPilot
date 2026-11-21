@@ -50,7 +50,7 @@ struct ApplyPresetIntent: AppIntent {
             throw WizIntentError(localizedStringResource: "That preset no longer exists.")
         }
         model.apply(p)
-        await model.waitUntilSettled()
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Applied \(p.name).")
     }
 }
@@ -84,7 +84,7 @@ struct PowerIntent: AppIntent {
         case .toggle: !(model.isOn ?? false)
         }
         model.power(on)
-        try? await Task.sleep(for: .milliseconds(400))
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: on ? "Switched on." : "Switched off.")
     }
 }
@@ -104,7 +104,7 @@ struct SetBrightnessIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let model = try await controllableModel()
         model.setDimming(Double(level))
-        await model.waitUntilSettled()
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Brightness \(Int(model.dimming))%.")
     }
 }
@@ -136,7 +136,7 @@ struct AdjustBrightnessIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let model = try await controllableModel()
         model.adjustDimming(by: direction == .brighter ? step : -step)
-        await model.waitUntilSettled()
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Brightness \(Int(model.dimming))%.")
     }
 }

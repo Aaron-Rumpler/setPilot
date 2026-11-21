@@ -140,6 +140,12 @@ final class Model {
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     @ObservationIgnored private var speedOwed = false
+    /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
+    /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
+    @ObservationIgnored private(set) var refusal: String?
+    /// setState sent, and the latest of them answered, so Shortcuts can tell when it's landed.
+    @ObservationIgnored private var setStatesSent = 0
+    @ObservationIgnored private var setStatesAnswered = 0
     /// Reads after refused setPilots, still to come: they put the controls right, leaving the
     /// error as the status (one per refusal: a slider drag can be refused several times over).
     @ObservationIgnored private var quietReads = 0
@@ -220,10 +226,12 @@ final class Model {
                 // Couldn't confirm; stop showing the request as pending.
                 pending = false
                 verifyingSeq = nil
+                refusal = message
             case "setState"?:
                 isOn = powerBefore
                 lastState = powerBefore
                 status = "The bulb didn't answer the power switch"
+                refusal = status
             default:
                 break
             }
@@ -649,6 +657,8 @@ final class Model {
         lastState = on // a read-back still due from an earlier change expects this now
         lastMethod = "setState"
         lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
+        refusal = nil
+        setStatesSent += 1
         bulb.send("setState", ["state": on], retry: true)
         if on, speedOwed, mode == .scene {
             // The speed changed while it was off: now it's on, after the switch-on has landed
@@ -873,6 +883,7 @@ final class Model {
     private func transmit(_ params: [String: Any], speed: Int?, power: Bool?, retry: Bool) {
         var p = params
         guard !p.isEmpty || speed != nil || power != nil else { return }
+        refusal = nil
         if power != nil { powerBefore = isOn } // what a refused or unanswered setState puts back
         switch power {
         case true?: isOn = true
@@ -910,6 +921,7 @@ final class Model {
         if !p.isEmpty {
             bulb.send("setPilot", p, retry: retry)
         } else if power == true {
+            setStatesSent += 1
             bulb.send("setState", ["state": true], retry: retry)
         }
         if let speedParams {
@@ -957,10 +969,15 @@ final class Model {
         var p: [String: Any] = [:]
         var speed: Int?
         if let colour = change.colour {
-            guard select(colour, speed: &speed) else { return }
+            // Not sent: say why (a Shortcut reports it).
+            guard select(colour, speed: &speed) else {
+                refusal = status
+                return
+            }
             p = colourParams()
             if p.isEmpty {
                 status = "That colour can't be sent"
+                refusal = status
                 return
             }
         }
@@ -1093,6 +1110,7 @@ final class Model {
         lastState = isOn
         sendSeq += 1
         pending = true
+        refusal = nil
         bulb.send("setPilot", p, retry: true)
         scheduleVerify()
     }
@@ -1292,6 +1310,18 @@ final class Model {
         while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
 
+    /// For Shortcuts, after a change: nil once the bulb has taken it (read back, or for a power
+    /// switch, answered), or why not: its refusal, or no answer within `timeout`.
+    func outcome(timeout: Double = 3) async -> String? {
+        let switches = setStatesSent
+        let end = Date().addingTimeInterval(timeout)
+        while refusal == nil, pending || setStatesAnswered < switches, Date() < end {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if let refusal { return refusal }
+        return pending || setStatesAnswered < switches ? "The bulb didn't answer." : nil
+    }
+
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
     /// (it replies "success" to some setPilots it doesn't fully apply).
     private func scheduleVerify() {
@@ -1369,6 +1399,7 @@ final class Model {
                 // request will get: those need saying.
                 if method != "getPilot", code != -32605 { return }
             }
+            if method == "setPilot" || method == "setState" { refusal = "\(method): \(text)" }
             status = "\(method): \(text)"
             return
         }
@@ -1410,6 +1441,7 @@ final class Model {
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setState":
+            setStatesAnswered = setStatesSent
             status = isOn == false ? "Switched off" : "Switched on"
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {
