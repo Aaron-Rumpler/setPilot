@@ -306,6 +306,7 @@ struct ConsoleComposer: View {
         } else {
             method = m.name
             params = template.isEmpty ? "{}" : JSONText.pretty(template)
+            if !template.isEmpty { sendParams = true } // the template is what was asked for
         }
     }
 
