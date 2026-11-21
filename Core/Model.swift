@@ -921,6 +921,7 @@ final class Model {
                     guard connectGeneration == generation else { return }
                     guard isOn != false else {
                         speedOwed = true
+                        lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
                         return
                     }
                     bulb.send("setPilot", speedParams, retry: retry)
