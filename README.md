@@ -68,7 +68,7 @@ trademark of Signify.
 - Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
 - **Round numbers**: sliders (and the watch's Digital Crown) snap to round steps, and the steppers
   and − and + step to the next one: 5 for dimming and other percentages, 50 K for temperatures, 32
-  for 0–255 channels, 10 for speed, 100 ms for times. Snapping can be turned off in Settings.
+  for 0–255 channels, 10 for speed, 100 ms for times (50 ms for the light show's bulb delay). Snapping can be turned off in Settings.
   Finer: hold a slider's knob still for a moment before dragging (Mac and iPhone; a haptic tick
   says it's on), or on the Mac hold Option while dragging, using the arrow keys or clicking a
   stepper. Tapping a value on iPhone or the watch opens a number pad, where − and + (and the

@@ -341,7 +341,10 @@ extension PhoneRelay: WCSessionDelegate {
         default: false
         }
         if sends { model?.forgetRefusal() }
-        switch await run(message.command) {
+        let outcome = await run(message.command)
+        // A later change (the Crown, a widget) meanwhile has its own reason, not this one's.
+        let mark = model?.changeMark
+        switch outcome {
         case .now(let snapshot):
             finish(message, snapshot)
         case let .failed(snapshot, why):
@@ -351,8 +354,9 @@ extension PhoneRelay: WCSessionDelegate {
                 try? await Task.sleep(for: pause)
                 await model?.waitUntilSettled()
                 // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
-                // Only for commands that send (cleared above, so not an earlier change's reason).
-                finish(message, model?.snapshot ?? LightSnapshot(), error: sends ? model?.refusal : nil)
+                // Only for commands that send (cleared above, so not an earlier change's reason), and
+                // only while no later change has started.
+                finish(message, model?.snapshot ?? LightSnapshot(), error: sends && model?.changeMark == mark ? model?.refusal : nil)
             }
         }
     }

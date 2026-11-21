@@ -16,7 +16,15 @@ struct CustomScenesWindow: View {
                     CustomSceneRow(scene: scene)
                         .tag(scene.id)
                         .contextMenu {
-                            Button("Play on Bulb") { model.playCustom(scene) }.disabled(!model.canControl)
+                            Button("Play on Bulb") {
+                                // A number still being typed in the editor reaches the scene once
+                                // its field ends editing.
+                                NSApp.keyWindow?.makeFirstResponder(nil)
+                                DispatchQueue.main.async {
+                                    if let s = lib.customScene(scene.id) { model.playCustom(s) }
+                                }
+                            }
+                            .disabled(!model.canControl)
                             Button("Duplicate") { selection = lib.duplicate(scene).id }
                             Divider()
                             Button("Delete…", role: .destructive) { deleting = scene }
