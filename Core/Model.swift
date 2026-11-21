@@ -80,7 +80,21 @@ final class Model {
     var log: [LogEntry] = []
     /// The console's last request: its method while waiting ("" for the next message of any
     /// method, after a raw message without one), then the reply as received, or what went wrong.
-    var consoleWaiting: String?
+    var consoleWaiting: String? {
+        didSet { consoleRequest += 1 }
+    }
+    @ObservationIgnored private var consoleRequest = 0
+    /// Sent once without retry, nothing says if no reply comes: stop waiting after a while.
+    private func endConsoleWait(after retry: Bool) {
+        guard !retry else { return }
+        let request = consoleRequest
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard consoleRequest == request, consoleWaiting != nil else { return }
+            consoleWaiting = nil
+            consoleFailure = "No reply within 3 s (sent once: Retry was off)"
+        }
+    }
     var consoleReply: String?
     var consoleFailure: String?
     enum Link { case none, connecting, connected, unreachable }
@@ -150,7 +164,12 @@ final class Model {
     @ObservationIgnored private var pilotAnswered = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
-    @ObservationIgnored private(set) var refusal: String?
+    @ObservationIgnored private(set) var refusal: String? {
+        didSet { if refusal == nil { changeMark += 1 } }
+    }
+    /// Counts changes started (each clears `refusal`): a reason read later belongs to the change
+    /// made at a mark only if the mark is still the same.
+    @ObservationIgnored private(set) var changeMark = 0
     /// Starts an action whose refusal will be reported: one that sends nothing (already as asked)
     /// mustn't report an earlier change's reason.
     func forgetRefusal() { refusal = nil }
@@ -776,6 +795,7 @@ final class Model {
         consoleReply = nil
         consoleFailure = nil
         bulb.sendRaw(text, method: method, retry: retry)
+        endConsoleWait(after: retry && method != nil)
         if method == "setPilot" || method == "setState" {
             Task {
                 try? await Task.sleep(for: .milliseconds(700))
@@ -830,6 +850,7 @@ final class Model {
             sendSeq += 1
             pending = true
             bulb.send(method, sent(p), retry: retry)
+            endConsoleWait(after: retry)
             scheduleVerify()
         case "setState":
             powerBefore = isOn // what a refusal puts back, whatever this one carries
@@ -840,8 +861,10 @@ final class Model {
             lastMethod = "setState"
             lastSent = JSONText.compact(p)
             bulb.send(method, sent(p), retry: retry)
+            endConsoleWait(after: retry)
         default:
             bulb.send(method, sent(p), retry: retry)
+            endConsoleWait(after: retry)
         }
     }
 
