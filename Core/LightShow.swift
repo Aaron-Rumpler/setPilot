@@ -246,7 +246,9 @@ final class LightShowPlayer {
     /// Stops, rewinds, and puts the light back (if set to).
     func stop() {
         player.pause()
-        player.seek(to: .zero)
+        // Through seek(to:), so that until it lands a tick (a quick Play, say) doesn't take the
+        // old time for the new place and send its state again.
+        seek(to: 0)
         time = 0
         sentUpTo = nil
         currentCue = nil
@@ -379,7 +381,9 @@ final class LightShowPlayer {
     /// setPilot of its own, so it goes separately, after the scene.
     private func sendState(_ combined: [String: Any], trans: Any) {
         var state = combined
-        let speed = state.removeValue(forKey: "speed")
+        var speed = state.removeValue(forKey: "speed")
+        // Off: a speed on its own afterwards would switch it back on.
+        if state["state"] as? Bool == false { speed = nil }
         state["trans"] = trans
         if state.count > 1 || state["state"] != nil { send(state) }
         speedTask?.cancel()
@@ -472,7 +476,8 @@ extension Model {
         guard canControl else { return }
         isOn = true // the show left it on; the colour goes back first, then the power
         if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
-        apply(saved.values, fields: [.colour, .dimming])
+        // A scene's speed too: the show may have changed it.
+        apply(saved.values, fields: saved.values.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
         if saved.isOn == false { power(false) }
     }
 }
