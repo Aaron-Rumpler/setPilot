@@ -86,11 +86,17 @@ struct LightShow {
     /// The state the show is in after these cues: a colour replaces the previous colour (and its
     /// scene speed), everything else accumulates. Fades are dropped, to jump straight there.
     static func state(after cues: some Sequence<Cue>) -> [String: Any] {
-        let colourKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm", "speed"]
+        let channels: Set<String> = ["r", "g", "b", "c", "w"]
+        let otherColour: Set<String> = ["temp", "sceneId", "elm", "speed"]
         var state: [String: Any] = [:]
         for cue in cues {
-            if cue.pilot.keys.contains(where: { ["r", "g", "b", "c", "w", "temp", "sceneId"].contains($0) }) {
-                state = state.filter { !colourKeys.contains($0.key) }
+            if cue.pilot["temp"] != nil || cue.pilot["sceneId"] != nil {
+                // A temperature or scene replaces the colour altogether.
+                state = state.filter { !channels.contains($0.key) && !otherColour.contains($0.key) }
+            } else if cue.pilot.keys.contains(where: channels.contains) {
+                // Channels: a temperature or scene goes, but the channels not sent stay as they
+                // were (the bulb keeps them), as when the cues are played one by one.
+                state = state.filter { !otherColour.contains($0.key) }
             }
             // A setPilot without "state" switches the bulb on: an earlier off no longer holds.
             if cue.pilot["state"] == nil, cue.pilot.keys.contains(where: { $0 != "trans" }) { state["state"] = nil }
@@ -354,7 +360,10 @@ final class LightShowPlayer {
                 if next > nextCue {
                     let due = show.cues[nextCue..<next]
                     let skipped = due.firstIndex { $0.time > natural + Self.slack } ?? next
-                    for cue in due[..<skipped] { send(cue.pilot) }
+                    for cue in due[..<skipped] {
+                        send(cue.pilot)
+                        light = LightShow.state(after: show.cues[...cue.id])
+                    }
                     if skipped < next { sendState(LightShow.state(after: show.cues[skipped..<next]), trans: 0) }
                 }
                 if next != nextCue {
@@ -380,7 +389,10 @@ final class LightShowPlayer {
         sentUpTo = showTime
         guard let last = due.last else { return }
         if due.count == 1 || showTime - due[0].time < 0.1 {
-            for cue in due { send(cue.pilot) }
+            for cue in due {
+                send(cue.pilot)
+                light = LightShow.state(after: show.cues[...cue.id]) // the next one sees this one's
+            }
         } else {
             // Running behind (a slow tick): just the state they add up to, with the last one's fade
             // (`state(after:)` leaves fades out).
@@ -425,7 +437,9 @@ final class LightShowPlayer {
         if state.keys.contains(where: { $0 != "trans" }) { send(state) }
         guard let speed else { return }
         pendingSpeed = speed // replaces any older one
-        if state["state"] as? Bool == false {
+        // Off: this state switches it off, or (speed alone) the show already has it off.
+        let alone = !state.keys.contains(where: { $0 != "trans" })
+        if state["state"] as? Bool == false || alone && light["state"] as? Bool == false {
             speedTask?.cancel() // off: it waits for the bulb to be switched on
             speedTask = nil
         } else {
@@ -456,6 +470,15 @@ final class LightShowPlayer {
 
     /// `followUp`: a pending speed, being sent.
     private func send(_ pilot: [String: Any], followUp: Bool = false) {
+        // A speed on its own while the show has the bulb off (`light` is the show's state so far)
+        // would switch it on: hold it until a cue does.
+        if pilot.keys.allSatisfy({ $0 == "speed" || $0 == "trans" }), let speed = pilot["speed"],
+           light["state"] as? Bool == false {
+            pendingSpeed = speed
+            speedTask?.cancel()
+            speedTask = nil
+            return
+        }
         let off = pilot["state"] as? Bool == false
         if !followUp {
             let replacing: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm", "speed"]

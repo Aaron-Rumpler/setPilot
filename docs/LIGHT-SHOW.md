@@ -37,14 +37,17 @@ Each cue:
 
 - A `setPilot` without `state` switches the bulb on, so a show switches the bulb on with its first
   cue. `{"state": false}` switches it off, always with the bulb's own fade-out.
-- A colour is `r` `g` `b` `c` `w` (send all five: missing ones aren't zeroed), `temp`, or
-  `sceneId`. All five channels at 0 is an error, not black: for "dark", use a low `dimming` with a
-  dim colour, or `state: false`.
+- A colour is `r` `g` `b` `c` `w` (send all five for a colour of its own: missing ones aren't
+  zeroed), `temp`, or `sceneId`. All five channels at 0 is an error, not black: for "dark", use a
+  low `dimming` with a dim colour, or `state: false`.
 - `dimming` is 10–100 (the bulb's minimum may be higher). It can be sent on its own.
 - `trans` is the fade into this state, in ms. Without it the bulb uses its own fade (often ~0.5 s),
   so give `"trans": 0` for a hard cut.
 - `speed` only takes effect in a `setPilot` of its own, so give it its own cue just after the
-  scene's.
+  scene's. A speed cue while the show has the bulb off is held, and sent once a cue switches it
+  back on (on its own it would switch the bulb on).
+- `r` `g` `b` `c` `w` given only in part change just those channels; the bulb keeps the others.
+  A `temp` or `sceneId` replaces the colour altogether.
 - Keep cues at least ~80 ms apart. The bulb handles about ten changes a second; much faster and
   it drops or queues them.
 
