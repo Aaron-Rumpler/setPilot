@@ -189,8 +189,9 @@ final class Model {
         bulb.onError = { [weak self] method, message in
             guard let self else { return }
             appendLog(.failure, method: method ?? "", text: message)
-            if let method, BulbAPI.deviceInfo.contains(method), info[method] == nil {
-                info[method] = JSONText.pretty(["error": message])
+            if let method, BulbAPI.deviceInfo.contains(method) {
+                // A read again that got no answer: flagged, with what an earlier read showed kept.
+                if info[method] == nil { info[method] = JSONText.pretty(["error": message]) }
                 infoErrors[method] = "No reply"
             }
             // Waiting on "" (a raw message without a method): anything but the 20 s registration.
@@ -1312,6 +1313,9 @@ final class Model {
         let end = Date().addingTimeInterval(timeout)
         while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
+
+    /// A scene speed changed while the bulb was off, still to go when it's switched on.
+    var owedSpeed: Int? { speedOwed && mode == .scene ? Int(speed) : nil }
 
     /// For Shortcuts, after a change: nil once the bulb has taken it (read back), or why not: its
     /// refusal, or no answer within `timeout`.
