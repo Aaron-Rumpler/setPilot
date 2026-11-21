@@ -983,6 +983,8 @@ final class Model {
         case let .temp(k):
             mode = .temp
             temp = Double(k)
+            // Temperature is on the bulb's own now: it goes back to that after another mode.
+            UserDefaults.standard.set(false, forKey: Self.temperatureScaleKey)
         case let .scene(id, s):
             mode = .scene
             sceneId = id
