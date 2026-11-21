@@ -138,8 +138,10 @@ final class PhoneLink: NSObject {
     }
 
     private func apply(_ s: LightSnapshot) {
-        // Older than the one we have (a late context or message): keep ours.
-        if let new = s.sentAt, let old = snapshot?.sentAt, new < old { return }
+        // Older than the one we have (a late context or message): keep ours. Unless ours is
+        // stamped well ahead of now (the iPhone's clock was set back since): then it can't be
+        // trusted to be newer, and would hold every update off.
+        if let new = s.sentAt, let old = snapshot?.sentAt, new < old, old < Date.now.addingTimeInterval(60) { return }
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
         // For the complications: reloaded only when something they show changes.
