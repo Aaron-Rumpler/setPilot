@@ -437,9 +437,10 @@ final class LightShowPlayer {
         let fresh = showTime - latest.time <= max(delay, 0) / 1000 + 0.1
         // (A cue without one gets the bulb's own fade, as it would sent alone.)
         let trans: Any? = fresh ? latest.pilot["trans"] : 0
-        sendState(LightShow.state(after: show.cues[..<nextCue]), trans: trans)
+        // The show's state at the new place first: sending goes by it (a speed held while off).
         currentCue = nextCue - 1
         light = LightShow.state(after: show.cues[..<nextCue])
+        sendState(light, trans: trans)
     }
 
     /// Several cues' combined state, as one setPilot with the given fade. Speed only takes in a
