@@ -465,7 +465,7 @@ struct NumberField: NSViewRepresentable {
         }
     }
 
-    static func format(_ v: Double) -> String { String(Int(v.rounded())) }
+    static func format(_ v: Double) -> String { v.isFinite ? String(Int(v.rounded())) : "" } // Int() traps on NaN
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: NumberField
@@ -480,7 +480,8 @@ struct NumberField: NSViewRepresentable {
         func controlTextDidEndEditing(_ note: Notification) {
             guard let field = note.object as? NSTextField else { return }
             let text = field.stringValue.trimmingCharacters(in: .whitespaces)
-            if let v = Double(text) {
+            // Double() takes "nan" and "inf"; no clamp gets rid of NaN.
+            if let v = Double(text), v.isFinite {
                 let clamped = min(max(v.rounded(), parent.range.lowerBound), parent.range.upperBound)
                 if clamped != parent.value { parent.value = clamped }
             }
