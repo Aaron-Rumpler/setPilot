@@ -4,6 +4,15 @@ import SwiftUI
 struct CustomSceneEditor: View {
     let model: Model
     let sceneID: UUID
+    /// The step being edited (the first, until one is chosen).
+    @State private var selected: UUID?
+    /// The step inspector: open from the start beside the scene on the Mac; on iPhone (a sheet)
+    /// when a step is tapped.
+    #if os(macOS)
+    @State private var showsStep = true
+    #else
+    @State private var showsStep = false
+    #endif
 
     var body: some View {
         if let binding = sceneBinding {
@@ -51,38 +60,145 @@ struct CustomSceneEditor: View {
                     Text("Sent straight away, as with the main controls. Speed only applies while a scene is playing.")
                 }
                 .disabled(!model.canControl)
-                ForEach(binding.steps) { $step in
-                    let i = binding.wrappedValue.steps.firstIndex { $0.id == step.id } ?? 0
-                    Section {
-                        StepEditor(step: $step, kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
-                                   levelRange: Int(model.minDimming)...100,
-                                   ownTiming: binding.wrappedValue.timing == .steps)
-                    } header: {
-                        HStack {
-                            Text("Step \(i + 1)")
-                            Spacer()
-                            stepMenu(binding, index: i, id: step.id)
-                        }
-                    }
-                }
+                // The steps as a strip of chips; only the chosen one's settings below, so moving
+                // between steps doesn't mean scrolling past every other step's.
                 Section {
-                    Button {
-                        var copy = binding.wrappedValue.steps.last ?? CustomScene.Step()
-                        copy.id = UUID()
-                        binding.wrappedValue.steps.append(copy)
-                    } label: {
-                        Label("Add Step", systemImage: "plus")
-                    }
-                    .disabled(binding.wrappedValue.steps.count >= CustomScene.maxSteps)
+                    stepStrip(binding)
+                } header: {
+                    Text("Steps")
                 } footer: {
                     Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Dimming above.")
                 }
             }
             .formStyle(.grouped)
             .navigationTitle(binding.wrappedValue.name)
+            // The chosen step's settings, beside the scene (on iPhone, a sheet).
+            .inspector(isPresented: $showsStep) {
+                Form { stepSection(binding) }
+                    .formStyle(.grouped)
+                    .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
+            }
+            .toolbar {
+                ToolbarItem {
+                    Button { showsStep.toggle() } label: { Label("Step", systemImage: "sidebar.trailing") }
+                        .help("Show or hide the chosen step's settings")
+                }
+            }
         } else {
             Text("No scene selected").foregroundStyle(.secondary)
         }
+    }
+
+    /// The chosen step: its place, previous and next, its actions, and its settings.
+    @ViewBuilder private func stepSection(_ binding: Binding<CustomScene>) -> some View {
+        if let i = selectedIndex(binding.wrappedValue) {
+            let id = binding.wrappedValue.steps[i].id
+            Section {
+                StepEditor(step: stepBinding(binding, id),
+                           kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
+                           levelRange: Int(model.minDimming)...100,
+                           ownTiming: binding.wrappedValue.timing == .steps)
+                    .id(id)
+            } header: {
+                HStack(spacing: 10) {
+                    Text("Step \(i + 1) of \(binding.wrappedValue.steps.count)")
+                    Spacer()
+                    Button {
+                        selected = binding.wrappedValue.steps[i - 1].id
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(i == 0)
+                    .keyboardShortcut("[", modifiers: .command)
+                    .help("Previous step (⌘[)")
+                    .accessibilityLabel("Previous step")
+                    Button {
+                        selected = binding.wrappedValue.steps[i + 1].id
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(i >= binding.wrappedValue.steps.count - 1)
+                    .keyboardShortcut("]", modifiers: .command)
+                    .help("Next step (⌘])")
+                    .accessibilityLabel("Next step")
+                    stepMenu(binding, index: i, id: id)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    /// The chosen step's place, or the first step's.
+    private func selectedIndex(_ scene: CustomScene) -> Int? {
+        guard !scene.steps.isEmpty else { return nil }
+        return scene.steps.firstIndex { $0.id == selected } ?? 0
+    }
+
+    /// One step, looked up by its ID each time (the steps can change under it: iCloud, moves).
+    private func stepBinding(_ scene: Binding<CustomScene>, _ id: UUID) -> Binding<CustomScene.Step> {
+        let fallback = scene.wrappedValue.steps.first { $0.id == id } ?? CustomScene.Step()
+        return Binding(
+            get: { scene.wrappedValue.steps.first { $0.id == id } ?? fallback },
+            set: { new in
+                if let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) { scene.wrappedValue.steps[i] = new }
+            }
+        )
+    }
+
+    /// Every step as a chip (its colour, number and times); click one to edit it.
+    private func stepStrip(_ scene: Binding<CustomScene>) -> some View {
+        let steps = scene.wrappedValue.steps
+        let current = selectedIndex(scene.wrappedValue)
+        let start = min(max(scene.wrappedValue.startStep, 0), max(steps.count - 1, 0))
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(spacing: 8) {
+                    ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
+                        Button {
+                            selected = step.id
+                            showsStep = true
+                        } label: {
+                            StepChip(step: step, number: i + 1, isStart: i == start, isSelected: i == current,
+                                     ownTiming: scene.wrappedValue.timing == .steps)
+                        }
+                        .buttonStyle(.plain)
+                        .id(step.id)
+                        .accessibilityLabel("Step \(i + 1)\(i == start ? ", the start" : "")")
+                        .accessibilityAddTraits(i == current ? .isSelected : [])
+                    }
+                    Button {
+                        addStep(scene)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                            .frame(width: 44, height: 64)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(steps.count >= CustomScene.maxSteps)
+                    .help("Add a step after the chosen one (a copy of it)")
+                    .accessibilityLabel("Add step")
+                }
+                .padding(.vertical, 4)
+            }
+            .onChange(of: selected) { _, id in
+                guard let id else { return }
+                withAnimation { proxy.scrollTo(id) }
+            }
+        }
+    }
+
+    /// A copy of the chosen step, after it, and chosen.
+    private func addStep(_ scene: Binding<CustomScene>) {
+        guard scene.wrappedValue.steps.count < CustomScene.maxSteps else { return }
+        let i = selectedIndex(scene.wrappedValue) ?? scene.wrappedValue.steps.count - 1
+        var copy = scene.wrappedValue.steps.indices.contains(i) ? scene.wrappedValue.steps[i] : CustomScene.Step()
+        copy.id = UUID()
+        let at = min(i + 1, scene.wrappedValue.steps.count)
+        scene.wrappedValue.steps.insert(copy, at: at)
+        if scene.wrappedValue.startStep >= at, at < scene.wrappedValue.steps.count - 1 { scene.wrappedValue.startStep += 1 }
+        selected = copy.id
     }
 
     /// The start step, kept to one of the steps.
@@ -119,8 +235,13 @@ struct CustomSceneEditor: View {
                 copy.id = UUID()
                 scene.wrappedValue.steps.insert(copy, at: i + 1)
                 if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep += 1 }
+                selected = copy.id
             }
             .disabled(scene.wrappedValue.steps.count >= CustomScene.maxSteps)
+            Button("Start Here") {
+                if let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) { scene.wrappedValue.startStep = i }
+            }
+            .disabled(scene.wrappedValue.startStep == i)
             Button("Move Up") { move(scene, id, by: -1) }.disabled(i == 0)
             Button("Move Down") { move(scene, id, by: 1) }
                 .disabled(i >= scene.wrappedValue.steps.count - 1)
@@ -130,6 +251,7 @@ struct CustomSceneEditor: View {
                 scene.wrappedValue.steps.remove(at: i)
                 if scene.wrappedValue.startStep > i { scene.wrappedValue.startStep -= 1 }
                 scene.wrappedValue.startStep = min(scene.wrappedValue.startStep, scene.wrappedValue.steps.count - 1)
+                selected = scene.wrappedValue.steps[min(i, scene.wrappedValue.steps.count - 1)].id
             }
             .disabled(scene.wrappedValue.steps.count <= 1)
         } label: {
@@ -200,24 +322,80 @@ struct StepEditor: View {
             MillisecondsRow(label: "Fade", value: $step.fade)
         }
         .disabled(!ownTiming)
-        Picker("Vary Hold", selection: $step.holdJitter) {
-            ForEach(CustomScene.Step.holdJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
-        }
-        Picker("Vary Fade", selection: $step.fadeJitter) {
-            ForEach(CustomScene.Step.fadeJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
-        }
-        if step.jitters {
-            Picker("How Often", selection: $step.jitterChance) {
-                ForEach(CustomScene.Step.jitterChances, id: \.self) {
-                    Text($0 == 100 ? "Every Time" : "\($0)% of the Time").tag($0)
+        // Tucked away unless the step uses it.
+        DisclosureGroup(isExpanded: $showsVariation) {
+            Picker("Vary Hold", selection: $step.holdJitter) {
+                ForEach(CustomScene.Step.holdJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
+            }
+            Picker("Vary Fade", selection: $step.fadeJitter) {
+                ForEach(CustomScene.Step.fadeJitters, id: \.self) { Text(Self.jitterName($0)).tag($0) }
+            }
+            if step.jitters {
+                Picker("How Often", selection: $step.jitterChance) {
+                    ForEach(CustomScene.Step.jitterChances, id: \.self) {
+                        Text($0 == 100 ? "Every Time" : "\($0)% of the Time").tag($0)
+                    }
                 }
             }
+        } label: {
+            LabeledContent("Random Variation", value: step.jitters ? "On" : "None")
         }
+        .onAppear { showsVariation = step.jitters }
     }
+
+    @State private var showsVariation = false
 
     /// Random variation, either way, each time the step plays.
     private static func jitterName(_ percent: Int) -> String {
         percent == 0 ? "None" : "Up to ±\(percent)%"
+    }
+}
+
+/// A step in the scene editor's strip: its colour (at its level), number and times.
+struct StepChip: View {
+    let step: CustomScene.Step
+    let number: Int
+    var isStart = false
+    var isSelected = false
+    /// The scene uses each step's own times (otherwise they're not shown).
+    var ownTiming = true
+
+    var body: some View {
+        VStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(step.dark ? Color.black : (step.colour.swatch?.color ?? .black).opacity(Double(max(step.level, 15)) / 100))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                .overlay {
+                    if step.dark { Image(systemName: "moon.fill").font(.caption2).foregroundStyle(.white.opacity(0.7)) }
+                }
+                .overlay(alignment: .topLeading) {
+                    if isStart {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(3)
+                            .background(Color.accentColor, in: Circle())
+                            .padding(2)
+                            .help("The scene starts here")
+                    }
+                }
+                .frame(width: 52, height: 30)
+            Text(verbatim: "\(number)").font(.caption.weight(.semibold))
+            Text(verbatim: ownTiming ? "\(Self.seconds(step.hold)) + \(Self.seconds(step.fade))" : " ")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(5)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 1.5))
+        .contentShape(Rectangle())
+        .help(ownTiming ? "Hold \(Self.seconds(step.hold)), then fade \(Self.seconds(step.fade))" : "")
+    }
+
+    /// "1.5s", "0.4s", "12s".
+    static func seconds(_ ms: Int) -> String {
+        let s = Double(ms) / 1000
+        return s >= 10 || s == s.rounded() ? "\(Int(s.rounded()))s" : String(format: "%.1fs", s)
     }
 }
 
