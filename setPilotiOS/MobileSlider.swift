@@ -16,6 +16,8 @@ struct MobileSlider: View {
     @State private var editing = false
     /// This drag started with a touch and hold: no snapping.
     @State private var fine = false
+    /// The knob is being dragged (or held).
+    @State private var sliding = false
     @AppStorage(Stepping.snapKey) private var snaps = true
     @Environment(\.isEnabled) private var isEnabled
 
@@ -44,8 +46,11 @@ struct MobileSlider: View {
                 }
                 stepButton(up: true)
             }
-            Slider(value: position, in: 0...1, onEditingChanged: { active in if !active { fine = false } })
-                .modifier(FineDrag(fine: $fine))
+            Slider(value: position, in: 0...1, onEditingChanged: { active in
+                sliding = active
+                if !active { fine = false }
+            })
+                .modifier(FineDrag(fine: $fine, sliding: sliding))
                 .tint(tint)
                 .accessibilityLabel(label)
                 .accessibilityValue("\(Int(value))\(unit)")

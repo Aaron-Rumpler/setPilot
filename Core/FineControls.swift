@@ -80,13 +80,16 @@ struct FineBadge: View {
 
 /// Touch and hold a slider for a moment before dragging, and that drag moves in 1s instead of
 /// snapping (iPhone's stand-in for Option on the Mac); a haptic tick says it's on. `fine` is set
-/// here and should be cleared when the drag ends (the slider's onEditingChanged).
+/// here and should be cleared when the drag ends (the slider's onEditingChanged). Only while
+/// the knob is held (`sliding`, from onEditingChanged): a hold on the track, or one that turns
+/// into a scroll, starts no drag, so nothing would end it.
 struct FineDrag: ViewModifier {
     @Binding var fine: Bool
+    let sliding: Bool
 
     func body(content: Content) -> some View {
         content
-            .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in fine = true })
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in if sliding { fine = true } })
             .sensoryFeedback(.selection, trigger: fine) { _, now in now }
     }
 }

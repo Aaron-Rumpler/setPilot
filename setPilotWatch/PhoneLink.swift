@@ -194,9 +194,12 @@ final class PhoneLink: NSObject {
         }
     }
 
-    private func applyContext(_ context: [String: Any]) {
+    /// `live`: the iPhone is reachable, so its messages are newer than the context's state.
+    private func applyContext(_ context: [String: Any], live: Bool) {
         let decoder = JSONDecoder()
-        if let d = context[WatchKey.presets] as? Data, let p = try? decoder.decode([Preset].self, from: d) {
+        // Only what changed: the context also carries the state, and comes again with each change.
+        if let d = context[WatchKey.presets] as? Data, d != defaults.data(forKey: WatchKey.presets),
+           let p = try? decoder.decode([Preset].self, from: d) {
             presets = p
             defaults.set(d, forKey: WatchKey.presets)
             SharedStore.save(p, SharedStore.presetsKey)
@@ -204,13 +207,14 @@ final class PhoneLink: NSObject {
             // The preset complication's choices are one suggestion per preset.
             WidgetCenter.shared.invalidateConfigurationRecommendations()
         }
-        if let d = context[WatchKey.customScenes] as? Data, let s = try? decoder.decode([CustomSceneSummary].self, from: d) {
+        if let d = context[WatchKey.customScenes] as? Data, d != defaults.data(forKey: WatchKey.customScenes),
+           let s = try? decoder.decode([CustomSceneSummary].self, from: d) {
             scenes = s
             defaults.set(d, forKey: WatchKey.customScenes)
             SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
             WidgetCenter.shared.reloadAllTimelines()
         }
-        if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
+        if !live, let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
             apply(s)
         }
     }
@@ -222,7 +226,7 @@ extension PhoneLink: WCSessionDelegate {
         let reachable = session.isReachable
         let box = UncheckedContext(context)
         Task { @MainActor in
-            self.applyContext(box.value)
+            self.applyContext(box.value, live: reachable)
             self.reachable = reachable
             if reachable {
                 self.refresh()
@@ -245,7 +249,8 @@ extension PhoneLink: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
         let box = UncheckedContext(context)
-        Task { @MainActor in self.applyContext(box.value) }
+        let reachable = session.isReachable
+        Task { @MainActor in self.applyContext(box.value, live: reachable) }
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {

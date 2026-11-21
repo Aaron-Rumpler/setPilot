@@ -15,9 +15,27 @@ final class PhoneRelay: NSObject {
     private var pushScheduled = false
     private var lastSnapshot: LightSnapshot?
 
+    /// The watch's commands, run one at a time in the order they came: a Crown change sent just
+    /// before a preset mustn't land after it (each can wait for the bulb, and wake in any order).
+    /// (WatchConnectivity's reply handler isn't marked Sendable, but may be called from any thread.)
+    private struct Incoming: @unchecked Sendable {
+        let command: WatchCommand
+        let reply: ([String: Any]) -> Void
+    }
+    private let incoming: AsyncStream<Incoming>
+    nonisolated private let incomingQueue: AsyncStream<Incoming>.Continuation
+
+    override init() {
+        (incoming, incomingQueue) = AsyncStream.makeStream(of: Incoming.self)
+        super.init()
+    }
+
     func start(model: Model) {
         guard self.model == nil else { return }
         self.model = model
+        Task { [incoming] in
+            for await message in incoming { await self.handle(message) }
+        }
         observeState()
         publishLibrary()
         guard WCSession.isSupported() else { return }
@@ -125,12 +143,31 @@ final class PhoneRelay: NSObject {
             guard WCSession.isSupported() else { return }
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
-            if session.isReachable, let data = try? JSONEncoder().encode(snapshot) {
-                session.sendMessage([WatchKey.snapshot: data], replyHandler: nil, errorHandler: nil)
+            if session.isReachable {
+                if let data = try? JSONEncoder().encode(snapshot) {
+                    session.sendMessage([WatchKey.snapshot: data], replyHandler: nil, errorHandler: nil)
+                }
+            } else if snapshot.link == .connected {
+                // Out of reach (the watch app isn't open, say): the copy it starts from next time.
+                // Otherwise the context keeps the state from when it was last written (often
+                // "connecting", at launch). Not while reachable: the watch has the messages, and a
+                // context, which comes when it comes, would only arrive later with older news.
+                scheduleStateContext()
             }
-            // And the copy for when it isn't: otherwise the context keeps the state from when it was
-            // last written (often "connecting", at launch), and the watch takes it over its newer cache.
-            if snapshot.link == .connected { updateContext() }
+        }
+    }
+
+    private var stateContextScheduled = false
+
+    /// The state in the application context, at most every 3 s (each one the watch gets can
+    /// reload its complications, which have a budget).
+    private func scheduleStateContext() {
+        guard !stateContextScheduled else { return }
+        stateContextScheduled = true
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            stateContextScheduled = false
+            updateContext()
         }
     }
 
@@ -229,30 +266,26 @@ extension PhoneRelay: WCSessionDelegate {
             replyHandler([WatchKey.error: "setPilot on your iPhone didn't understand that; update both apps"])
             return
         }
-        let reply = UncheckedSendable(replyHandler)
-        Task { @MainActor in
-            // Woken for this, perhaps from the background: commands for the bulb get live updates
-            // going again (and the state read again if the app was suspended) through
-            // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
-            let snapshot = await self.run(command)
-            // The presets changed: the watch's copy for when the iPhone is out of reach.
-            switch command {
-            case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset: self.updateContext()
-            default: break
-            }
-            var response: [String: Any] = [:]
-            if let data = try? JSONEncoder().encode(snapshot) { response[WatchKey.snapshot] = data }
-            if case .deviceInfo = command, let model = self.model,
-               let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
-                response[WatchKey.deviceInfo] = data
-            }
-            reply.value(response)
-        }
+        incomingQueue.yield(Incoming(command: command, reply: replyHandler))
     }
-}
 
-/// WatchConnectivity's reply handler isn't marked Sendable, but may be called from any thread.
-struct UncheckedSendable<T>: @unchecked Sendable {
-    let value: T
-    init(_ value: T) { self.value = value }
+    private func handle(_ message: Incoming) async {
+        let command = message.command
+        // Woken for this, perhaps from the background: commands for the bulb get live updates
+        // going again (and the state read again if the app was suspended) through
+        // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
+        let snapshot = await run(command)
+        // The presets changed: the watch's copy for when the iPhone is out of reach.
+        switch command {
+        case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset: updateContext()
+        default: break
+        }
+        var response: [String: Any] = [:]
+        if let data = try? JSONEncoder().encode(snapshot) { response[WatchKey.snapshot] = data }
+        if case .deviceInfo = command, let model,
+           let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
+            response[WatchKey.deviceInfo] = data
+        }
+        message.reply(response)
+    }
 }
