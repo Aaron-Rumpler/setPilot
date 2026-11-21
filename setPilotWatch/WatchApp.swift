@@ -319,11 +319,11 @@ struct PresetEditView: View {
         }
         .navigationTitle(preset?.name ?? "Preset")
         .onAppear { name = preset?.name ?? "" }
-        .confirmationDialog("Replace “\(preset?.name ?? "")” with the current light?", isPresented: $confirmingUpdate,
+        .confirmationDialog("Replace “\(preset?.name ?? name)” with the current light?", isPresented: $confirmingUpdate,
                             titleVisibility: .visible) {
             Button("Update") { link.send(.updatePreset(presetID)) }
         }
-        .confirmationDialog("Delete “\(preset?.name ?? "")”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+        .confirmationDialog("Delete “\(preset?.name ?? name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 link.send(.deletePreset(presetID))
                 dismiss()

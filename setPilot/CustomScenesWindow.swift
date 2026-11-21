@@ -5,6 +5,8 @@ struct CustomScenesWindow: View {
     let model: Model
     @State private var selection: UUID?
     @State private var deleting: CustomScene?
+    /// The name in the delete confirmation, kept while it closes (deleting is cleared first).
+    @State private var deletingName = ""
 
     var body: some View {
         let lib = model.library
@@ -49,7 +51,8 @@ struct CustomScenesWindow: View {
             }
         }
         .onDeleteCommand { if let id = selection { deleting = lib.customScene(id) } }
-        .confirmationDialog("Delete “\(deleting?.name ?? "")”?",
+        .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
+        .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete", role: .destructive) {
                 if let d = deleting {

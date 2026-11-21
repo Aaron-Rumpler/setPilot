@@ -5,6 +5,8 @@ struct CCTScalesWindow: View {
     let model: Model
     @State private var selection: UUID?
     @State private var deleting: CCTScale?
+    /// The name in the delete confirmation, kept while it closes (deleting is cleared first).
+    @State private var deletingName = ""
 
     var body: some View {
         let scales = model.library.scales(for: model.chosenMAC)
@@ -53,7 +55,8 @@ struct CCTScalesWindow: View {
         }
         .navigationTitle(model.currentName.map { "CCT Scales — \($0)" } ?? "CCT Scales")
         .onDeleteCommand { deleting = scales.first { $0.id == selection } }
-        .confirmationDialog("Delete “\(deleting?.name ?? "")”?",
+        .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
+        .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete", role: .destructive) {
                 if let d = deleting, let mac = model.chosenMAC {

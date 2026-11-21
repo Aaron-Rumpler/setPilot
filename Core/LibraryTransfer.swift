@@ -60,6 +60,7 @@ struct LibraryTransferSection: View {
     @State private var exporting = false
     @State private var importing = false
     @State private var result: String?
+    @State private var shownResult = ""
 
     var body: some View {
         Section {
@@ -86,7 +87,9 @@ struct LibraryTransferSection: View {
             case .failure(let error): result = "Couldn't import: \(error.localizedDescription)"
             }
         }
-        .alert(result ?? "", isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } })) {
+        // The text kept while the alert closes (result is cleared first).
+        .onChange(of: result) { _, text in if let text { shownResult = text } }
+        .alert(result ?? shownResult, isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } })) {
             Button("OK") { result = nil }
         }
     }
