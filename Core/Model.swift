@@ -1366,9 +1366,14 @@ final class Model {
                 pending = false
                 applyPilot(result)
                 verify(result)
+            } else if quietReads > 0 {
+                quietReads -= 1
+                // From before a newer change still on its way: that change's own read-back
+                // settles the state (as for a push while pending).
+                if !pending { applyPilot(result) }
             } else {
                 applyPilot(result)
-                if quietReads > 0 { quietReads -= 1 } else { status = "Synced" }
+                status = "Synced"
             }
         case "getModelConfig", "getUserConfig":
             applyLimits(result)
