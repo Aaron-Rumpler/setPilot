@@ -240,7 +240,7 @@ file added to a folder is picked up without editing the project:
 To run on your iPhone and watch, choose the "setPilot iOS" scheme, pick your (free or paid) team for
 both the iOS and Watch targets under Signing & Capabilities, and run.
 
-Pushes to `main` and pull requests are built on GitHub Actions (macOS 26): the Mac app, and the
+Pushes to any branch and pull requests are built on GitHub Actions (macOS 26): the Mac app, and the
 iPhone app with the watch app (unsigned, to check it compiles). The Mac app is uploaded as an
 artifact. It's ad-hoc signed, so after downloading it you'll need to clear the
 quarantine flag or approve it in System Settings › Privacy & Security:
