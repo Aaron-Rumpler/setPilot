@@ -458,7 +458,10 @@ final class LightShowPlayer {
         if saved == nil { saved = model.savedLight }
         model.sendLightCue(pilot)
         // On (a setPilot without "state": false switches it on), with a speed waiting: send it.
-        if !followUp, !off, pendingSpeed != nil, speedTask == nil { scheduleSpeed() }
+        // (A fade on its own isn't taken as switching it on, as elsewhere.)
+        if !followUp, !off, pilot.keys.contains(where: { $0 != "trans" }), pendingSpeed != nil, speedTask == nil {
+            scheduleSpeed()
+        }
     }
 
     // MARK: Display
