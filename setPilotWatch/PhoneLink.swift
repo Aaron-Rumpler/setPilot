@@ -83,13 +83,15 @@ final class PhoneLink: NSObject {
 
     private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor () -> Void)? = nil) {
         let session = WCSession.default
+        // Not answered: `done` still comes afterwards, as a reply would, so a live change's
+        // `liveBusy` is seen to go on and off (the controls then go back to the bulb's values).
         guard session.activationState == .activated, session.isReachable else {
             if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
-            done?()
+            Task { @MainActor in done?() }
             return
         }
         guard let data = try? JSONEncoder().encode(command) else {
-            done?()
+            Task { @MainActor in done?() }
             return
         }
         if !quiet {

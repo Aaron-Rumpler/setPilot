@@ -38,6 +38,9 @@ struct ValueEditor: View {
     var tint: Color = .accentColor
 
     @State private var crown = 0.0
+    /// Where the Crown was lined up with the value (opening, or a change from elsewhere), until
+    /// it's turned: the Crown may round a value off its steps onto them, which isn't a turn.
+    @State private var lineUp: Double?
     @State private var typing = false
 
     var body: some View {
@@ -71,12 +74,25 @@ struct ValueEditor: View {
             // after − and +): only a turn changes it, or a value off the round steps would be
             // snapped, and sent, without being touched.
             guard new != value else { return }
+            if let lineUp, abs(new - lineUp) <= snapStep / 2 {
+                self.lineUp = new // rounded onto a step: still lined up
+                return
+            }
+            lineUp = nil
             set(Stepping.snap(new, to: snapStep, in: range))
         }
-        .onAppear { crown = value }
+        .onAppear {
+            crown = value
+            lineUp = value
+        }
         // A change from elsewhere (the iPhone, the bulb) while this is open: the Crown carries on
         // from the new value, not from where it was.
-        .onChange(of: value) { _, new in if crown != new { crown = new } }
+        .onChange(of: value) { _, new in
+            if crown != new {
+                crown = new
+                lineUp = new
+            }
+        }
         .navigationTitle(label)
         .sheet(isPresented: $typing) {
             NumberPad(title: label, range: range, unit: unit, initial: value) { set($0) }
@@ -138,6 +154,8 @@ struct NumberPad: View {
                     .onChange(of: text) { _, new in
                         let digits = String(new.filter(\.isNumber).prefix(6))
                         if digits != new { text = digits }
+                        // The Crown carries on from what's typed.
+                        if let number, valid, crown != number { crown = number }
                     }
                 Button { step(stepSize) } label: { Image(systemName: "plus") }
                     .buttonStyle(.bordered)

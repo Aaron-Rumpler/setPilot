@@ -34,7 +34,8 @@ struct FineValueEditor: View {
                     Button { adjust(-m) } label: { Text(verbatim: "−\(Int(m))").monospacedDigit() }
                         .buttonStyle(.bordered)
                 }
-                Stepper(label, value: Binding(get: { value }, set: { set($0) }), in: range, step: 1)
+                // From what's typed, if it's a value: tapping + after typing carries on from it.
+                Stepper(label, value: Binding(get: { typedValue ?? value }, set: { set($0) }), in: range, step: 1)
                     .labelsHidden()
                 if let m = Stepping.medium(for: range) {
                     Button { adjust(m) } label: { Text(verbatim: "+\(Int(m))").monospacedDigit() }
@@ -56,7 +57,7 @@ struct FineValueEditor: View {
         .onAppear { typed = String(Int(value)) }
     }
 
-    private func adjust(_ delta: Double) { set(min(max(value + delta, range.lowerBound), range.upperBound)) }
+    private func adjust(_ delta: Double) { set(min(max((typedValue ?? value) + delta, range.lowerBound), range.upperBound)) }
 
     private func set(_ v: Double) {
         value = v
