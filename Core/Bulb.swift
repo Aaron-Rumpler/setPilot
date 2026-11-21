@@ -42,7 +42,7 @@ final class Bulb {
                     if let method = obj["method"] as? String { self.replyCount[method, default: 0] += 1 }
                     self.onReply?(obj)
                 }
-                if let error { self.onError?(nil, "Lost the connection (\(error)): choose the bulb again to reconnect") }
+                if let error { self.onError?(nil, "Lost the connection to the bulb (\(error))") }
             }
         }
         c.start(queue: DispatchQueue(label: "wiz.udp"))

@@ -187,6 +187,7 @@ final class Model {
                 return
             }
             status = message
+            if method == nil { connectionLost() }
             switch method {
             case "getPilot"?:
                 // Connecting, or the bulb has gone away since: look for it at a new address.
@@ -253,12 +254,15 @@ final class Model {
     func rememberBulb(address: String, mac: String?) {
         let m = mac?.lowercased()
         var list = knownBulbs
-        let i = list.firstIndex { (m != nil && $0.mac == m) || $0.address == address }
+        // The bulb by its MAC first: an entry with just the address may be another (or a typed one
+        // not yet answered).
+        let i = (m.flatMap { m in list.firstIndex { $0.mac == m } }) ?? list.firstIndex { $0.address == address }
         var entry = i.map { list.remove(at: $0) } ?? KnownBulb(address: address)
         entry.address = address
         if let m { entry.mac = m }
-        // Another entry with the same address is a different bulb that had it before.
-        list.removeAll { $0.address == address && $0.mac != entry.mac }
+        // Any other entry with the same address was another bulb that had it before, or this one
+        // typed before its MAC was known; one with the same MAC is this bulb at an old address.
+        list.removeAll { $0.address == address || (entry.mac != nil && $0.mac == entry.mac) }
         list.insert(entry, at: 0)
         knownBulbs = Array(list.prefix(12))
     }
@@ -346,12 +350,16 @@ final class Model {
     var chosenMAC: String? { savedMAC ?? mac?.lowercased() }
 
     @ObservationIgnored private var relocating = false
+    /// The address relocate last reconnected to because the bulb answered a search there, so that
+    /// a bulb that answers searches but not requests is tried once, not round and round.
+    @ObservationIgnored private var retriedAt: String?
 
     /// The bulb the user picked or typed: saved, then connected to. `mac` is known for a bulb
     /// picked from discovery; for a typed address it's learnt from the bulb's first reply.
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
+        retriedAt = nil // chosen by hand: worth another try if it doesn't answer
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
            mac == nil || mac?.lowercased() == chosenMAC { return }
@@ -420,6 +428,28 @@ final class Model {
         }
     }
 
+    @ObservationIgnored private var lastAutoReconnect = Date.distantPast
+
+    /// The connection to the bulb failed (it takes no more replies): say so, and make a new one,
+    /// at most every 30 s. Otherwise the next foreground, Shortcut or watch command reconnects,
+    /// as the link is unreachable.
+    private func connectionLost() {
+        link = .unreachable
+        live = false
+        pending = false
+        verifyingSeq = nil
+        guard Date.now.timeIntervalSince(lastAutoReconnect) > 30,
+              let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
+        lastAutoReconnect = .now
+        let generation = connectGeneration
+        status += "; reconnecting…"
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard connectGeneration == generation, UserDefaults.standard.string(forKey: Self.addressKey) == a else { return }
+            connect(a)
+        }
+    }
+
     /// pywizlight's push method: tell the bulb our IP every 20 s; it sends syncPilot to port 38900.
     private func startLiveUpdates(_ ip: String) {
         liveHost = ip
@@ -482,10 +512,14 @@ final class Model {
                 rememberBulb(address: bulb.ip, mac: saved)
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
+            } else if found.contains(where: { $0.mac.lowercased() == saved }), retriedAt != address {
+                // It answered the search, so try once more, with a new connection in case the old
+                // one is what failed (a further failure doesn't come back here).
+                retriedAt = address
+                connect(address)
+                status = "\(label) is on the network; trying again" // after connect, which clears it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
-                // It answered the search, so try once more (a further failure doesn't search again).
-                status = "\(label) is on the network; trying again"
-                bulb.send("getPilot", retry: true)
+                status = "\(label) answers searches but not requests at \(address)"
             } else {
                 status = "Couldn't find \(label) on the network"
             }
@@ -1073,6 +1107,7 @@ final class Model {
             startIfSaved()
             return
         }
+        guard link != .connecting else { return } // already on its way (just launched, say)
         if !push.isRunning || link != .connected { connect(a) } else { sync() }
     }
 
@@ -1108,7 +1143,7 @@ final class Model {
             startIfSaved()
             return started && !was
         }
-        if !push.isRunning || link == .unreachable || link == .none {
+        if link == .unreachable || link == .none {
             connect(a)
             return true
         }
@@ -1118,7 +1153,9 @@ final class Model {
             sync()
             reading = true
         }
-        if let liveHost, Date.now.timeIntervalSince(lastRegistration) > 15 { startLiveUpdates(liveHost) }
+        // Registering again also restarts the push listener if it stopped; the bulb link itself is
+        // fine, so no need to reconnect for that.
+        if let liveHost, !push.isRunning || Date.now.timeIntervalSince(lastRegistration) > 15 { startLiveUpdates(liveHost) }
         return reading
     }
 
@@ -1237,6 +1274,7 @@ final class Model {
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.
         if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
         link = .connected
+        retriedAt = nil
         switch method {
         case "getPilot":
             pilotReads += 1
