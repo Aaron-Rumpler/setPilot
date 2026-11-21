@@ -21,7 +21,8 @@ struct FineValueEditor: View {
             Text(label).font(.headline)
             HStack(spacing: 4) {
                 TextField(label, text: $typed)
-                    .keyboardType(.numberPad)
+                    // The number pad has no minus key.
+                    .keyboardType(range.lowerBound < 0 ? .numbersAndPunctuation : .numberPad)
                     .multilineTextAlignment(.center)
                     .font(.title2.monospacedDigit())
                     .frame(width: 110)

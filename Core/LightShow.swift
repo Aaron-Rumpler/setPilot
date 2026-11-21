@@ -122,7 +122,11 @@ final class LightShowPlayer {
     static let delayKey = "lightShowDelay"
     /// Off: play the show on screen only.
     var sendsToBulb = UserDefaults.standard.object(forKey: LightShowPlayer.sendKey) as? Bool ?? true {
-        didSet { UserDefaults.standard.set(sendsToBulb, forKey: Self.sendKey) }
+        didSet {
+            UserDefaults.standard.set(sendsToBulb, forKey: Self.sendKey)
+            // Turned on part way: bring the bulb to where the show is, not just the cues to come.
+            if sendsToBulb, !oldValue { sentUpTo = nil }
+        }
     }
     static let sendKey = "lightShowSends"
     /// Put the light back as it was before the show, when it's stopped or ends.
@@ -170,12 +174,20 @@ final class LightShowPlayer {
         duration = 0
         time = 0
         error = nil
+        let name = url.lastPathComponent
         Task {
-            let video = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-            let length = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
-            guard player.currentItem === item else { return }
-            hasVideo = !video.isEmpty
-            duration = length.isFinite ? length : 0
+            do {
+                let (playable, length) = try await asset.load(.isPlayable, .duration)
+                let video = try await asset.loadTracks(withMediaType: .video)
+                guard player.currentItem === item else { return }
+                if !playable { error = "\(name) can't be played." }
+                hasVideo = !video.isEmpty
+                let seconds = CMTimeGetSeconds(length)
+                duration = seconds.isFinite ? seconds : 0
+            } catch {
+                guard player.currentItem === item else { return }
+                self.error = "Couldn't open \(name): \(error.localizedDescription)"
+            }
         }
     }
 
@@ -192,7 +204,8 @@ final class LightShowPlayer {
             showName = url.lastPathComponent
             error = nil
             sentUpTo = nil // catch up to wherever the media is, on the next tick that plays
-            currentCue = nil
+            nextCue = 0
+            showPosition(at: time)
         case .failure(let e):
             error = "\(url.lastPathComponent): \(e.message)"
         }
@@ -228,6 +241,7 @@ final class LightShowPlayer {
         seekGeneration += 1
         let generation = seekGeneration
         seeking = true
+        if !isPlaying { showPosition(at: t) } // while playing, the catch-up after the seek does it
         player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             Task { @MainActor [weak self] in
                 guard let self, self.seekGeneration == generation else { return }
@@ -244,10 +258,12 @@ final class LightShowPlayer {
         restore()
     }
 
+    /// Puts the light back if anything was sent (`saved` is set then), even if sending has since
+    /// been turned off.
     private func restore() {
         guard let saved else { return }
         self.saved = nil
-        if restores, sendsToBulb { model.restore(saved) }
+        if restores { model.restore(saved) }
     }
 
     // MARK: Sending
@@ -269,7 +285,8 @@ final class LightShowPlayer {
         // Observed values change only when they need to: this runs 100 times a second.
         let playing = player.rate != 0
         if playing != isPlaying { isPlaying = playing }
-        if !scrubbing, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
+        // Not while a seek lands either: the player still has the old time until then.
+        if !scrubbing, !seeking, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
         guard playing, let show, !show.cues.isEmpty else { return }
         // Started (here or with the video's own controls): remember the light to put back (whether
         // it's put back is decided when the show stops).
@@ -279,11 +296,18 @@ final class LightShowPlayer {
         guard !scrubbing, !seeking else { return }
         let showTime = now + delay / 1000
         // The delay was changed (likely by dragging its slider): carry on from the new point
-        // without sending, rather than a burst of catch-ups or skipped cues all at once.
+        // rather than catching up from scratch. Cues it moved past go as the state they add up
+        // to; moved back, the ones since are sent again as they come round.
         if let sentUpTo, delay != sentDelay {
             sentDelay = delay
             if abs(showTime - sentUpTo) < 2 {
-                nextCue = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+                let next = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+                if next > nextCue {
+                    sendState(LightShow.state(after: show.cues[nextCue..<next]), trans: 0)
+                    currentCue = next - 1
+                    light = LightShow.state(after: show.cues[..<next])
+                }
+                nextCue = next
                 self.sentUpTo = showTime
                 return
             }
@@ -304,8 +328,9 @@ final class LightShowPlayer {
         if due.count == 1 || showTime - due[0].time < 0.1 {
             for cue in due { send(cue.pilot) }
         } else {
-            // Running behind (a slow tick): just the state they add up to.
-            send(LightShow.state(after: due))
+            // Running behind (a slow tick): just the state they add up to, with the last one's fade
+            // (`state(after:)` leaves fades out).
+            sendState(LightShow.state(after: due), trans: last.pilot["trans"] ?? 0)
         }
         currentCue = last.id
         light = LightShow.state(after: show.cues[...last.id])
@@ -319,10 +344,17 @@ final class LightShowPlayer {
             light = [:]
             return
         }
-        var state = LightShow.state(after: show.cues[..<nextCue])
-        // Speed only takes in a setPilot of its own, after the scene.
+        sendState(LightShow.state(after: show.cues[..<nextCue]), trans: 0)
+        currentCue = nextCue - 1
+        light = LightShow.state(after: show.cues[..<nextCue])
+    }
+
+    /// Several cues' combined state, as one setPilot with the given fade. Speed only takes in a
+    /// setPilot of its own, so it goes separately, after the scene.
+    private func sendState(_ combined: [String: Any], trans: Any) {
+        var state = combined
         let speed = state.removeValue(forKey: "speed")
-        state["trans"] = 0
+        state["trans"] = trans
         if state.count > 1 || state["state"] != nil { send(state) }
         if let speed {
             Task {
@@ -330,8 +362,16 @@ final class LightShowPlayer {
                 self.send(["speed": speed])
             }
         }
-        currentCue = nextCue - 1
-        light = LightShow.state(after: show.cues[..<nextCue])
+    }
+
+    /// The cue list's highlight and the stage's light for a place in the media, without sending:
+    /// for seeking while paused, and a show opened part way through.
+    private func showPosition(at mediaTime: Double) {
+        guard let show else { return }
+        let showTime = mediaTime + delay / 1000
+        let next = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+        currentCue = next > 0 ? next - 1 : nil
+        light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
     }
 
     private func send(_ pilot: [String: Any]) {

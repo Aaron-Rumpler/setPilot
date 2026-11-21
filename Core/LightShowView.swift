@@ -4,20 +4,31 @@ import UniformTypeIdentifiers
 
 /// The Light Show player: a video or audio file, with a light show file's cues sent to the bulb as
 /// it plays. The Mac's Light Show window and the iPhone's Light Show screen.
+///
+/// The player is made when the view appears, not in `init`: a NavigationLink builds its
+/// destination on every redraw of the screen it's on, and `@State` would throw each one away.
 struct LightShowView: View {
     let model: Model
-    @State private var player: LightShowPlayer
+    @State private var player: LightShowPlayer?
+
+    var body: some View {
+        if let player {
+            LightShowScreen(model: model, player: player)
+        } else {
+            Color.black.onAppear { player = LightShowPlayer(model: model) }
+        }
+    }
+}
+
+private struct LightShowScreen: View {
+    let model: Model
+    let player: LightShowPlayer
     @State private var importing = false
     /// What the file importer is choosing (kept apart from `importing`, which is cleared first).
     @State private var choosing = Choosing.media
     @AppStorage("lightShowCues") private var showsCues = true
 
     private enum Choosing { case media, show }
-
-    init(model: Model) {
-        self.model = model
-        _player = State(initialValue: LightShowPlayer(model: model))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
