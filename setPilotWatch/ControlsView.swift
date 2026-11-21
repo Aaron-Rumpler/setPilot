@@ -104,7 +104,7 @@ struct ControlsView: View {
                     update { $0.sceneId = id }
                     queue(.colour)
                 case .custom(let id):
-                    link.send(.playCustom(id))
+                    link.send(.playCustom(id, switchOn: false))
                 }
             })) {
                 ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
@@ -253,7 +253,7 @@ struct WatchComposeView: View {
                 let ch = change(s)
                 VStack(alignment: .leading, spacing: 4) {
                     // The scale's channels are worked out on the iPhone.
-                    Text(ch.preview(isOn: s?.isOn) { _, _ in nil })
+                    Text(ch.preview(isOn: s?.isOn, owedSpeed: s?.owedSpeed) { _, _ in nil })
                         .font(.system(.caption2, design: .monospaced))
                     if let note = ch.note(isOn: s?.isOn) { Text(note) }
                 }

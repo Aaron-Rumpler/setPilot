@@ -179,7 +179,7 @@ struct CustomScenesView: View {
         let s = link.snapshot
         List {
             ForEach(link.scenes) { scene in
-                Button { link.send(.playCustom(scene.id)) } label: {
+                Button { link.send(.playCustom(scene.id, switchOn: true)) } label: {
                     HStack(spacing: 10) {
                         Swatch(rgb: scene.swatch, isScene: true)
                         Text(scene.name)

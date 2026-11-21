@@ -143,11 +143,11 @@ final class PhoneRelay: NSObject {
             return .now(model.snapshot)
         case .dimDelta(let delta):
             model.adjustDimming(by: delta)
-        case .playCustom(let id):
+        case let .playCustom(id, switchOn):
             guard let scene = model.library.customScene(id) else {
                 return .failed(model.snapshot, "That custom scene no longer exists.")
             }
-            model.playCustom(scene, switchOn: true)
+            model.playCustom(scene, switchOn: switchOn)
         case .compose(let change):
             model.send(change)
         case .modeChoice(let choice):
