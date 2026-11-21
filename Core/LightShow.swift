@@ -393,7 +393,8 @@ final class LightShowPlayer {
         // Off: a speed on its own afterwards would switch it back on.
         if state["state"] as? Bool == false { speed = nil }
         state["trans"] = trans // nil leaves it out
-        if state.count > 1 || state["state"] != nil { send(state) }
+        // Anything besides the fade (which is there or not, as given).
+        if state.keys.contains(where: { $0 != "trans" }) { send(state) }
         speedTask?.cancel()
         speedTask = nil
         if let speed {
