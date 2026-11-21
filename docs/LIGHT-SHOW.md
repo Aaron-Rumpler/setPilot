@@ -22,7 +22,7 @@ with `.lights.json` on the end (`Song.m4a` and `Song.lights.json`).
 | Key | Meaning |
 |---|---|
 | `setPilotLightShow` | The format version: 1. Required |
-| `title`, `media` | Optional: shown in the player (`media` is the file it was made for) |
+| `title`, `media` | Optional. `title` is shown in the player; `media` is the file it was made for, mentioned if other media is open |
 | `cues` | The cues, in any order (they're sorted by time) |
 
 Each cue:
