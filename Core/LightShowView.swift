@@ -233,7 +233,8 @@ private struct LightShowScreen: View {
         ScrollViewReader { proxy in
             List(show.cues) { cue in
                 Button {
-                    player.seek(to: cue.time)
+                    // To where this cue is due: the show runs `delay` ahead of the media.
+                    player.seek(to: cue.time - player.delay / 1000)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
