@@ -433,6 +433,10 @@ final class Model {
         quietReads = 0
         speedOwed = false
         pilotSwitches = false // a switch still unanswered was for the previous bulb
+        if consoleWaiting != nil { // its answer would be the new bulb's, or never come
+            consoleWaiting = nil
+            consoleFailure = "Connected to another bulb before a reply came"
+        }
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -1423,6 +1427,11 @@ final class Model {
                 // Except getPilot, which the controls wait for, and a signing refusal, which every
                 // request will get: those need saying.
                 if method != "getPilot", code != -32605 { return }
+            }
+            if method == "registration" { // live updates only, as when it gets no answer
+                live = false
+                liveStatus = "Live updates off — \(text)"
+                return
             }
             if method == "setPilot" || method == "setState" { refusal = "\(method): \(text)" }
             status = "\(method): \(text)"
