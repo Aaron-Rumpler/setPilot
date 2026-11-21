@@ -10,7 +10,7 @@ enum RequestSigning {
     /// or nil if it isn't one.
     static func normalised(_ text: String) -> String? {
         let hex = text.lowercased().filter { !$0.isWhitespace && $0 != "\"" && $0 != "'" }
-        guard hex.count == 32, hex.allSatisfy(\.isHexDigit) else { return nil }
+        guard hex.count == 32, hex.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
         return hex
     }
 
