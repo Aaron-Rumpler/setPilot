@@ -23,7 +23,10 @@ enum QuickBulb {
             }
         case .power(let on):
             let on = on ?? !(isOn ?? false)
-            _ = try await send(host, "setState", ["state": on])
+            // As the app: setPilot with the controls' fade (setState has none).
+            var params: [String: Any] = ["state": on]
+            if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
+            _ = try await send(host, "setPilot", params)
             remember { $0.isOn = on }
         case .dimDelta(let delta):
             var params: [String: Any] = ["dimDelta": delta]

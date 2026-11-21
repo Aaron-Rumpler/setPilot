@@ -15,10 +15,9 @@ extension LightChange {
         case nil: break
         }
         if let d = dimming { parts.append("\"dimming\":\(d)") }
-        // As Model.send: a fade only goes with a change or with switching on, never alone when
-        // switching off.
-        if let f = fade, !parts.isEmpty || power == true { parts.append("\"trans\":\(f)") }
-        if parts.isEmpty && power == true { return "setState {\"state\":true}" }
+        // As Model.send: a fade goes with a change or with switching (on or off), never alone.
+        if let f = fade, !parts.isEmpty || power != nil { parts.append("\"trans\":\(f)") }
+        if power == true { parts.append("\"state\":true") }
         if power == false || (power == nil && isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
         if parts.isEmpty { return "Nothing to send" }
         var text = "setPilot {" + parts.joined(separator: ",") + "}"
@@ -33,15 +32,15 @@ extension LightChange {
 
     /// Something worth saying about this change before sending it, if anything.
     func note(isOn: Bool?) -> String? {
-        if power == false {
-            return "Turning off always uses the bulb's own fade-out. To fade out slowly, fade the brightness down instead."
+        if power == false, fade != nil {
+            return "The bulb may ignore the fade when turning off and use its own fade-out. To fade out slowly, fade the brightness down instead."
         }
         if isOn == false && power == nil && (colour != nil || dimming != nil) {
             return "The bulb is off and stays off; the change shows when it's switched on."
         }
         switch colour {
-        case .scene(_, _?)?, .custom(_, _?)?:
-            // (Off, the notes above have said so: no speed is sent then.)
+        case .scene(_, _?)? where power != false, .custom(_, _?)? where power != false:
+            // (Not when it's to be off: no speed is sent then.)
             return "The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else."
         default:
             return nil
