@@ -359,7 +359,7 @@ final class LightShowPlayer {
         } else {
             // Running behind (a slow tick): just the state they add up to, with the last one's fade
             // (`state(after:)` leaves fades out).
-            sendState(LightShow.state(after: due), trans: last.pilot["trans"] ?? 0)
+            sendState(LightShow.state(after: due), trans: last.pilot["trans"])
         }
         currentCue = last.id
         light = LightShow.state(after: show.cues[...last.id])
@@ -377,7 +377,8 @@ final class LightShowPlayer {
         // to a cue): then its own fade, as if it had been sent as it came.
         let latest = show.cues[nextCue - 1]
         let fresh = showTime - latest.time <= max(delay, 0) / 1000 + 0.1
-        let trans: Any = fresh ? (latest.pilot["trans"] ?? 0) : 0
+        // (A cue without one gets the bulb's own fade, as it would sent alone.)
+        let trans: Any? = fresh ? latest.pilot["trans"] : 0
         sendState(LightShow.state(after: show.cues[..<nextCue]), trans: trans)
         currentCue = nextCue - 1
         light = LightShow.state(after: show.cues[..<nextCue])
@@ -385,12 +386,13 @@ final class LightShowPlayer {
 
     /// Several cues' combined state, as one setPilot with the given fade. Speed only takes in a
     /// setPilot of its own, so it goes separately, after the scene.
-    private func sendState(_ combined: [String: Any], trans: Any) {
+    /// `trans` nil: none, so the bulb's own fade (as for a cue without one).
+    private func sendState(_ combined: [String: Any], trans: Any?) {
         var state = combined
         var speed = state.removeValue(forKey: "speed")
         // Off: a speed on its own afterwards would switch it back on.
         if state["state"] as? Bool == false { speed = nil }
-        state["trans"] = trans
+        state["trans"] = trans // nil leaves it out
         if state.count > 1 || state["state"] != nil { send(state) }
         speedTask?.cancel()
         speedTask = nil
