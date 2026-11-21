@@ -485,6 +485,8 @@ final class LightShowPlayer {
         endObserver = nil
         #if os(iOS)
         UIApplication.shared.isIdleTimerDisabled = false
+        // Let audio the show interrupted (music in another app) carry on.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
     }
 }
