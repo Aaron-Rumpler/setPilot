@@ -257,7 +257,8 @@ final class LightShowPlayer {
     }
 
     func seek(to seconds: Double) {
-        let t = min(max(seconds, 0), max(duration, 0))
+        // The duration is 0 until it's known (or with no media): only the bottom limit then.
+        let t = duration > 0 ? min(max(seconds, 0), duration) : max(seconds, 0)
         time = t
         sentUpTo = nil // a jump: send the state at the new place first, once the seek has landed
         seekGeneration += 1
@@ -372,7 +373,12 @@ final class LightShowPlayer {
             light = [:]
             return
         }
-        sendState(LightShow.state(after: show.cues[..<nextCue]), trans: 0)
+        // A cut, unless the latest cue has only just come due (playing from the start, or a seek
+        // to a cue): then its own fade, as if it had been sent as it came.
+        let latest = show.cues[nextCue - 1]
+        let fresh = showTime - latest.time <= max(delay, 0) / 1000 + 0.1
+        let trans: Any = fresh ? (latest.pilot["trans"] ?? 0) : 0
+        sendState(LightShow.state(after: show.cues[..<nextCue]), trans: trans)
         currentCue = nextCue - 1
         light = LightShow.state(after: show.cues[..<nextCue])
     }
