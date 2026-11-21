@@ -374,7 +374,10 @@ final class Model {
     private func refreshSigning() {
         let key = signingKey(for: chosenMAC)
         bulb.signingKey = key
+        #if os(iOS)
+        // For the widget extension's own requests (the Mac has none, and no App Group).
         SharedStore.defaults.set(key, forKey: SharedStore.signingKeyKey)
+        #endif
     }
 
     /// The chosen bulb's name, if it has one.
@@ -961,29 +964,31 @@ final class Model {
     /// Plays one of setPilot's custom scenes (sent inline: nothing is stored on the bulb).
     /// `speed`, if given, follows in a setPilot of its own (the scene editor's preview plays at 100).
     func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) {
-        send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
+        _ = send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
     /// Applies a preset, switching the bulb on if it's off.
     func apply(_ preset: Preset) {
-        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
+        _ = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
     }
 
     /// Sends several changes as one setPilot, with their own fade time (`trans`).
-    func send(_ change: LightChange) {
+    /// False if nothing could be sent (the status, and `refusal`, say why).
+    @discardableResult
+    func send(_ change: LightChange) -> Bool {
         var p: [String: Any] = [:]
         var speed: Int?
         if let colour = change.colour {
             // Not sent: say why (a Shortcut reports it).
             guard select(colour, speed: &speed) else {
                 refusal = status
-                return
+                return false
             }
             p = colourParams()
             if p.isEmpty {
                 status = "That colour can't be sent"
                 refusal = status
-                return
+                return false
             }
         }
         if let d = change.dimming {
@@ -996,6 +1001,7 @@ final class Model {
         // A speed owed from while it was off goes too (transmit holds it again if it stays off).
         if speed == nil, change.colour == nil, speedOwed, mode == .scene { speed = Int(self.speed) }
         transmit(p, speed: speed, power: change.power, retry: true)
+        return true
     }
 
     /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.

@@ -218,13 +218,25 @@ private struct LightShowScreen: View {
         } else if player.sendsToBulb && !model.canControl {
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
         } else if let show = player.show {
-            Text("\(show.cues.count) cues").foregroundStyle(.secondary)
+            Text(verbatim: summary(show)).foregroundStyle(.secondary).lineLimit(1)
         } else if player.mediaName != nil {
             Button("Open Light Show…") { open(.show) }
                 #if os(macOS)
                 .buttonStyle(.link)
                 #endif
         }
+    }
+
+    /// The show's title (on the Mac it's the window's subtitle), its cues, and the media it was made
+    /// for if that isn't what's open.
+    private func summary(_ show: LightShow) -> String {
+        var parts: [String] = []
+        #if os(iOS)
+        if let title = show.title { parts.append(title) }
+        #endif
+        parts.append("\(show.cues.count) cues")
+        if let media = show.media, let open = player.mediaName, media != open { parts.append("made for \(media)") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: Cues

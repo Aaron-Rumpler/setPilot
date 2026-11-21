@@ -116,8 +116,10 @@ extension Model {
 
     /// Sends the draft and goes back to the live controls, which then show the result. The next
     /// Compose starts from the bulb's new state.
+    /// If it can't be sent (a scene or scale in it deleted meanwhile), the draft stays, and the
+    /// status says why.
     func sendDraft() {
-        send(draftChange)
+        guard send(draftChange) else { return }
         draft.loaded = false
         composing = false
     }
