@@ -37,8 +37,9 @@ struct SetPilotApp: App {
                 .onAppear { model.startIfSaved() }
         }
         .menuBarExtraStyle(.window)
+        // Wide enough for the list, the editor and the step inspector side by side.
         Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model) }
-            .defaultSize(width: 720, height: 640)
+            .defaultSize(width: 1060, height: 680)
         Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
             .defaultSize(width: 720, height: 680)
         Window("Console", id: "console") { ConsoleWindow(model: model) }

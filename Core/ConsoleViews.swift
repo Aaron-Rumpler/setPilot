@@ -441,7 +441,19 @@ struct ConsoleLog: View {
     /// Puts a message into the console: a request as method and params (or as a raw message, in
     /// raw mode or if it has no method); anything else (a reply, a push) as a raw message.
     private func load(_ entry: LogEntry) {
-        raw = Net.json(Data(entry.text.utf8)).map { JSONText.pretty($0) } ?? entry.text
+        raw = Net.json(Data(entry.text.utf8)).map { obj in
+            // A signed request's signature was for when it was sent; raw mode doesn't sign, so
+            // leave it out rather than send a stale one.
+            var obj = obj
+            if entry.kind == .sent, obj["hmac"] != nil {
+                obj["hmac"] = nil
+                if var params = obj["params"] as? [String: Any] {
+                    params["sigTs"] = nil
+                    obj["params"] = params
+                }
+            }
+            return JSONText.pretty(obj)
+        } ?? entry.text
         if let request = entry.request {
             method = request.method
             sendParams = request.params != nil

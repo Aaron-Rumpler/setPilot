@@ -26,7 +26,13 @@ private struct LightShowScreen: View {
     @State private var importing = false
     /// What the file importer is choosing (kept apart from `importing`, which is cleared first).
     @State private var choosing = Choosing.media
-    @AppStorage("lightShowCues") private var showsCues = true
+    /// The cue list (an inspector; on iPhone a sheet over the player, so off to start with).
+    @AppStorage("lightShowCues") private var showsCues = LightShowScreen.cuesByDefault
+    #if os(iOS)
+    private static let cuesByDefault = false
+    #else
+    private static let cuesByDefault = true
+    #endif
 
     private enum Choosing { case media, show }
 
@@ -136,21 +142,29 @@ private struct LightShowScreen: View {
                 #endif
             }
             .help("How early each cue is sent, to make up for the bulb taking a moment to change: dial it in until a hard cut on screen and the bulb change together. Below zero if the picture or sound is the late one")
+            #if os(macOS)
             HStack(spacing: 16) {
-                Toggle("Send to bulb", isOn: Binding(get: { player.sendsToBulb }, set: { player.sendsToBulb = $0 }))
-                    .help("Off: play the show on screen only")
-                Toggle("Put the light back when stopped", isOn: Binding(get: { player.restores }, set: { player.restores = $0 }))
-                    .help("When the show is stopped or ends, the light goes back to how it was when it started")
+                options
                 Spacer(minLength: 0)
                 status
             }
             .font(.callout)
-            #if os(macOS)
             .toggleStyle(.checkbox)
+            #else
+            // Switches don't fit side by side at phone width.
+            options
+            status.font(.callout)
             #endif
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder private var options: some View {
+        Toggle("Send to bulb", isOn: Binding(get: { player.sendsToBulb }, set: { player.sendsToBulb = $0 }))
+            .help("Off: play the show on screen only")
+        Toggle("Put the light back when stopped", isOn: Binding(get: { player.restores }, set: { player.restores = $0 }))
+            .help("When the show is stopped or ends, the light goes back to how it was when it started")
     }
 
     private var transport: some View {

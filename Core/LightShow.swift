@@ -169,6 +169,8 @@ final class LightShowPlayer {
             MainActor.assumeIsolated { self?.ended() }
         }
         player.replaceCurrentItem(with: item)
+        seekGeneration += 1 // a seek still landing was in the old item
+        seeking = false
         mediaName = url.lastPathComponent
         hasVideo = false
         duration = 0
@@ -240,8 +242,15 @@ final class LightShowPlayer {
         sentUpTo = nil // a jump: send the state at the new place first, once the seek has landed
         seekGeneration += 1
         let generation = seekGeneration
-        seeking = true
         if !isPlaying { showPosition(at: t) } // while playing, the catch-up after the seek does it
+        // A seek with a completion handler raises before the item is ready to play (still
+        // loading, or failed): then a plain one, which needs no waiting for.
+        guard player.currentItem?.status == .readyToPlay else {
+            seeking = false
+            player.seek(to: CMTime(seconds: t, preferredTimescale: 600))
+            return
+        }
+        seeking = true
         player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             Task { @MainActor [weak self] in
                 guard let self, self.seekGeneration == generation else { return }
@@ -302,10 +311,10 @@ final class LightShowPlayer {
             sentDelay = delay
             if abs(showTime - sentUpTo) < 2 {
                 let next = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
-                if next > nextCue {
-                    sendState(LightShow.state(after: show.cues[nextCue..<next]), trans: 0)
-                    currentCue = next - 1
-                    light = LightShow.state(after: show.cues[..<next])
+                if next > nextCue { sendState(LightShow.state(after: show.cues[nextCue..<next]), trans: 0) }
+                if next != nextCue {
+                    currentCue = next > 0 ? next - 1 : nil
+                    light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
                 }
                 nextCue = next
                 self.sentUpTo = showTime
@@ -405,6 +414,8 @@ final class LightShowPlayer {
     func close() {
         stop()
         player.replaceCurrentItem(with: nil)
+        seekGeneration += 1
+        seeking = false
         mediaName = nil
         hasVideo = false
         duration = 0

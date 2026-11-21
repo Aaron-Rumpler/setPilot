@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// A change being prepared in Compose: any of colour, brightness and power, with its own fade
 /// time, sent as one setPilot. Shared by the window and the menu bar panel, and kept while
@@ -204,8 +207,23 @@ struct ComposeControls: View {
             .buttonStyle(.borderedProminent)
             .disabled(!model.canControl || !model.draftHasChange)
             #if os(macOS)
-            .keyboardShortcut(.return, modifiers: .command)
             .help("Send this change (⌘Return)")
+            .background {
+                // ⌘Return, apart from the button: a number being typed only reaches the draft
+                // when its field ends editing, which a shortcut doesn't do, and until then the
+                // button may still be disabled. So end it, then send what the draft has become.
+                Button("Send") {
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    DispatchQueue.main.async {
+                        if model.canControl, model.draftHasChange { model.sendDraft() }
+                    }
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(!model.canControl)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
             #endif
         }
         #if os(iOS)
