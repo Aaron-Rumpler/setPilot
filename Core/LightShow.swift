@@ -586,7 +586,16 @@ extension Model {
         // (Not known when the show started: as it is now.)
         if let was = saved.isOn { isOn = was }
         if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
-        // A scene's speed too: the show may have changed it.
-        apply(saved.values, fields: saved.values.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
+        // A scene's speed too: the show may have changed it. A scene that can't be sent (Rhythm, one
+        // newer than this app, a custom scene deleted meanwhile) would become another: only the
+        // brightness and power go back then.
+        let v = saved.values
+        if v.mode == .scene, !Scenes.isKnown(v.sceneId),
+           !(v.sceneId == Scenes.inlineCustom && saved.customScene.flatMap(library.customScene) != nil) {
+            apply(v, fields: [.dimming])
+            status = "The scene from before the show (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
+            return
+        }
+        apply(v, fields: v.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
     }
 }

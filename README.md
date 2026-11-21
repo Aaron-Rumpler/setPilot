@@ -243,7 +243,10 @@ file added to a folder is picked up without editing the project:
 | `setPilotiOS/` | the iPhone app (scheme "setPilot iOS", which also builds and embeds the watch app) |
 | `setPilotWatch/` | the Watch app |
 | `Core/` | Mac and iPhone: the bulb protocol, model, presets and custom scenes, shared views |
-| `Common/` | all three: light types, colour maths, the watch messages, the build info, the icon |
+| `Common/` | all five targets (apps and widgets): light types, colour maths, the watch messages, the build info, the icon |
+| `WidgetShared/` | the iPhone app and its widgets: sending to the bulb from a widget, the widget intents |
+| `setPilotWidgets/` | the iPhone widgets and Control Center controls |
+| `setPilotWatchWidgets/` | the watch complications |
 
 Each app records the commit it was built from (from `git describe`, with `-dirty` for uncommitted
 changes) and shows it in Settings and the About panel (on the watch, on the Bulb screen).
