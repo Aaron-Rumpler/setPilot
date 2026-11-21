@@ -49,9 +49,8 @@ struct ApplyPresetIntent: AppIntent {
         guard let p = model.library.presets.first(where: { $0.id == preset.id }) else {
             throw WizIntentError(localizedStringResource: "That preset no longer exists.")
         }
-        let mark = model.switchMark
         model.apply(p)
-        if let problem = await model.outcome(since: mark) { throw WizIntentError(localizedStringResource: "\(problem)") }
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Applied \(p.name).")
     }
 }
@@ -84,9 +83,8 @@ struct PowerIntent: AppIntent {
         case .off: false
         case .toggle: !(model.isOn ?? false)
         }
-        let mark = model.switchMark
         model.power(on)
-        if let problem = await model.outcome(since: mark) { throw WizIntentError(localizedStringResource: "\(problem)") }
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: on ? "Switched on." : "Switched off.")
     }
 }
@@ -105,9 +103,8 @@ struct SetBrightnessIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let model = try await controllableModel()
-        let mark = model.switchMark
         model.setDimming(Double(level))
-        if let problem = await model.outcome(since: mark) { throw WizIntentError(localizedStringResource: "\(problem)") }
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Brightness \(Int(model.dimming))%.")
     }
 }
@@ -138,9 +135,8 @@ struct AdjustBrightnessIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let model = try await controllableModel()
-        let mark = model.switchMark
         model.adjustDimming(by: direction == .brighter ? step : -step)
-        if let problem = await model.outcome(since: mark) { throw WizIntentError(localizedStringResource: "\(problem)") }
+        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
         return .result(dialog: "Brightness \(Int(model.dimming))%.")
     }
 }

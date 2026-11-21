@@ -40,9 +40,8 @@ final class Model {
     }
     static let fadeKey = "fadeMs"
 
-    /// The fade for changes made with the main controls (sliders, presets, brighter or dimmer; the
-    /// power switch is a setState, which has none): the setting above, none, or a value of their
-    /// own, as in Compose. Remembered.
+    /// The fade for changes made with the main controls (sliders, presets, brighter or dimmer, the
+    /// power switch): the setting above, none, or a value of their own, as in Compose. Remembered.
     var controlsFade = FadeChoice(rawValue: UserDefaults.standard.string(forKey: Model.controlsFadeKey) ?? "") ?? .setting {
         didSet {
             UserDefaults.standard.set(controlsFade.rawValue, forKey: Self.controlsFadeKey)
@@ -97,7 +96,7 @@ final class Model {
     var pushSeen = false
     var status = ""
     var liveStatus = "Live updates off"
-    /// The last command's params as JSON, and its method (setPilot, or setState for the power switch).
+    /// The last command's params as JSON, and its method (setPilot; setState only from the console).
     var lastSent = ""
     var lastMethod = "setPilot"
     /// The last command as a whole request, for copying.
@@ -143,15 +142,12 @@ final class Model {
     /// A scene's speed waiting to go after the scene: a newer speed replaces it, rather than this
     /// one landing after it.
     @ObservationIgnored private var delayedSpeed: Task<Void, Never>?
-    /// The setPilot just sent switches the bulb on (a preset, say): if it gets no answer, the power
-    /// switch goes back to how it was, as for a setState.
-    @ObservationIgnored private var pilotSwitchesOn = false
+    /// The setPilot just sent switches the bulb on or off (the power switch, a preset): if it gets
+    /// no answer, the power switch goes back to how it was.
+    @ObservationIgnored private var pilotSwitches = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String?
-    /// setState sent, and the latest of them answered, so Shortcuts can tell when it's landed.
-    @ObservationIgnored private var setStatesSent = 0
-    @ObservationIgnored private var setStatesAnswered = 0
     /// Reads after refused setPilots, still to come: they put the controls right, leaving the
     /// error as the status (one per refusal: a slider drag can be refused several times over).
     @ObservationIgnored private var quietReads = 0
@@ -161,7 +157,8 @@ final class Model {
     @ObservationIgnored private var verifyingSeq: Int?
     @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var registerTask: Task<Void, Never>?
-    /// The power state before the last setState, restored if the bulb never answers it.
+    /// The power state before the last switch (or the console's setState), restored if the bulb
+    /// never answers it.
     @ObservationIgnored private var powerBefore: Bool?
     /// A different bulb (MAC) answered at the address: ignore everything from it until the next connect.
     @ObservationIgnored private var wrongBulb = false
@@ -233,17 +230,17 @@ final class Model {
                 pending = false
                 verifyingSeq = nil
                 refusal = message
-                if pilotSwitchesOn { // it was to switch the bulb on: as far as we know, it didn't
+                if pilotSwitches { // it was to switch the bulb: as far as we know, it didn't
                     isOn = powerBefore
                     lastState = powerBefore
-                    pilotSwitchesOn = false
+                    pilotSwitches = false
+                    status = "The bulb didn't answer the power switch"
                 }
             case "setState"?:
                 isOn = powerBefore
                 lastState = powerBefore
                 status = "The bulb didn't answer the power switch"
                 refusal = status
-                setStatesAnswered = setStatesSent // settled, if not as hoped
             default:
                 break
             }
@@ -424,7 +421,6 @@ final class Model {
         unsent = [] // a slider move still waiting was for the previous bulb
         quietReads = 0
         speedOwed = false
-        setStatesAnswered = setStatesSent // any still waiting won't be answered on the new connection
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -666,27 +662,15 @@ final class Model {
         bulb.send("getPilot", retry: true)
     }
 
+    /// Switches the bulb on or off: a setPilot with "state" (and the controls' fade, which the
+    /// bulb takes switching on and may one day switching off), rather than setState, so it goes
+    /// the way every other change does (read back, refusals reported). A speed changed while it
+    /// was off goes with switching on.
     func power(_ on: Bool) {
-        powerBefore = isOn
-        isOn = on
-        lastState = on // a read-back still due from an earlier change expects this now
-        lastMethod = "setState"
-        lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
-        refusal = nil
-        setStatesSent += 1
-        bulb.send("setState", ["state": on], retry: true)
-        if on, speedOwed, mode == .scene {
-            // The speed changed while it was off: now it's on, after the switch-on has landed
-            // (still owed if switching on failed).
-            let generation = connectGeneration
-            delayedSpeed?.cancel()
-            delayedSpeed = Task {
-                try? await Task.sleep(for: .milliseconds(400))
-                guard !Task.isCancelled, connectGeneration == generation, speedOwed, isOn == true, mode == .scene else { return }
-                speedOwed = false
-                bulb.send("setPilot", ["speed": Int(speed)], retry: true)
-            }
-        }
+        var p: [String: Any] = [:]
+        if let fade = fadeForControls { p["trans"] = fade }
+        let owed = on && speedOwed && mode == .scene ? Int(speed) : nil
+        transmit(p, speed: owed, power: on, retry: true)
     }
 
     /// Switches between the three controls. Temperature goes back to whichever scale it last used:
@@ -900,36 +884,28 @@ final class Model {
         var p = params
         guard !p.isEmpty || speed != nil || power != nil else { return }
         refusal = nil
-        if power != nil { powerBefore = isOn } // what a refused or unanswered setState puts back
+        if power != nil { powerBefore = isOn } // what an unanswered switch puts back
         switch power {
         case true?:
+            p["state"] = true
             isOn = true
-            pilotSwitchesOn = !p.isEmpty && powerBefore != true
+            pilotSwitches = powerBefore != true
         case false?:
             p["state"] = false
             isOn = false
-            pilotSwitchesOn = false
+            pilotSwitches = powerBefore != false
         case nil:
             if !p.isEmpty, isOn == false { p["state"] = false }
-            pilotSwitchesOn = false
+            pilotSwitches = false
         }
         // Not while it's (to be) off: a setPilot without "state" switches the bulb on, and speed
         // can't go with anything else. It's owed until the bulb is on (`speedOwed`).
         let speedParams: [String: Any]? = isOn == false ? nil : speed.map { ["speed": $0] }
         if speed != nil { speedOwed = speedParams == nil }
         guard !p.isEmpty || speedParams != nil || power != nil else { return }
-        // What goes out first: the setPilot, else speed on its own, else setState to switch on.
-        let shown: [String: Any]
-        if !p.isEmpty {
-            shown = p
-            lastMethod = "setPilot"
-        } else if let speedParams {
-            shown = speedParams
-            lastMethod = "setPilot"
-        } else {
-            shown = ["state": true]
-            lastMethod = "setState"
-        }
+        // What goes out first: the setPilot, else speed on its own.
+        let shown: [String: Any] = p.isEmpty ? speedParams ?? [:] : p
+        lastMethod = "setPilot"
         if let data = try? JSONSerialization.data(withJSONObject: shown, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
@@ -938,16 +914,13 @@ final class Model {
         lastState = isOn
         sendSeq += 1
         pending = true
-        if !p.isEmpty {
-            bulb.send("setPilot", p, retry: retry)
-        } else if power == true {
-            setStatesSent += 1
-            bulb.send("setState", ["state": true], retry: retry)
-        }
+        if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
         if let speedParams {
             delayedSpeed?.cancel() // out of date: this one replaces it
             delayedSpeed = nil
-            if p.isEmpty {
+            // On its own, or with only switching on (a speed owed from while it was off): at the
+            // same moment. After a scene: once it's started (see below).
+            if !p.keys.contains(where: { $0 != "state" && $0 != "trans" }) {
                 bulb.send("setPilot", speedParams, retry: retry)
             } else {
                 // After the scene has started (and so retries of the two don't overlap). Not if
@@ -1007,7 +980,9 @@ final class Model {
             dimming = min(max(Double(d), minDimming), 100)
             p["dimming"] = Int(dimming)
         }
-        if let fade = change.fade, !p.isEmpty || change.power == true { p["trans"] = fade }
+        // A fade goes with a change or with switching (the bulb takes it switching on, and may
+        // one day switching off).
+        if let fade = change.fade, !p.isEmpty || change.power != nil { p["trans"] = fade }
         // A speed owed from while it was off goes too (transmit holds it again if it stays off).
         if speed == nil, change.colour == nil, speedOwed, mode == .scene { speed = Int(self.speed) }
         transmit(p, speed: speed, power: change.power, retry: true)
@@ -1338,20 +1313,13 @@ final class Model {
         while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
 
-    /// For Shortcuts: where the power switches sent stand, taken before a change (`outcome`
-    /// waits only for those sent after it).
-    var switchMark: Int { setStatesSent }
-
-    /// For Shortcuts, after a change: nil once the bulb has taken it (read back, or for a power
-    /// switch sent since `mark`, answered), or why not: its refusal, or no answer within `timeout`.
-    func outcome(since mark: Int, timeout: Double = 3) async -> String? {
-        let switching = setStatesSent > mark
+    /// For Shortcuts, after a change: nil once the bulb has taken it (read back), or why not: its
+    /// refusal, or no answer within `timeout`.
+    func outcome(timeout: Double = 3) async -> String? {
         let end = Date().addingTimeInterval(timeout)
-        while refusal == nil, pending || switching && setStatesAnswered < setStatesSent, Date() < end {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
+        while refusal == nil, pending, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if let refusal { return refusal }
-        return pending || switching && setStatesAnswered < setStatesSent ? "The bulb didn't answer." : nil
+        return pending ? "The bulb didn't answer." : nil
     }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
@@ -1406,7 +1374,7 @@ final class Model {
             // The controls already show the refused change: read the bulb's actual state, without
             // letting that read's status replace the error below.
             if method == "setPilot" {
-                pilotSwitchesOn = false // the read that follows says how it is
+                pilotSwitches = false // the read that follows says how it is
                 quietReads += 1
                 if !readOut { bulb.send("getPilot", retry: true) }
             } else if method == "getPilot" {
@@ -1415,7 +1383,6 @@ final class Model {
             if method == "setState" { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
                 lastState = powerBefore
-                setStatesAnswered = setStatesSent
             }
             let code = err["code"] as? Int
             var text = code == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
@@ -1477,10 +1444,9 @@ final class Model {
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
-            pilotSwitchesOn = false // answered: it's on
+            pilotSwitches = false // answered
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
-            setStatesAnswered = setStatesSent
             status = isOn == false ? "Switched off" : "Switched on"
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {
