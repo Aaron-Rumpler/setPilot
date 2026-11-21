@@ -131,7 +131,8 @@ final class LightShowPlayer {
     private(set) var light: [String: Any] = [:]
 
     /// How early cues are sent, in ms (negative: late). Remembered.
-    var delay: Double = UserDefaults.standard.object(forKey: LightShowPlayer.delayKey) as? Double ?? 200 {
+    var delay: Double = (UserDefaults.standard.object(forKey: LightShowPlayer.delayKey) as? Double)
+        .flatMap { $0.isFinite ? min(max($0, -500), 1500) : nil } ?? 200 {
         didSet {
             UserDefaults.standard.set(delay, forKey: Self.delayKey)
             if !isPlaying { showPosition(at: time) } // the highlight and stage follow while paused
@@ -485,12 +486,14 @@ extension Model {
         let values: LightValues
         let customScene: UUID?
         let isOn: Bool?
+        /// The bulb it's from: another chosen since isn't given this one's light.
+        let mac: String?
     }
 
-    var savedLight: SavedLight { SavedLight(values: values, customScene: customSceneId, isOn: isOn) }
+    var savedLight: SavedLight { SavedLight(values: values, customScene: customSceneId, isOn: isOn, mac: chosenMAC) }
 
     func restore(_ saved: SavedLight) {
-        guard canControl else { return }
+        guard canControl, saved.mac == chosenMAC else { return }
         // The show left it on. Off before: one setPilot with "state": false (the colour kept for
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
         isOn = saved.isOn != false
