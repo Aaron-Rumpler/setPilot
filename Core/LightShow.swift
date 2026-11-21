@@ -163,6 +163,10 @@ final class LightShowPlayer {
     /// A seek is under way: the player's time is still the old one until it finishes.
     @ObservationIgnored private var seeking = false
     @ObservationIgnored private var seekGeneration = 0
+    /// How close to its time a cue counts as due: a seek lands on the nearest 1/600 s (often just
+    /// before the time asked for), and adding the delay back can come out a hair short, so a cue
+    /// tapped in the list would otherwise not be the current one when the media gets there.
+    static let slack = 0.002
     /// A scene's speed, sent separately just after it: cancelled by a stop (or a newer state).
     @ObservationIgnored private var speedTask: Task<Void, Never>?
     /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
@@ -332,7 +336,7 @@ final class LightShowPlayer {
         if let sentUpTo, delay != sentDelay {
             sentDelay = delay
             if abs(showTime - sentUpTo) < 2 {
-                let next = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+                let next = show.cues.firstIndex { $0.time > showTime + Self.slack } ?? show.cues.count
                 if next > nextCue { sendState(LightShow.state(after: show.cues[nextCue..<next]), trans: 0) }
                 if next != nextCue {
                     currentCue = next > 0 ? next - 1 : nil
@@ -350,7 +354,7 @@ final class LightShowPlayer {
             return
         }
         var due: [LightShow.Cue] = []
-        while nextCue < show.cues.count, show.cues[nextCue].time <= showTime {
+        while nextCue < show.cues.count, show.cues[nextCue].time <= showTime + Self.slack {
             due.append(show.cues[nextCue])
             nextCue += 1
         }
@@ -368,7 +372,7 @@ final class LightShowPlayer {
     }
 
     private func catchUp(to showTime: Double, in show: LightShow) {
-        nextCue = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+        nextCue = show.cues.firstIndex { $0.time > showTime + Self.slack } ?? show.cues.count
         sentUpTo = showTime
         guard nextCue > 0 else {
             currentCue = nil
@@ -413,7 +417,7 @@ final class LightShowPlayer {
     private func showPosition(at mediaTime: Double) {
         guard let show else { return }
         let showTime = mediaTime + delay / 1000
-        let next = show.cues.firstIndex { $0.time > showTime } ?? show.cues.count
+        let next = show.cues.firstIndex { $0.time > showTime + Self.slack } ?? show.cues.count
         currentCue = next > 0 ? next - 1 : nil
         light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
     }
