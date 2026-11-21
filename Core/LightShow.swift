@@ -51,11 +51,13 @@ struct LightShow {
                                   cues: cues, warnings: warnings(cues)))
     }
 
-    /// Seconds from a number, or from "m:ss.sss" / "h:mm:ss.sss".
+    /// Seconds from a number, or from "m:ss.sss" / "h:mm:ss.sss". Only times that can be: 0 or
+    /// more, and finite and within reason (Double parses "inf", and JSON allows 1e300).
     static func seconds(_ value: Any) -> Double? {
+        func valid(_ t: Double) -> Double? { t >= 0 && t < 10_000_000 ? t : nil } // NaN fails too
         // JSON true/false are NSNumbers too, but `is Bool` can't tell them apart: it holds for any
         // NSNumber that's 0 or 1 (so "t": 0 would be refused). CF's boolean type can.
-        if let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { return n.doubleValue }
+        if let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { return valid(n.doubleValue) }
         guard let s = value as? String else { return nil }
         let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
         guard (1...3).contains(parts.count) else { return nil }
@@ -64,7 +66,7 @@ struct LightShow {
             guard let v = Double(part), v >= 0 else { return nil }
             total = total * 60 + v
         }
-        return total
+        return valid(total)
     }
 
     private static func warnings(_ cues: [Cue]) -> [String] {
@@ -446,6 +448,8 @@ final class LightShowPlayer {
     }
 
     nonisolated static func format(_ seconds: Double) -> String {
+        // Int() traps on infinity and huge values (a media duration can be either).
+        guard seconds.isFinite, seconds < 1e9 else { return "–" }
         let s = max(seconds, 0)
         let m = Int(s) / 60
         return String(format: "%d:%05.2f", m, s - Double(m * 60))
