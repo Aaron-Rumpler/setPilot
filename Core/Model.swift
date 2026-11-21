@@ -1267,8 +1267,11 @@ final class Model {
             startIfSaved()
             return started && !was
         }
-        if link == .unreachable || link == .none {
-            connect(a)
+        // Not connected: connect, unless one is still under way (its reads retry for about 14 s,
+        // so starting another on every watch poll only restarts them). One left stuck connecting
+        // (the app suspended part way) is redone.
+        if link != .connected {
+            if link == .none || Date.now.timeIntervalSince(lastConnect) > 15 { connect(a) }
             return true
         }
         var reading = false
