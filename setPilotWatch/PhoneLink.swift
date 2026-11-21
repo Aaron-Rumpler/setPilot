@@ -39,6 +39,9 @@ final class PhoneLink: NSObject {
 
     /// A live change (the Crown) is on its way, or waiting for the one before it.
     private(set) var liveBusy = false
+    /// Counts live changes finishing (answered or not), for views to go back to the bulb's values:
+    /// `liveBusy` can go on and off before a view sees it change.
+    private(set) var liveSettled = 0
     /// Live changes sent and not yet answered: normally at most one, but a command sent meanwhile
     /// sends the waiting one alongside.
     private var liveInFlight = 0
@@ -67,6 +70,7 @@ final class PhoneLink: NSObject {
                 self.transmitLive(next.values, fields: next.fields)
             } else {
                 self.liveBusy = false
+                self.liveSettled += 1
             }
         }
     }
@@ -84,8 +88,7 @@ final class PhoneLink: NSObject {
 
     private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor () -> Void)? = nil) {
         let session = WCSession.default
-        // Not answered: `done` still comes afterwards, as a reply would, so a live change's
-        // `liveBusy` is seen to go on and off (the controls then go back to the bulb's values).
+        // Not answered: `done` still comes afterwards, as a reply would.
         guard session.activationState == .activated, session.isReachable else {
             if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
             Task { @MainActor in done?() }
