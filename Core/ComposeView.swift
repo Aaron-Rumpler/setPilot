@@ -123,7 +123,7 @@ struct ComposeToggle: View {
 
     var body: some View {
         Toggle(isOn: Binding(get: { model.composing }, set: { model.composing = $0 })) {
-            Label("Compose", systemImage: "square.and.pencil")
+            Label("Compose", systemImage: "paperplane")
         }
         .toggleStyle(.button)
         .help("Prepare a change (colour, brightness, power) without sending it, then send it in one go with its own fade time")

@@ -33,10 +33,11 @@ struct SetPilotApp: App {
         Window("Console", id: "console") { ConsoleWindow(model: model) }
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
-        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 560, minHeight: 520) }
-            .defaultSize(width: 820, height: 780)
+        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440) }
+            .defaultSize(width: 960, height: 680)
             .keyboardShortcut("l", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
+            .windowResizability(.contentSize)
     }
 }
 
@@ -167,6 +168,8 @@ struct SettingsView: View {
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @AppStorage(Stepping.snapKey) private var snaps = true
+    /// The height of all the settings, for the window's size limits.
+    @State private var contentHeight: CGFloat?
 
     var body: some View {
         Form {
@@ -240,8 +243,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        // A grouped Form scrolls by itself: its content's height sets the window's tallest.
+        .scrollContentHeight { contentHeight = $0 }
         .frame(width: 520)
-        .fixedSize(horizontal: false, vertical: true)
+        .windowHeight(content: contentHeight, minimum: 320)
         .onAppear { refreshLoginItem() }
     }
 

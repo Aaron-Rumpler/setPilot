@@ -21,6 +21,8 @@ struct MenuBarPanel: View {
                 ProgressView()
                     .controlSize(.small)
                     .opacity(model.pending ? 1 : 0)
+                ComposeToggle(model: model)
+                    .disabled(!model.canControl)
                 Toggle("Power", isOn: model.powerBinding)
                     .toggleStyle(.switch)
                     .labelsHidden()

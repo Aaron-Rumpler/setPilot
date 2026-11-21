@@ -6,21 +6,26 @@ struct ContentView: View {
     let model: Model
     @State private var showingConfig = false
     @State private var configHeight: CGFloat = 120
+    /// The height of everything in the window, for its size limits.
+    @State private var contentHeight: CGFloat?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            bulbPanel
-            lightPanel
-            presetsPanel
-            commandPanel
-            devicePanel
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                bulbPanel
+                lightPanel
+                presetsPanel
+                commandPanel
+                devicePanel
+            }
+            .padding(20)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
-        .padding(20)
+        // A fixed width; the height can be anything from a few panels' worth up to all of them
+        // (with .windowResizability(.contentSize), the window's limits), scrolling below that.
         .frame(width: 500)
-        // A fixed size: with .windowResizability(.contentSize) the window's minimum and maximum
-        // are both this, so it opens at the right size, can't be resized, and follows the content.
-        .fixedSize()
+        .windowHeight(content: contentHeight, minimum: 360)
         .navigationTitle(model.currentName ?? "setPilot")
         .onAppear {
             // The menu bar item normally connects to the saved bulb at launch. First launch (no saved
@@ -89,6 +94,7 @@ struct ContentView: View {
                 .controlSize(.small)
                 .opacity(model.pending ? 1 : 0)
                 .help("Waiting for the bulb to confirm")
+            ComposeToggle(model: model)
         } content: {
             LightControls(model: model)
         }
@@ -254,37 +260,37 @@ struct LightControls: View {
     @Environment(\.openWindow) private var openWindow
 
     private var editScalesButton: some View {
-        Button {
+        Button("Edit Scales…") {
             openWindow(id: "scales")
             NSApp.activate()
-        } label: {
-            Label("CCT Scales…", systemImage: "square.and.pencil")
         }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
+        .buttonStyle(.link)
         .help("Edit this bulb's custom CCT scales")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
-            // Compose picks the kind of colour for its draft; live, it changes the bulb's mode.
-            Picker("Mode", selection: model.composing
-                   ? Binding(get: { model.draft.kind }, set: { model.draft.kind = $0 })
-                   : Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
-                ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
+            // Compose's switch isn't here: it's in the Light panel's heading (window) or by the power
+            // switch (menu bar panel), where there's room for it.
+            HStack(spacing: 8) {
+                if !compact { Text("Mode").frame(width: ChannelSlider.labelWidth, alignment: .leading) }
+                // Compose picks the kind of colour for its draft; live, it changes the bulb's mode.
+                Picker("Mode", selection: model.composing
+                       ? Binding(get: { model.draft.kind }, set: { model.draft.kind = $0 })
+                       : Binding(get: { model.mode.choice }, set: { model.setModeChoice($0) })) {
+                    ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .disabled(model.composing && !model.draft.includeColour)
+                Spacer(minLength: 0)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .disabled(model.composing && !model.draft.includeColour)
-            .frame(maxWidth: .infinity) // centred
-            .overlay(alignment: .trailing) { ComposeToggle(model: model).labelStyle(.iconOnly) }
 
             if model.composing {
                 Text("Composing: nothing is sent until you press Send.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
             }
 
             Divider()
@@ -316,8 +322,8 @@ struct LightControls: View {
                     TemperatureScalePicker(model: model)
                         .labelsHidden()
                         .fixedSize()
-                    Spacer()
                     editScalesButton
+                    Spacer()
                 }
                 if model.mode == .custom, let scale = model.activeScale, let range = scale.range {
                     // Marks at the scale's points; the track's colours are black-body, not the scale's.
@@ -341,16 +347,13 @@ struct LightControls: View {
                     Text(verbatim: "ID \(model.sceneId)") // verbatim: no "1,000"
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
+                    Button("Edit Scenes…") {
                         openWindow(id: "scenes")
                         NSApp.activate()
-                    } label: {
-                        Label("Custom Scenes…", systemImage: "square.and.pencil")
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.link)
                     .help("Edit custom scenes")
+                    Spacer()
                 }
                 ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
