@@ -13,6 +13,10 @@ struct SetPilotMobileApp: App {
         // Widgets and Control Center controls run their actions here, on the app's connection.
         WidgetPerformer.handler = { command in
             let model = Shared.model
+            // No bulb to wait for: say so straight away, as Shortcuts do.
+            guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
+                throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
+            }
             guard await model.waitUntilControllable(timeout: 5) else {
                 throw WidgetError(localizedStringResource: "The bulb isn't answering.")
             }
