@@ -9,6 +9,8 @@ struct PresetGrid: View {
     @State private var renaming: Preset?
     @State private var newName = ""
     @State private var deleting: Preset?
+    /// The name in the delete confirmation, kept while it closes (deleting is cleared first).
+    @State private var deletingName = ""
     /// Which prompt was opened, kept while it closes: deciding by `renaming`, which closing
     /// clears, showed the delete prompt for a moment as a rename prompt faded out.
     @State private var promptIsRename = true
@@ -52,7 +54,8 @@ struct PresetGrid: View {
             }
             Button("Cancel", role: .cancel) { renaming = nil }
         }
-        .confirmationDialog("Delete “\(deleting?.name ?? "")”?",
+        .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
+        .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete", role: .destructive) {
                 lib.presets.removeAll { $0.id == deleting?.id }
