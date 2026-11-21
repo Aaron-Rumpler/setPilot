@@ -179,6 +179,12 @@ struct NumberPad: View {
             if let medium {
                 Button {
                     ones.toggle()
+                    // The Crown's steps change: line it up again with what's shown (it may have
+                    // been rounded onto a stop of the old ones).
+                    if let number, valid {
+                        crown = number
+                        lineUp = number
+                    }
                 } label: {
                     Text(verbatim: ones ? "Steps of 1 · tap for \(Int(medium))" : "Steps of \(Int(medium)) · tap for 1")
                         .font(.caption2)
