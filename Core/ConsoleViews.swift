@@ -447,6 +447,7 @@ struct ConsoleLog: View {
             var obj = obj
             if entry.kind == .sent, obj["hmac"] != nil {
                 obj["hmac"] = nil
+                obj["env"] = nil // added for signing only
                 if var params = obj["params"] as? [String: Any] {
                     params["sigTs"] = nil
                     obj["params"] = params

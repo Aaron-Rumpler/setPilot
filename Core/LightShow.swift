@@ -582,7 +582,8 @@ extension Model {
         guard canControl, saved.mac == chosenMAC else { return }
         // The show left it on. Off before: one setPilot with "state": false (the colour kept for
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
-        isOn = saved.isOn != false
+        // (Not known when the show started: as it is now.)
+        if let was = saved.isOn { isOn = was }
         if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
         // A scene's speed too: the show may have changed it.
         apply(saved.values, fields: saved.values.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
