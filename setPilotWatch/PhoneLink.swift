@@ -12,8 +12,9 @@ final class PhoneLink: NSObject {
     private(set) var presets: [Preset] = []
     private(set) var scenes: [CustomSceneSummary] = []
     private(set) var reachable = false
-    /// A command is waiting for the iPhone's reply.
-    private(set) var busy = false
+    /// A command is waiting for the iPhone's reply (of however many are).
+    var busy: Bool { waiting > 0 }
+    private var waiting = 0
     var error: String?
     /// The bulb's reads, from the last device info request.
     private(set) var deviceInfo: [DeviceInfoEntry] = []
@@ -95,7 +96,7 @@ final class PhoneLink: NSObject {
             return
         }
         if !quiet {
-            busy = true
+            waiting += 1
             error = nil
         }
         session.sendMessage([WatchKey.command: data], replyHandler: { reply in
@@ -103,7 +104,7 @@ final class PhoneLink: NSObject {
             let message = reply[WatchKey.error] as? String
             let info = (reply[WatchKey.deviceInfo] as? Data).flatMap { try? JSONDecoder().decode([DeviceInfoEntry].self, from: $0) }
             Task { @MainActor in
-                if !quiet { self.busy = false }
+                if !quiet { self.waiting -= 1 }
                 if let snapshot { self.apply(snapshot) }
                 if let info { self.deviceInfo = info }
                 done?()
@@ -114,7 +115,7 @@ final class PhoneLink: NSObject {
             Task { @MainActor in
                 done?()
                 guard !quiet else { return }
-                self.busy = false
+                self.waiting -= 1
                 self.error = "Your iPhone didn't answer: \(text)"
             }
         })

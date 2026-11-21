@@ -20,8 +20,8 @@ struct RootView: View {
                         Label("Custom Scenes", systemImage: "sparkles")
                     }
                     NavigationLink {
+                        // Its own title: the media's name, or "Light Show".
                         LightShowView(model: model)
-                            .navigationTitle("Light Show")
                             .navigationBarTitleDisplayMode(.inline)
                     } label: {
                         Label("Light Show", systemImage: "play.rectangle")
