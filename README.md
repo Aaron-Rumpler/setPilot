@@ -281,3 +281,7 @@ JSON over UDP port 38899, e.g.:
 
 [docs/UDP-API.md](docs/UDP-API.md) describes the local API as the app uses it: messages and
 replies, `setPilot`, live updates, scenes, and the methods the bulb takes over UDP.
+
+## Licence
+
+setPilot is released under the [MIT License](LICENSE).
