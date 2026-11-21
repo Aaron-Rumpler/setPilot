@@ -1311,6 +1311,8 @@ final class Model {
             if method == "setPilot" {
                 quietRead = true
                 bulb.send("getPilot", retry: true)
+            } else if method == "getPilot" {
+                quietRead = false // refused too: nothing to keep quiet
             }
             if method == "setState" { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
