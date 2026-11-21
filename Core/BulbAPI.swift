@@ -90,9 +90,9 @@ enum BulbAPI {
 
         // Writes
         Method(name: "setPilot", kind: .write,
-               summary: "Sets the light: r g b c w (0–255), temp (1000–12000, clamped to the CCT range), sceneId, speed (only takes when sent alone), dimming, dimDelta, state, trans (fade ms), ratio, and elm with a sceneId ≥ 266. Without state it switches the bulb on.",
+               summary: "Sets the light: r g b c w (0–255), temp (1000–12000, clamped to the CCT range), sceneId, speed (only takes when sent alone), dimming, dimDelta, state, trans (fade ms), ratio (dual-head fittings, per pywizlight; untested here), and elm with a sceneId ≥ 266. Without state it switches the bulb on.",
                template: #"{"temp": 2700, "dimming": 50}"#),
-        Method(name: "setState", kind: .write, summary: "Switches on or off (optionally with dimming).",
+        Method(name: "setState", kind: .write, summary: "Switches on or off, and nothing else (no fade: setPilot with state takes trans).",
                template: #"{"state": true}"#),
         Method(name: "setEffect", kind: .write,
                summary: "Effects and sync modes: pulse (pulse, duration, pulseCount, stepOff, preview), autobrightness (no sensor on this bulb), ambienceSync, musicSync, sportsSync. Shared keys: devices, type, state."),
