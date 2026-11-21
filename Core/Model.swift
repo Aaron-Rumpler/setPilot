@@ -1275,6 +1275,9 @@ final class Model {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
             verifyingSeq = sendSeq
+            // This read settles the state; a quiet read still owed for an earlier refusal would
+            // only keep a later Sync from saying so.
+            quietReads = 0
             bulb.send("getPilot", retry: true)
         }
     }
