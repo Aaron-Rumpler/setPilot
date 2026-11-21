@@ -348,7 +348,10 @@ struct ControlsFadePicker: View {
             ForEach(options, id: \.self) { Text($0.title(setting: s.fade)).tag($0) }
         }
         if current == .custom {
-            ValueRow(label: "Fade time", value: Binding(get: { time }, set: { new in
+            // Read when asked, not captured with this body: the pushed editor may keep the binding.
+            ValueRow(label: "Fade time", value: Binding(get: {
+                ms ?? Double(link.snapshot?.controlsFadeMs ?? s.controlsFadeMs ?? 1000)
+            }, set: { new in
                 ms = new
                 unsent = true
                 // Sent once the Crown pauses.
