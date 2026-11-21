@@ -270,7 +270,8 @@ struct SettingsView: View {
         let service = SMAppService.mainApp
         do {
             if on, service.status != .enabled { try service.register() }
-            if !on, service.status == .enabled { try service.unregister() }
+            // Waiting for approval counts as on (the toggle shows it so), so it can be turned off too.
+            if !on, service.status == .enabled || service.status == .requiresApproval { try service.unregister() }
         } catch {
             loginItemNote = "Couldn't change the login item: \(error.localizedDescription)"
         }
