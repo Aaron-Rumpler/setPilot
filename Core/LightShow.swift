@@ -170,6 +170,8 @@ final class LightShowPlayer {
     static let slack = 0.002
     /// A scene's speed, sent separately just after it: cancelled by a stop (or a newer state).
     @ObservationIgnored private var speedTask: Task<Void, Never>?
+    /// A scene's speed held back while the show has the bulb off, for when it's switched on.
+    @ObservationIgnored private var speedOwed: Any?
     /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
     @ObservationIgnored private var sentDelay: Double?
 
@@ -300,6 +302,7 @@ final class LightShowPlayer {
     private func restore() {
         speedTask?.cancel() // a speed still to come would switch the bulb back on
         speedTask = nil
+        speedOwed = nil
         guard let saved else { return }
         self.saved = nil
         if restores { model.restore(saved) }
@@ -385,6 +388,7 @@ final class LightShowPlayer {
         let latest = show.cues[nextCue - 1]
         let fresh = showTime - latest.time <= max(delay, 0) / 1000 + 0.1
         // (A cue without one gets the bulb's own fade, as it would sent alone.)
+        speedOwed = nil // the state at the new place is the whole story; it may owe its own
         let trans: Any? = fresh ? latest.pilot["trans"] : 0
         sendState(LightShow.state(after: show.cues[..<nextCue]), trans: trans)
         currentCue = nextCue - 1
@@ -396,9 +400,7 @@ final class LightShowPlayer {
     /// `trans` nil: none, so the bulb's own fade (as for a cue without one).
     private func sendState(_ combined: [String: Any], trans: Any?) {
         var state = combined
-        var speed = state.removeValue(forKey: "speed")
-        // Off: a speed on its own afterwards would switch it back on.
-        if state["state"] as? Bool == false { speed = nil }
+        let speed = state.removeValue(forKey: "speed")
         state["trans"] = trans // nil leaves it out
         // Anything besides the fade (which is there or not, as given).
         if state.keys.contains(where: { $0 != "trans" }) { send(state) }
@@ -406,12 +408,22 @@ final class LightShowPlayer {
             speedTask?.cancel()
             speedTask = nil
         }
-        if let speed {
-            speedTask = Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                self.send(["speed": speed], followUp: true)
-            }
+        guard let speed else { return }
+        if state["state"] as? Bool == false {
+            // Off: on its own now it would switch it back on. It goes when something does.
+            speedOwed = speed
+        } else {
+            scheduleSpeed(speed)
+        }
+    }
+
+    /// A scene's speed in a setPilot of its own, just after the scene's.
+    private func scheduleSpeed(_ speed: Any) {
+        speedTask?.cancel()
+        speedTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self.send(["speed": speed], followUp: true)
         }
     }
 
@@ -438,12 +450,18 @@ final class LightShowPlayer {
         if !followUp, Self.supersedesSpeed(pilot) {
             speedTask?.cancel()
             speedTask = nil
+            speedOwed = nil // a new colour, scene or speed: the owed one is out of date
         }
         guard sendsToBulb else { return }
         // The first cue sent: remember the light to put back (whether it's put back is decided
         // when the show stops).
         if saved == nil { saved = model.savedLight }
         model.sendLightCue(pilot)
+        // Back on (a setPilot without "state": false switches it on): the speed it was owed.
+        if !followUp, pilot["state"] as? Bool != false, let owed = speedOwed {
+            speedOwed = nil
+            scheduleSpeed(owed)
+        }
     }
 
     // MARK: Display
