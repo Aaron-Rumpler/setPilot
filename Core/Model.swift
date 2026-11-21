@@ -433,9 +433,9 @@ final class Model {
         quietReads = 0
         speedOwed = false
         pilotSwitches = false // a switch still unanswered was for the previous bulb
-        if consoleWaiting != nil { // its answer would be the new bulb's, or never come
+        if consoleWaiting != nil { // its answer would be the new connection's, or never come
             consoleWaiting = nil
-            consoleFailure = "Connected to another bulb before a reply came"
+            consoleFailure = "Reconnected (or another bulb chosen) before a reply came: send it again"
         }
         // Nothing carries over from the previous bulb.
         isOn = nil
