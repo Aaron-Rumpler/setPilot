@@ -52,8 +52,9 @@ final class Bulb {
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
-        guard let data = RequestSigning.message(method, params: params, key: signingKey) else { return }
-        transmit(data, method: method, retry: retry)
+        let key = signingKey
+        // Signed afresh for each try: a retry gets its own sigTs, in case the bulb refuses a repeat.
+        transmit(method: method, retry: retry) { RequestSigning.message(method, params: params, key: key) }
     }
 
     /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON, and
@@ -61,11 +62,13 @@ final class Bulb {
     /// `method` names it for the log and errors; retrying needs one, as it stops on a reply with
     /// that method.
     func sendRaw(_ text: String, method: String?, retry: Bool) {
-        transmit(Data(text.utf8), method: method, retry: retry && method != nil)
+        let data = Data(text.utf8)
+        transmit(method: method, retry: retry && method != nil) { data }
     }
 
-    private func transmit(_ data: Data, method: String?, retry: Bool) {
-        guard let conn else { return }
+    /// `message` makes the bytes to send, for each try (the log shows the first).
+    private func transmit(method: String?, retry: Bool, message: @escaping () -> Data?) {
+        guard let conn, let data = message() else { return }
         let name = method ?? "Raw message"
         onSent?(method ?? "", String(decoding: data, as: UTF8.self))
 
@@ -81,9 +84,10 @@ final class Bulb {
         let before = replyCount[method, default: 0]
         Task { [weak self] in
             var wait = 0.75
-            for _ in 0..<6 {
+            for attempt in 0..<6 {
                 guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
-                conn.send(content: data, completion: .idempotent)
+                guard let bytes = attempt == 0 ? data : message() else { return }
+                conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))
                 wait = min(wait * 2, 3)
             }
