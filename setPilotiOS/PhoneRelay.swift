@@ -49,8 +49,8 @@ final class PhoneRelay: NSObject {
     private enum Outcome {
         case now(LightSnapshot)
         case settle(after: Duration)
-        /// Not done: the bulb isn't answering (the reply says so).
-        case failed(LightSnapshot)
+        /// Not done, and why (the reply says so).
+        case failed(LightSnapshot, String)
     }
 
     /// When waiting for the bulb last came to nothing. For a while after, commands don't wait
@@ -58,6 +58,7 @@ final class PhoneRelay: NSObject {
     /// time out on the watch or land late, long after they were meant. They're answered "not
     /// answering" at once instead (a connect keeps being tried meanwhile).
     private var notAnsweringSince: Date?
+    private static let notAnswering = "Your bulb isn't answering. It may be off at the wall or out of Wi-Fi range."
 
     /// The bulb can take a command now, waiting (up to `timeout`) only if it hasn't just been
     /// found not answering.
@@ -86,8 +87,9 @@ final class PhoneRelay: NSObject {
             return .now(model.snapshot)
         case .savePreset(let name):
             // The light as it is: not saved from a state that may be out of date.
-            guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot) }
-            model.savePreset(named: name)
+            guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot, Self.notAnswering) }
+            // Not every light can be a preset (Rhythm, say): the status says why.
+            guard model.savePreset(named: name) != nil else { return .failed(model.snapshot, model.status) }
             return .now(model.snapshot)
         case .deletePreset(let id):
             model.library.presets.removeAll { $0.id == id }
@@ -113,7 +115,7 @@ final class PhoneRelay: NSObject {
         default:
             break
         }
-        guard await bulbReady(model) else { return .failed(model.snapshot) }
+        guard await bulbReady(model) else { return .failed(model.snapshot, Self.notAnswering) }
         var pause = Duration.zero
         switch command {
         case .sync:
@@ -143,6 +145,9 @@ final class PhoneRelay: NSObject {
         case .temperatureScale(let id):
             model.useTemperatureScale(id)
         case .updatePreset(let id):
+            guard model.currentColour != nil else {
+                return .failed(model.snapshot, "This light can't be saved in a preset (a Rhythm scene, say).")
+            }
             model.updatePreset(id)
         case .deviceInfo:
             model.readConfig()
@@ -321,13 +326,19 @@ extension PhoneRelay: WCSessionDelegate {
         switch await run(message.command) {
         case .now(let snapshot):
             finish(message, snapshot)
-        case .failed(let snapshot):
-            finish(message, snapshot, error: "Your bulb isn't answering. It may be off at the wall or out of Wi-Fi range.")
+        case let .failed(snapshot, why):
+            finish(message, snapshot, error: why)
         case .settle(let pause):
             Task {
                 try? await Task.sleep(for: pause)
                 await model?.waitUntilSettled()
-                finish(message, model?.snapshot ?? LightSnapshot())
+                // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
+                // Only for commands that send: the reason stays until the next change is sent.
+                let sends = switch message.command {
+                case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta: true
+                default: false
+                }
+                finish(message, model?.snapshot ?? LightSnapshot(), error: sends ? model?.refusal : nil)
             }
         }
     }
