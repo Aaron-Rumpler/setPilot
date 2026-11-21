@@ -423,10 +423,12 @@ final class LightShowPlayer {
         light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
     }
 
-    /// `followUp`: a scene's speed, sent separately just after it. Anything else sent first
-    /// cancels it: it would switch the bulb on, or apply to whatever came next.
+    /// `followUp`: a scene's speed, sent separately just after it.
     private func send(_ pilot: [String: Any], followUp: Bool = false) {
-        if !followUp {
+        // A new colour or scene (the speed would apply to it), or off (it would switch the bulb
+        // back on); a dimming or fade change leaves it to follow.
+        let colourKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
+        if !followUp, pilot["state"] as? Bool == false || pilot.keys.contains(where: colourKeys.contains) {
             speedTask?.cancel()
             speedTask = nil
         }
