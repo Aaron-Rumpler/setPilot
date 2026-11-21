@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Edits one custom scene: its name and steps (1–12), with a Play button.
 struct CustomSceneEditor: View {
@@ -21,8 +24,14 @@ struct CustomSceneEditor: View {
                     TextField("Name", text: binding.name)
                     HStack {
                         Button {
-                            // At speed 100, so the preview shows the steps as timed.
-                            if let scene = model.library.customScene(sceneID) { model.playCustom(scene, speed: 100) }
+                            // At speed 100, so the preview shows the steps as timed. On the Mac, a
+                            // number being typed reaches the step only once its field ends editing.
+                            #if os(macOS)
+                            NSApp.keyWindow?.makeFirstResponder(nil)
+                            #endif
+                            DispatchQueue.main.async {
+                                if let scene = model.library.customScene(sceneID) { model.playCustom(scene, speed: 100) }
+                            }
                         } label: {
                             Label(isPlaying ? "Play Again" : "Play on Bulb", systemImage: "play.fill")
                         }
