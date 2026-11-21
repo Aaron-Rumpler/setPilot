@@ -8,7 +8,18 @@ enum QuickBulb {
         guard let host = SharedStore.defaults.string(forKey: SharedStore.addressKey), !host.isEmpty else {
             throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
         }
-        let isOn = SharedStore.snapshot?.isOn
+        var isOn = SharedStore.snapshot?.isOn
+        // Not known (the app was left connecting): read it, rather than guess at a toggle, or switch
+        // the bulb on with a dimDelta that has no "state".
+        let needsPower = switch command {
+        case .power(.none), .dimDelta: true
+        default: false
+        }
+        if isOn == nil, needsPower {
+            let reply = try await send(host, "getPilot", [:])
+            isOn = (reply["result"] as? [String: Any])?["state"] as? Bool
+            guard isOn != nil else { throw WidgetError(localizedStringResource: "Couldn't read whether the bulb is on.") }
+        }
         switch command {
         case .applyPreset(let id):
             let all = SharedStore.defaults.dictionary(forKey: SharedStore.presetParamsKey) as? [String: Data] ?? [:]
