@@ -65,6 +65,10 @@ final class PhoneRelay: NSObject {
     private func bulbReady(_ model: Model, timeout: Double = 5) async -> Bool {
         if model.canControl {
             notAnsweringSince = nil
+            // Still through waitUntilControllable: woken from a suspension, it re-registers for
+            // pushes and reads the state again if it's gone quiet (and waits for that read), so
+            // a toggle doesn't go by a state from before. Otherwise it's back at once.
+            _ = await model.waitUntilControllable(timeout: timeout)
             return true
         }
         if let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10 {
@@ -128,7 +132,10 @@ final class PhoneRelay: NSObject {
             model.power(!(model.isOn ?? false))
             pause = .milliseconds(400)
         case .applyPreset(let id):
-            if let preset = model.library.presets.first(where: { $0.id == id }) { model.apply(preset) }
+            guard let preset = model.library.presets.first(where: { $0.id == id }) else {
+                return .failed(model.snapshot, "That preset no longer exists.")
+            }
+            model.apply(preset)
         case .set(let values, let fields):
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
@@ -137,7 +144,10 @@ final class PhoneRelay: NSObject {
         case .dimDelta(let delta):
             model.adjustDimming(by: delta)
         case .playCustom(let id):
-            if let scene = model.library.customScene(id) { model.playCustom(scene, switchOn: true) }
+            guard let scene = model.library.customScene(id) else {
+                return .failed(model.snapshot, "That custom scene no longer exists.")
+            }
+            model.playCustom(scene, switchOn: true)
         case .compose(let change):
             model.send(change)
         case .modeChoice(let choice):
@@ -145,6 +155,9 @@ final class PhoneRelay: NSObject {
         case .temperatureScale(let id):
             model.useTemperatureScale(id)
         case .updatePreset(let id):
+            guard model.library.presets.contains(where: { $0.id == id }) else {
+                return .failed(model.snapshot, "That preset no longer exists.")
+            }
             guard model.currentColour != nil else {
                 return .failed(model.snapshot, "This light can't be saved in a preset (a Rhythm scene, say).")
             }
@@ -335,7 +348,7 @@ extension PhoneRelay: WCSessionDelegate {
                 // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
                 // Only for commands that send: the reason stays until the next change is sent.
                 let sends = switch message.command {
-                case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta: true
+                case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
                 default: false
                 }
                 finish(message, model?.snapshot ?? LightSnapshot(), error: sends ? model?.refusal : nil)
