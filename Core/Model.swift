@@ -894,8 +894,8 @@ final class Model {
     /// leaving it out would switch it on).
     private func transmit(_ params: [String: Any], speed: Int?, power: Bool?, retry: Bool) {
         var p = params
+        refusal = nil // a new change: an older one's reason no longer applies, sent or not
         guard !p.isEmpty || speed != nil || power != nil else { return }
-        refusal = nil
         pilotAnswered = false
         if power != nil { powerBefore = isOn } // what an unanswered switch puts back
         switch power {

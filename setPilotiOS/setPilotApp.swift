@@ -28,7 +28,8 @@ struct SetPilotMobileApp: App {
             case .dimDelta(let delta):
                 model.adjustDimming(by: delta)
             }
-            await model.waitUntilSettled()
+            // Refused, unanswered or not sent (a deleted scene in a preset): say so, as Shortcuts do.
+            if let problem = await model.outcome() { throw WidgetError(localizedStringResource: "\(problem)") }
         }
         // Siri learns the preset names from this (also refreshed whenever the presets change).
         SetPilotShortcuts.updateAppShortcutParameters()
