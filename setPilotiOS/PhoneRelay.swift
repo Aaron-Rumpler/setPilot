@@ -128,6 +128,9 @@ final class PhoneRelay: NSObject {
             if session.isReachable, let data = try? JSONEncoder().encode(snapshot) {
                 session.sendMessage([WatchKey.snapshot: data], replyHandler: nil, errorHandler: nil)
             }
+            // And the copy for when it isn't: otherwise the context keeps the state from when it was
+            // last written (often "connecting", at launch), and the watch takes it over its newer cache.
+            if snapshot.link == .connected { updateContext() }
         }
     }
 
@@ -193,7 +196,12 @@ final class PhoneRelay: NSObject {
         var context: [String: Any] = [:]
         if let data = try? encoder.encode(model.library.presets) { context[WatchKey.presets] = data }
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
-        if let data = try? encoder.encode(model.snapshot) { context[WatchKey.snapshot] = data }
+        // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
+        if model.snapshot.link == .connected, let data = try? encoder.encode(model.snapshot) {
+            context[WatchKey.snapshot] = data
+        } else if let kept = session.applicationContext[WatchKey.snapshot] {
+            context[WatchKey.snapshot] = kept
+        }
         try? session.updateApplicationContext(context)
     }
 }

@@ -17,15 +17,27 @@ enum QuickBulb {
                 throw WidgetError(localizedStringResource: "Open setPilot once to update its presets.")
             }
             _ = try await send(host, "setPilot", params) // no "state": switches the bulb on
+            remember { $0.isOn = true }
         case .power(let on):
-            _ = try await send(host, "setState", ["state": on ?? !(isOn ?? false)])
+            let on = on ?? !(isOn ?? false)
+            _ = try await send(host, "setState", ["state": on])
+            remember { $0.isOn = on }
         case .dimDelta(let delta):
             var params: [String: Any] = ["dimDelta": delta]
             // As the app: the controls' fade, and the bulb kept off if it's off.
             if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
             if isOn == false { params["state"] = false }
             _ = try await send(host, "setPilot", params)
+            remember { $0.dimming = min(max($0.dimming + Double(delta), $0.minDimming), 100) }
         }
+    }
+
+    /// What was just sent, in the state the widgets and controls show (the app isn't running to
+    /// update it), so they don't snap back when reloaded and the next tap starts from it.
+    private static func remember(_ change: (inout LightSnapshot) -> Void) {
+        guard var s = SharedStore.snapshot else { return }
+        change(&s)
+        SharedStore.save(s, SharedStore.snapshotKey)
     }
 
     /// Up to three tries, a second each.
