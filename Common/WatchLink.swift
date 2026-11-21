@@ -41,6 +41,8 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var activeScale: UUID?
     /// The fade time setting on the iPhone (ms), if set.
     var fade: Int?
+    /// A scene speed changed while the bulb was off, sent with the next change that leaves it on.
+    var owedSpeed: Int?
     /// Sliders snap to round numbers (the iPhone's setting; the watch's Crown follows it).
     var snapSliders: Bool?
     /// The live controls' fade: the fade time setting, none, or `controlsFadeMs`.
@@ -90,7 +92,9 @@ enum WatchCommand: Codable, Sendable {
     case applyPreset(UUID)
     case set(LightValues, fields: [PilotField])
     case dimDelta(Int)
-    case playCustom(UUID)
+    /// Plays a custom scene: switching the bulb on (the Custom Scenes list, like a preset) or
+    /// leaving the power as it is (the Controls' scene picker, like a built-in scene there).
+    case playCustom(UUID, switchOn: Bool)
     case savePreset(name: String)
     case compose(LightChange)
     case renamePreset(UUID, name: String)

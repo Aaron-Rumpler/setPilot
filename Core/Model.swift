@@ -809,7 +809,9 @@ final class Model {
         consoleFailure = nil
         switch method {
         case "setPilot":
-            let lightKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "dimming", "dimDelta", "ratio"]
+            // Any of these without state switches the bulb on (speed too: alongside "state": false
+            // the bulb ignores it, which the read-back then shows).
+            let lightKeys: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "speed", "dimming", "dimDelta", "ratio"]
             let changesLight = p.keys.contains(where: lightKeys.contains)
             if keepOff, isOn == false, p["state"] == nil, changesLight { p["state"] = false }
             if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
@@ -1205,6 +1207,7 @@ final class Model {
         }
         s.status = mismatch ?? status
         s.pending = pending
+        s.owedSpeed = owedSpeed
         s.mismatch = mismatch
         s.bulbs = namedBulbs
         s.address = UserDefaults.standard.string(forKey: Self.addressKey)
