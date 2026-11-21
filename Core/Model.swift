@@ -463,17 +463,15 @@ final class Model {
         }
     }
 
-    @ObservationIgnored private var reconnectScheduled = false
+    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
 
-    /// A new connection to `address` after `seconds`, unless something else connects first.
+    /// A new connection to `address` after `seconds`, unless the bulb is back by then (or another
+    /// was chosen). The latest call wins: one for a connection lost since replaces it.
     private func reconnect(_ address: String, after seconds: Double) {
-        guard !reconnectScheduled else { return }
-        reconnectScheduled = true
-        let generation = connectGeneration
-        Task {
+        reconnectTask?.cancel()
+        reconnectTask = Task {
             try? await Task.sleep(for: .seconds(seconds))
-            reconnectScheduled = false
-            guard connectGeneration == generation, link == .unreachable,
+            guard !Task.isCancelled, link == .unreachable,
                   UserDefaults.standard.string(forKey: Self.addressKey) == address else { return }
             lastAutoReconnect = .now
             connect(address)
