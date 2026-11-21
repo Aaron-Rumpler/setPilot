@@ -201,7 +201,9 @@ struct SigningKeyButton: View {
         .alert("Signing Key", isPresented: $editing) {
             TextField("32 hex digits", text: $draft)
             Button("Save") {
-                if !model.setSigningKey(draft, for: mac) { invalid = true }
+                // The next alert once this one has gone (one presented while another is
+                // being dismissed can be dropped).
+                if !model.setSigningKey(draft, for: mac) { DispatchQueue.main.async { invalid = true } }
             }
             if model.signingKey(for: mac) != nil {
                 Button("Remove Key", role: .destructive) { model.setSigningKey(nil, for: mac) }
@@ -211,7 +213,7 @@ struct SigningKeyButton: View {
             Text(SigningHelp.text)
         }
         .alert("That isn't a signing key", isPresented: $invalid) {
-            Button("OK") { editing = true }
+            Button("OK") { DispatchQueue.main.async { editing = true } }
         } message: {
             Text("A signing key is 32 hex digits (0–9 and a–f).")
         }
