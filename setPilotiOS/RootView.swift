@@ -77,10 +77,6 @@ struct RootView: View {
                         }
                     }
                     Spacer()
-                    ProgressView().opacity(model.pending ? 1 : 0)
-                    Toggle("Power", isOn: model.powerBinding)
-                        .labelsHidden()
-                        .disabled(!model.canControl)
                 }
             }
         }
@@ -133,6 +129,11 @@ struct RootView: View {
                 ComposeToggle(model: model)
                     .font(.subheadline)
                     .textCase(nil)
+                    .disabled(!model.canControl)
+                ProgressView().opacity(model.pending ? 1 : 0)
+                // At the top of the light: the first thing to reach for.
+                Toggle("Power", isOn: model.powerBinding)
+                    .labelsHidden()
                     .disabled(!model.canControl)
             }
         } footer: {
