@@ -96,7 +96,7 @@ struct CustomSceneEditor: View {
             Section {
                 StepEditor(step: stepBinding(binding, id),
                            kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
-                           levelRange: Int(model.minDimming)...100,
+                           levelRange: 0...100,
                            ownTiming: binding.wrappedValue.timing == .steps)
                     .id(id)
             } header: {
@@ -288,8 +288,9 @@ struct StepEditor: View {
     @Binding var step: CustomScene.Step
     /// The bulb's colour-temperature range (from getModelConfig; 2200–6500 K until it's known).
     var kelvinRange = 2200...6500
-    /// The bulb's minimum dimming to 100 (10–100 until it's known).
-    var levelRange = 10...100
+    /// The step's level: 0–100. It scales the channels before the bulb's dimming, so the bulb's
+    /// minimum dimming doesn't apply to it.
+    var levelRange = 0...100
     /// The scene uses each step's hold and fade (not one of the bulb's fixed timings).
     var ownTiming = true
 
