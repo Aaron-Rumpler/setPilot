@@ -71,14 +71,6 @@ struct ContentView: View {
                             .help(model.liveStatus)
                     }
                     Spacer()
-                    // On the bulb, as in the menu bar panel: it's the bulb's state, not a light setting.
-                    Toggle("Power", isOn: model.powerBinding)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .disabled(!model.canControl)
-                        .help(model.isOn == true ? "Switch the bulb off (⇧⌘P)" : "Switch the bulb on (⇧⌘P)")
-                        .accessibilityLabel("Power")
                 }
                 .font(.callout)
                 .padding(.leading, 2)
@@ -95,6 +87,13 @@ struct ContentView: View {
                 .opacity(model.pending ? 1 : 0)
                 .help("Waiting for the bulb to confirm")
             ComposeToggle(model: model)
+            // At the top of the light: the first thing to reach for.
+            Toggle("Power", isOn: model.powerBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .help(model.isOn == true ? "Switch the bulb off (⇧⌘P)" : "Switch the bulb on (⇧⌘P)")
+                .accessibilityLabel("Power")
         } content: {
             LightControls(model: model)
         }
