@@ -67,7 +67,11 @@ struct ValueEditor: View {
                 .foregroundStyle(.secondary)
         }
         .focusable()
-        .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: snapStep,
+        // Steps on multiples of the step (as `Stepping.snap` rounds to), not counted from the
+        // bottom of the range, which needn't be one (a CCT scale from 2213 K): a detent to 2263
+        // would snap back to 2250, and turning up would do nothing.
+        .digitalCrownRotation($crown, from: (range.lowerBound / snapStep).rounded(.down) * snapStep,
+                              through: range.upperBound, by: snapStep,
                               sensitivity: .medium, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { _, new in
             // Not when the Crown is just being lined up with the value (opening the editor, or
@@ -127,6 +131,9 @@ struct NumberPad: View {
     /// The next digit replaces the text (it's the value it started from, or one stepped to).
     @State private var replace = true
     @State private var crown = 0.0
+    /// Where the Crown was last put (opening, typing, − and +) until it's turned: as in
+    /// ValueEditor, its rounding that onto its steps isn't a turn.
+    @State private var lineUp: Double?
     /// Steps of 1 rather than the in-between step (where there is one).
     @State private var ones = false
     @Environment(\.dismiss) private var dismiss
@@ -155,7 +162,10 @@ struct NumberPad: View {
                         let digits = String(new.filter(\.isNumber).prefix(6))
                         if digits != new { text = digits }
                         // The Crown carries on from what's typed.
-                        if let number, valid, crown != number { crown = number }
+                        if let number, valid, crown != number {
+                            crown = number
+                            lineUp = number
+                        }
                     }
                 Button { step(stepSize) } label: { Image(systemName: "plus") }
                     .buttonStyle(.bordered)
@@ -205,6 +215,11 @@ struct NumberPad: View {
         .digitalCrownRotation($crown, from: range.lowerBound, through: range.upperBound, by: stepSize,
                               sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { _, new in
+            if let lineUp, abs(new - lineUp) <= stepSize / 2 {
+                self.lineUp = new
+                return
+            }
+            lineUp = nil
             let v = Int(min(max(new.rounded(), range.lowerBound), range.upperBound))
             if text != String(v) {
                 text = String(v)
@@ -215,6 +230,7 @@ struct NumberPad: View {
             if let initial {
                 text = String(Int(initial))
                 crown = initial
+                lineUp = initial
             }
         }
     }
@@ -224,6 +240,7 @@ struct NumberPad: View {
         let v = min(max((number ?? range.lowerBound) + delta, range.lowerBound), range.upperBound)
         text = String(Int(v))
         crown = v
+        lineUp = v
         replace = true
     }
 

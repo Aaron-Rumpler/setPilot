@@ -21,14 +21,8 @@ struct FadeSetting: View {
         if stored >= 0 {
             LabeledContent("Fade time") {
                 HStack {
-                    TextField("Fade time", value: Binding(get: { stored }, set: { stored = min(max($0, 0), 60_000) }),
-                              format: .number.grouping(.never))
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
+                    MillisecondsField(value: $stored)
                         .frame(maxWidth: 80)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
                     Text("ms").foregroundStyle(.secondary)
                     Stepper("Fade time", value: Binding(get: { stored }, set: { stored = min(max($0, 0), 60_000) }),
                             step: 100)
@@ -90,19 +84,41 @@ struct FadeRow: View {
             .fixedSize()
             #endif
             if shown.wrappedValue == .custom {
-                TextField("Fade time", value: Binding(get: { ms }, set: { ms = min(max($0, 0), 60_000) }),
-                          format: .number.grouping(.never))
-                    .labelsHidden()
-                    .multilineTextAlignment(.trailing)
+                MillisecondsField(value: $ms)
                     .frame(width: 70)
-                    #if os(iOS)
-                    .keyboardType(.numberPad)
-                    #endif
                 Text("ms").foregroundStyle(.secondary)
             }
             #if os(macOS)
             Spacer(minLength: 0)
             #endif
         }
+    }
+}
+
+/// A fade time in ms (0–60000), taken as it's typed: a `value:` field only takes it when editing
+/// ends, which on iPhone (a number pad has no Return) is only once focus moves, so a slider moved
+/// or Send tapped straight after would use the old one.
+struct MillisecondsField: View {
+    @Binding var value: Int
+    @State private var text = ""
+
+    var body: some View {
+        TextField("Fade time", text: $text)
+            .labelsHidden()
+            .multilineTextAlignment(.trailing)
+            #if os(iOS)
+            .keyboardType(.numberPad)
+            #endif
+            .onAppear { text = String(value) }
+            .onChange(of: text) { _, new in
+                let digits = new.filter(\.isNumber)
+                if digits != new { text = digits; return }
+                if let n = Int(digits.prefix(6)) {
+                    let clamped = min(max(n, 0), 60_000)
+                    if clamped != value { value = clamped }
+                }
+            }
+            // Changed elsewhere (the stepper, the watch): show it, unless it's what's typed.
+            .onChange(of: value) { _, new in if Int(text) != new { text = String(new) } }
     }
 }
