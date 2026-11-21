@@ -207,6 +207,10 @@ final class Model {
                 liveStatus = "Live updates off — \(message)"
                 return
             }
+            // A device info read (flagged above) isn't worth the status line, as for its error
+            // replies: connecting sends four at once, and the others failing would replace
+            // getPilot's "isn't answering" (or Local Network access) message with theirs.
+            if let method, method != "getPilot", BulbAPI.deviceInfo.contains(method) { return }
             status = message
             if method == nil { connectionLost() }
             switch method {
