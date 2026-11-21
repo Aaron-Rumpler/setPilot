@@ -965,6 +965,8 @@ final class Model {
             p["dimming"] = Int(dimming)
         }
         if let fade = change.fade, !p.isEmpty || change.power == true { p["trans"] = fade }
+        // A speed owed from while it was off goes too (transmit holds it again if it stays off).
+        if speed == nil, change.colour == nil, speedOwed, mode == .scene { speed = Int(self.speed) }
         transmit(p, speed: speed, power: change.power, retry: true)
     }
 
