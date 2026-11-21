@@ -165,7 +165,8 @@ final class Model {
             let obj = Net.json(Data(text.utf8))
             let method = obj?["method"] as? String ?? ""
             appendLog(.received, method: method, text: text)
-            if let waiting = consoleWaiting, waiting.isEmpty || method == waiting {
+            // Waiting on "" (a raw message without a method): anything but the 20 s registration.
+            if let waiting = consoleWaiting, waiting.isEmpty ? method != "registration" : method == waiting {
                 consoleWaiting = nil
                 consoleReply = text
             }
@@ -177,7 +178,8 @@ final class Model {
                 info[method] = JSONText.pretty(["error": message])
                 infoErrors[method] = "No reply"
             }
-            if let waiting = consoleWaiting, waiting.isEmpty || method == waiting {
+            // Waiting on "" (a raw message without a method): anything but the 20 s registration.
+            if let waiting = consoleWaiting, waiting.isEmpty ? method != "registration" : method == waiting {
                 consoleWaiting = nil
                 consoleFailure = message
             }
@@ -376,7 +378,10 @@ final class Model {
 
     @ObservationIgnored private var connectGeneration = 0
 
+    @ObservationIgnored private var lastConnect = Date.distantPast
+
     func connect(_ ip: String) {
+        lastConnect = .now
         connectGeneration += 1
         let generation = connectGeneration
         bulb.connect(to: ip)
@@ -431,15 +436,20 @@ final class Model {
     @ObservationIgnored private var lastAutoReconnect = Date.distantPast
 
     /// The connection to the bulb failed (it takes no more replies): say so, and make a new one,
-    /// at most every 30 s. Otherwise the next foreground, Shortcut or watch command reconnects,
-    /// as the link is unreachable.
+    /// at most every 30 s; failing again within that, search for it (Mac). Otherwise the next
+    /// foreground, Shortcut or watch command reconnects, as the link is unreachable.
     private func connectionLost() {
         link = .unreachable
         live = false
         pending = false
         verifyingSeq = nil
-        guard Date.now.timeIntervalSince(lastAutoReconnect) > 30,
-              let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
+        guard let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
+        guard Date.now.timeIntervalSince(lastAutoReconnect) > 30 else {
+            // Lost again straight after reconnecting: on the Mac, look for the bulb elsewhere (it
+            // may have a new address, and another device its old one).
+            relocate()
+            return
+        }
         lastAutoReconnect = .now
         let generation = connectGeneration
         status += "; reconnecting…"
@@ -1107,7 +1117,8 @@ final class Model {
             startIfSaved()
             return
         }
-        guard link != .connecting else { return } // already on its way (just launched, say)
+        // Already on its way (just launched, say); a connect left hanging by a suspension is redone.
+        if link == .connecting, Date.now.timeIntervalSince(lastConnect) < 5 { return }
         if !push.isRunning || link != .connected { connect(a) } else { sync() }
     }
 
@@ -1258,7 +1269,9 @@ final class Model {
                 // failed read isn't worth the status line.
                 info[method] = JSONText.pretty(["error": err])
                 infoErrors[method] = err["message"] as? String ?? (err["code"] as? Int).map { "Error \($0)" } ?? "Error"
-                return
+                // Except getPilot, which the controls wait for, and a signing refusal, which every
+                // request will get: those need saying.
+                if method != "getPilot", code != -32605 { return }
             }
             status = "\(method): \(text)"
             return
