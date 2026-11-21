@@ -344,10 +344,19 @@ final class LightShowPlayer {
         // rather than catching up from scratch. Cues it moved past go as the state they add up
         // to; moved back, the ones since are sent again as they come round.
         if let sentUpTo, delay != sentDelay {
+            // Where the show would be now with the delay as it was: cues up to there came due
+            // anyway, and go as they are (their own fades); only the ones the change moved past
+            // go as the state they add up to, as a cut.
+            let natural = now + (sentDelay ?? delay) / 1000
             sentDelay = delay
             if abs(showTime - sentUpTo) < 2 {
                 let next = show.cues.firstIndex { $0.time > showTime + Self.slack } ?? show.cues.count
-                if next > nextCue { sendState(LightShow.state(after: show.cues[nextCue..<next]), trans: 0) }
+                if next > nextCue {
+                    let due = show.cues[nextCue..<next]
+                    let skipped = due.firstIndex { $0.time > natural + Self.slack } ?? next
+                    for cue in due[..<skipped] { send(cue.pilot) }
+                    if skipped < next { sendState(LightShow.state(after: show.cues[skipped..<next]), trans: 0) }
+                }
                 if next != nextCue {
                     currentCue = next > 0 ? next - 1 : nil
                     light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
