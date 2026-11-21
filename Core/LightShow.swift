@@ -98,8 +98,11 @@ struct LightShow {
                 // were (the bulb keeps them), as when the cues are played one by one.
                 state = state.filter { !otherColour.contains($0.key) }
             }
-            // A setPilot without "state" switches the bulb on: an earlier off no longer holds.
-            if cue.pilot["state"] == nil, cue.pilot.keys.contains(where: { $0 != "trans" }) { state["state"] = nil }
+            // A setPilot without "state" switches the bulb on: an earlier off no longer holds. Not a
+            // speed on its own, though: the player holds that while the bulb is off.
+            if cue.pilot["state"] == nil, cue.pilot.keys.contains(where: { $0 != "trans" && $0 != "speed" }) {
+                state["state"] = nil
+            }
             state.merge(cue.pilot) { $1 }
         }
         state["trans"] = nil
