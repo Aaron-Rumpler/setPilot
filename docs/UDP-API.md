@@ -123,7 +123,7 @@ Each step:
 | 0 | mode: 0 colour, anything else temperature |
 | 1–5 | red, green, blue, **warm**, **cool** (0–255; colour steps) |
 | 6 | kelvin (temperature steps) |
-| 7 | level, 1–100 % (see below) |
+| 7 | level, 0–100 % (see below) |
 | 8 | hold, ms |
 | 9 | fade into the next step, ms |
 | 10 | timing jitter (see below); 0 for none |

@@ -266,7 +266,7 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         var elm: [Int] {
             let temperature = useTemp && !dark
             let channels = temperature || dark ? [0, 0, 0, 0, 0] : [r, g, b, w, c]
-            let level = dark ? 100 : min(max(self.level, 1), 100)
+            let level = dark ? 100 : min(max(self.level, 0), 100)
             return [temperature ? 1 : 0] + channels + [temperature ? temp : 0, level, max(hold, 0), max(fade, 0), jitterByte, 0, 0]
         }
 
