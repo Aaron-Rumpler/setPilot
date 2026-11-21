@@ -140,6 +140,8 @@ final class Model {
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     @ObservationIgnored private var speedOwed = false
+    /// A read after a refused setPilot: it puts the controls right, leaving the error as status.
+    @ObservationIgnored private var quietRead = false
     @ObservationIgnored private var lastPilot: [String: Int] = [:]
     @ObservationIgnored private var lastState: Bool?
     @ObservationIgnored private var sendSeq = 0
@@ -775,8 +777,8 @@ final class Model {
             bulb.send(method, sent(p), retry: retry)
             scheduleVerify()
         case "setState":
+            powerBefore = isOn // what a refusal puts back, whatever this one carries
             if let s = p["state"] as? Bool {
-                powerBefore = isOn
                 isOn = s
                 lastState = s
             }
@@ -896,8 +898,12 @@ final class Model {
                 let generation = connectGeneration
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
-                    // Switched off meanwhile: on its own it would switch it back on.
-                    guard connectGeneration == generation, isOn != false else { return }
+                    // Switched off meanwhile: on its own it would switch it back on. Owed instead.
+                    guard connectGeneration == generation else { return }
+                    guard isOn != false else {
+                        speedOwed = true
+                        return
+                    }
                     bulb.send("setPilot", speedParams, retry: retry)
                 }
             }
@@ -1300,6 +1306,12 @@ final class Model {
                 pending = false
                 verifyingSeq = nil
             }
+            // The controls already show the refused change: read the bulb's actual state, without
+            // letting that read's status replace the error below.
+            if method == "setPilot" {
+                quietRead = true
+                bulb.send("getPilot", retry: true)
+            }
             if method == "setState" { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
                 lastState = powerBefore
@@ -1349,7 +1361,7 @@ final class Model {
                 verify(result)
             } else {
                 applyPilot(result)
-                status = "Synced"
+                if quietRead { quietRead = false } else { status = "Synced" }
             }
         case "getModelConfig", "getUserConfig":
             applyLimits(result)
