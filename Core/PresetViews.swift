@@ -31,10 +31,16 @@ struct PresetGrid: View {
                         .accessibilityHint("Applies the preset: \(lib.name(of: preset.colour)), \(preset.dimming)%")
                         .help("\(lib.name(of: preset.colour)), \(preset.dimming)%")
                         .contextMenu { menu(for: preset) }
+                        #if os(macOS)
+                        // Popovers, not an alert: the grid is also in the menu bar panel, which
+                        // can't show alerts.
+                        .popover(isPresented: prompting(preset), arrowEdge: .bottom) { prompt(for: preset) }
+                        #endif
                     }
                 }
             }
         }
+        #if os(iOS)
         .alert("Rename Preset", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") {
@@ -50,7 +56,34 @@ struct PresetGrid: View {
                 deleting = nil
             }
         }
+        #endif
     }
+
+    #if os(macOS)
+    /// Renaming or deleting this preset.
+    private func prompting(_ preset: Preset) -> Binding<Bool> {
+        Binding(get: { renaming?.id == preset.id || deleting?.id == preset.id },
+                set: { if !$0 { renaming = nil; deleting = nil } })
+    }
+
+    @ViewBuilder private func prompt(for preset: Preset) -> some View {
+        if renaming?.id == preset.id {
+            NamePrompt(title: "Rename Preset", name: $newName,
+                       onSave: {
+                           model.renamePreset(preset.id, to: newName)
+                           renaming = nil
+                       },
+                       onCancel: { renaming = nil })
+        } else {
+            ConfirmPrompt(title: "Delete “\(preset.name)”?", actionTitle: "Delete",
+                          onConfirm: {
+                              model.library.presets.removeAll { $0.id == preset.id }
+                              deleting = nil
+                          },
+                          onCancel: { deleting = nil })
+        }
+    }
+    #endif
 
     private var gridColumns: [GridItem] {
         if let columns { return Array(repeating: GridItem(.flexible(), spacing: 8), count: columns) }

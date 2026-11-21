@@ -160,17 +160,23 @@ struct RenameButton: View {
         }
         .buttonStyle(.borderless)
         .help("Name this bulb")
-        .alert("Name this bulb", isPresented: $editing) {
-            TextField("Name", text: $draft)
-            Button("Save") { model.rename(mac: mac, to: draft) }
-            if model.name(for: mac) != nil {
-                Button("Remove Name", role: .destructive) { model.rename(mac: mac, to: "") }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("MAC address \(mac). " + (CloudSync.isEnabled
-                 ? "The name syncs to your other devices through iCloud."
-                 : "The name is kept on this Mac."))
+        // A popover, not an alert: it's also used in the menu bar panel, which can't show alerts.
+        .popover(isPresented: $editing, arrowEdge: .trailing) {
+            NamePrompt(title: "Name This Bulb",
+                       message: "MAC address \(mac). " + (CloudSync.isEnabled
+                           ? "The name syncs to your other devices through iCloud."
+                           : "The name is kept on this Mac."),
+                       name: $draft,
+                       removeTitle: model.name(for: mac) == nil ? nil : "Remove Name",
+                       onRemove: {
+                           model.rename(mac: mac, to: "")
+                           editing = false
+                       },
+                       onSave: {
+                           model.rename(mac: mac, to: draft)
+                           editing = false
+                       },
+                       onCancel: { editing = false })
         }
     }
 }
