@@ -145,6 +145,9 @@ final class Model {
     /// The setPilot just sent switches the bulb on or off (the power switch, a preset): if it gets
     /// no answer, the power switch goes back to how it was.
     @ObservationIgnored private var pilotSwitches = false
+    /// The latest change's setPilot was answered "success" (Shortcuts count that as taken, even if
+    /// the read-back after it is lost).
+    @ObservationIgnored private var pilotAnswered = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String?
@@ -422,6 +425,7 @@ final class Model {
         unsent = [] // a slider move still waiting was for the previous bulb
         quietReads = 0
         speedOwed = false
+        pilotSwitches = false // a switch still unanswered was for the previous bulb
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -878,13 +882,14 @@ final class Model {
     }
 
     /// Sends one setPilot (and `speed` after it, on its own: the firmware drops speed sent with
-    /// anything else), then reads the bulb back. `power`: true leaves `state` out, which switches
-    /// the bulb on; false sends `"state": false`; nil keeps it as it is (a bulb that's off gets
-    /// `"state": false`, since leaving it out would switch it on).
+    /// anything else), then reads the bulb back. `power`: true sends `"state": true`, false
+    /// `"state": false`; nil keeps it as it is (a bulb that's off gets `"state": false`, since
+    /// leaving it out would switch it on).
     private func transmit(_ params: [String: Any], speed: Int?, power: Bool?, retry: Bool) {
         var p = params
         guard !p.isEmpty || speed != nil || power != nil else { return }
         refusal = nil
+        pilotAnswered = false
         if power != nil { powerBefore = isOn } // what an unanswered switch puts back
         switch power {
         case true?:
@@ -1109,6 +1114,8 @@ final class Model {
         sendSeq += 1
         pending = true
         refusal = nil
+        pilotAnswered = false
+        pilotSwitches = false
         bulb.send("setPilot", p, retry: true)
         scheduleVerify()
     }
@@ -1127,6 +1134,7 @@ final class Model {
         verifyingSeq = nil
         pending = false
         mismatch = nil
+        pilotSwitches = false
         bulb.send("setPilot", pilot, retry: false)
     }
 
@@ -1321,9 +1329,9 @@ final class Model {
     /// refusal, or no answer within `timeout`.
     func outcome(timeout: Double = 3) async -> String? {
         let end = Date().addingTimeInterval(timeout)
-        while refusal == nil, pending, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        while refusal == nil, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if let refusal { return refusal }
-        return pending ? "The bulb didn't answer." : nil
+        return pending && !pilotAnswered ? "The bulb didn't answer." : nil
     }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
@@ -1449,6 +1457,7 @@ final class Model {
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
             pilotSwitches = false // answered
+            pilotAnswered = true
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             status = isOn == false ? "Switched off" : "Switched on"
