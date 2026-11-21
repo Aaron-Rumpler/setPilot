@@ -1391,7 +1391,7 @@ final class Model {
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.
             // A read-back already on its way (the refusal came after it went out) will do.
-            let readOut = verifyingSeq != nil
+            let readOut = verifyingSeq != nil && verifyingSeq == sendSeq
             if method == "setPilot" || method == "setState" || method == "getPilot" {
                 verifyTask?.cancel()
                 pending = false
@@ -1471,6 +1471,7 @@ final class Model {
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
             pilotSwitchesOn = false // answered: it's on
+            status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             setStatesAnswered = setStatesSent
             status = isOn == false ? "Switched off" : "Switched on"
