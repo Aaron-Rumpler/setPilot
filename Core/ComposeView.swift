@@ -82,7 +82,7 @@ extension Model {
 
     /// Roughly what will be sent.
     var draftPreview: String {
-        draftChange.preview(isOn: isOn) { id, k in
+        draftChange.preview(isOn: isOn, owedSpeed: owedSpeed) { id, k in
             library.scale(id)?.scale.channels(at: k).map { "\"r\":\($0.r),\"g\":\($0.g),\"b\":\($0.b),\"c\":\($0.c),\"w\":\($0.w)" }
         }
     }

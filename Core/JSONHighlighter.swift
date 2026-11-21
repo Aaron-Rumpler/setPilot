@@ -57,14 +57,14 @@ enum JSONHighlighter {
         }
     }
 
+    /// Colours the text in place, rather than putting it together from pieces: a token edge can
+    /// fall inside a character (a combining accent typed outside a string), and pieces would
+    /// split it.
     static func highlight(_ json: String) -> AttributedString {
-        var out = AttributedString()
+        var out = AttributedString(json)
         for (range, kind) in tokens(json) {
-            let lo = String.Index(utf16Offset: range.lowerBound, in: json)
-            let hi = String.Index(utf16Offset: range.upperBound, in: json)
-            var piece = AttributedString(String(json[lo..<hi]))
-            piece.foregroundColor = color(kind)
-            out += piece
+            let ns = NSRange(location: range.lowerBound, length: range.count)
+            if let r = Range(ns, in: out) { out[r].foregroundColor = color(kind) }
         }
         return out
     }

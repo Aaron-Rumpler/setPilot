@@ -4,7 +4,9 @@ extension LightChange {
     /// Roughly what sending this will send, for Compose (custom scenes' definitions shortened).
     /// `isOn` is the bulb's power now; `channels` gives a custom CCT scale's channels at a kelvin
     /// as JSON (`"r":…,"g":…`), or nil if they aren't known here.
-    func preview(isOn: Bool?, channels: (UUID, Int) -> String?) -> String {
+    /// `owedSpeed`: a scene speed changed while the bulb was off, which goes with switching it on
+    /// (Model's `owedSpeed`).
+    func preview(isOn: Bool?, owedSpeed: Int? = nil, channels: (UUID, Int) -> String?) -> String {
         var parts: [String] = []
         switch colour {
         case let .rgbcw(r, g, b, c, w)?: parts.append("\"r\":\(r),\"g\":\(g),\"b\":\(b),\"c\":\(c),\"w\":\(w)")
@@ -25,6 +27,7 @@ extension LightChange {
         let off = power == false || (power == nil && isOn == false)
         switch colour {
         case let .scene(_, s?)?, let .custom(_, s?)?: if !off { text += "\nthen setPilot {\"speed\":\(s)}" }
+        case nil: if power == true, let s = owedSpeed { text += "\nand setPilot {\"speed\":\(s)}" }
         default: break
         }
         return text
