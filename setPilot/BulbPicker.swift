@@ -150,10 +150,14 @@ struct RenameButton: View {
     let mac: String
     @State private var editing = false
     @State private var draft = ""
+    /// Whether the bulb had a name when the prompt opened, kept while it closes (Remove Name
+    /// clears it, which would take the button away as the popover fades).
+    @State private var hadName = false
 
     var body: some View {
         Button {
             draft = model.name(for: mac) ?? ""
+            hadName = model.name(for: mac) != nil
             editing = true
         } label: {
             Image(systemName: "pencil")
@@ -167,7 +171,7 @@ struct RenameButton: View {
                            ? "The name syncs to your other devices through iCloud."
                            : "The name is kept on this Mac."),
                        name: $draft,
-                       removeTitle: model.name(for: mac) == nil ? nil : "Remove Name",
+                       removeTitle: hadName ? "Remove Name" : nil,
                        onRemove: {
                            model.rename(mac: mac, to: "")
                            editing = false

@@ -289,6 +289,8 @@ struct PresetEditView: View {
     let link: PhoneLink
     let presetID: UUID
     @State private var name = ""
+    /// The preset's name as last seen, for the dialogs as they close after it's deleted.
+    @State private var shownName = ""
     @State private var confirmingUpdate = false
     @State private var confirmingDelete = false
     @Environment(\.dismiss) private var dismiss
@@ -318,12 +320,17 @@ struct PresetEditView: View {
             }
         }
         .navigationTitle(preset?.name ?? "Preset")
-        .onAppear { name = preset?.name ?? "" }
-        .confirmationDialog("Replace “\(preset?.name ?? name)” with the current light?", isPresented: $confirmingUpdate,
+        .onAppear {
+            name = preset?.name ?? ""
+            shownName = name
+        }
+        // The name for the dialogs once the preset has gone (deleting it closes them).
+        .onChange(of: preset?.name) { _, n in if let n { shownName = n } }
+        .confirmationDialog("Replace “\(preset?.name ?? shownName)” with the current light?", isPresented: $confirmingUpdate,
                             titleVisibility: .visible) {
             Button("Update") { link.send(.updatePreset(presetID)) }
         }
-        .confirmationDialog("Delete “\(preset?.name ?? name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+        .confirmationDialog("Delete “\(preset?.name ?? shownName)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 link.send(.deletePreset(presetID))
                 dismiss()
