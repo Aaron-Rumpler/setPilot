@@ -102,8 +102,10 @@ struct PresetsView: View {
             }
             .navigationTitle("setPilot")
             .navigationDestination(item: $editing) { preset in PresetEditView(link: link, presetID: preset.id) }
-            .task { await link.poll() } // live updates while the app is open
         }
+        // On the stack, not its root list: the list's task would be cancelled while a screen
+        // (Controls, say) is pushed over it.
+        .task { await link.poll() } // live updates while the app is open
     }
 
     private func swatch(_ colour: LightColour) -> RGB? {
