@@ -372,13 +372,17 @@ final class Model {
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
            mac == nil || mac?.lowercased() == chosenMAC { return }
+        // The same bulb again (to retry it, say): by its MAC, or its address if no MAC is given.
+        let sameBulb = mac.map { $0.lowercased() == chosenMAC } ?? (a == UserDefaults.standard.string(forKey: Self.addressKey))
         UserDefaults.standard.set(a, forKey: Self.addressKey)
         savedMAC = mac?.lowercased()
         rememberBulb(address: a, mac: mac)
-        // A draft is for the bulb it was started on (its scales, its state). Reconnecting to the
-        // same bulb (coming back from the background, a new IP) keeps it.
-        composing = false
-        draft.loaded = false
+        // A draft is for the bulb it was started on (its scales, its state). The same bulb again
+        // keeps it, as reconnecting does (coming back from the background, a new IP).
+        if !sameBulb {
+            composing = false
+            draft.loaded = false
+        }
         started = true
         connect(a)
     }
@@ -1000,6 +1004,8 @@ final class Model {
             }
             if let mac = chosenMAC, found.mac == mac.lowercased() {
                 library.setActiveScale(id, for: mac)
+                // Temperature is on this scale now: it goes back to it after another mode.
+                UserDefaults.standard.set(true, forKey: Self.temperatureScaleKey)
                 mode = .custom
                 customKelvin = Double(k)
             } else {
