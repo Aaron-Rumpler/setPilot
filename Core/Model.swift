@@ -140,8 +140,9 @@ final class Model {
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     @ObservationIgnored private var speedOwed = false
-    /// A read after a refused setPilot: it puts the controls right, leaving the error as status.
-    @ObservationIgnored private var quietRead = false
+    /// Reads after refused setPilots, still to come: they put the controls right, leaving the
+    /// error as the status (one per refusal: a slider drag can be refused several times over).
+    @ObservationIgnored private var quietReads = 0
     @ObservationIgnored private var lastPilot: [String: Int] = [:]
     @ObservationIgnored private var lastState: Bool?
     @ObservationIgnored private var sendSeq = 0
@@ -197,6 +198,7 @@ final class Model {
             if method == nil { connectionLost() }
             switch method {
             case "getPilot"?:
+                quietReads = 0 // the reads aren't coming
                 // Connecting, or the bulb has gone away since: look for it at a new address.
                 if link == .connecting || link == .connected {
                     link = .unreachable
@@ -396,6 +398,7 @@ final class Model {
         mismatch = nil
         wrongBulb = false
         unsent = [] // a slider move still waiting was for the previous bulb
+        quietReads = 0
         speedOwed = false
         // Nothing carries over from the previous bulb.
         isOn = nil
@@ -632,6 +635,7 @@ final class Model {
     func sync() {
         verifyingSeq = nil
         pending = false
+        quietReads = 0 // asked for: this one says so
         bulb.send("getPilot", retry: true)
     }
 
@@ -851,6 +855,7 @@ final class Model {
     private func transmit(_ params: [String: Any], speed: Int?, power: Bool?, retry: Bool) {
         var p = params
         guard !p.isEmpty || speed != nil || power != nil else { return }
+        if power != nil { powerBefore = isOn } // what a refused or unanswered setState puts back
         switch power {
         case true?: isOn = true
         case false?:
@@ -1309,10 +1314,10 @@ final class Model {
             // The controls already show the refused change: read the bulb's actual state, without
             // letting that read's status replace the error below.
             if method == "setPilot" {
-                quietRead = true
+                quietReads += 1
                 bulb.send("getPilot", retry: true)
             } else if method == "getPilot" {
-                quietRead = false // refused too: nothing to keep quiet
+                quietReads = 0 // refused too: nothing to keep quiet
             }
             if method == "setState" { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
@@ -1363,7 +1368,7 @@ final class Model {
                 verify(result)
             } else {
                 applyPilot(result)
-                if quietRead { quietRead = false } else { status = "Synced" }
+                if quietReads > 0 { quietReads -= 1 } else { status = "Synced" }
             }
         case "getModelConfig", "getUserConfig":
             applyLimits(result)

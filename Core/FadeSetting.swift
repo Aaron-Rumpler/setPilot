@@ -113,7 +113,7 @@ struct MillisecondsField: View {
             #endif
             .onAppear { text = String(value) }
             .onChange(of: text) { _, new in
-                let digits = new.filter(\.isNumber)
+                let digits = new.filter { $0.isASCII && $0.isNumber } // what Int() can read
                 if digits != new { text = digits; return }
                 if let n = Int(digits.prefix(6)) {
                     let clamped = min(max(n, 0), maximum)
