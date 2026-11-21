@@ -406,7 +406,9 @@ final class Model {
         // The same bulb again (to retry it, say): by its MAC, or its address if no MAC is given.
         let sameBulb = mac.map { $0.lowercased() == chosenMAC } ?? (a == UserDefaults.standard.string(forKey: Self.addressKey))
         UserDefaults.standard.set(a, forKey: Self.addressKey)
-        savedMAC = mac?.lowercased()
+        // The saved address again without a MAC (typed in to retry it) keeps its identity: what
+        // finds it if it's moved, refuses another device at the address, and signs.
+        if let mac { savedMAC = mac.lowercased() } else if !sameBulb { savedMAC = nil }
         rememberBulb(address: a, mac: mac)
         // A draft is for the bulb it was started on (its scales, its state). The same bulb again
         // keeps it, as reconnecting does (coming back from the background, a new IP).
