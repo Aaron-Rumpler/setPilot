@@ -23,10 +23,11 @@ jobs:
           xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             build
-      - name: Check signature and entitlements
+      - name: Check signature, entitlements and commit
         run: |
           codesign --verify --strict --verbose=2 build/Release/setPilot.app
           codesign -d --entitlements - build/Release/setPilot.app
+          /usr/libexec/PlistBuddy -c "Print :SetPilotCommit" build/Release/setPilot.app/Contents/Info.plist
       - name: Build for iPhone (with the watch app)
         run: |
           xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \
