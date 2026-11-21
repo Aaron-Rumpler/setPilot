@@ -655,10 +655,12 @@ final class Model {
 
     // MARK: Commands
 
-    func sync() {
+    /// Reads the state again. `quiet`: without saying "Synced" (a read the user didn't ask for,
+    /// which shouldn't replace what the status says).
+    func sync(quiet: Bool = false) {
         verifyingSeq = nil
         pending = false
-        quietReads = 0 // asked for: this one says so
+        if quiet { quietReads += 1 } else { quietReads = 0 } // asked for: this one says so
         bulb.send("getPilot", retry: true)
     }
 
@@ -770,7 +772,7 @@ final class Model {
         if method == "setPilot" || method == "setState" {
             Task {
                 try? await Task.sleep(for: .milliseconds(700))
-                sync()
+                sync(quiet: true) // the console has the reply; a refusal stays in the status
             }
         }
     }
@@ -1388,6 +1390,8 @@ final class Model {
             link = .connected
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.
+            // A read-back already on its way (the refusal came after it went out) will do.
+            let readOut = verifyingSeq != nil
             if method == "setPilot" || method == "setState" || method == "getPilot" {
                 verifyTask?.cancel()
                 pending = false
@@ -1398,7 +1402,7 @@ final class Model {
             if method == "setPilot" {
                 pilotSwitchesOn = false // the read that follows says how it is
                 quietReads += 1
-                bulb.send("getPilot", retry: true)
+                if !readOut { bulb.send("getPilot", retry: true) }
             } else if method == "getPilot" {
                 quietReads = 0 // refused too: nothing to keep quiet
             }

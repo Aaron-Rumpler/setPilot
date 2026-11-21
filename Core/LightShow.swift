@@ -181,6 +181,8 @@ final class LightShowPlayer {
     /// switching off, doesn't.
     @ObservationIgnored private var pendingSpeed: Any?
     @ObservationIgnored private var speedTask: Task<Void, Never>?
+    /// A seek made without a completion handler (the item wasn't ready): where to, and when.
+    @ObservationIgnored private var plainSeek: (to: Double, at: Date)?
     /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
     @ObservationIgnored private var sentDelay: Double?
 
@@ -207,6 +209,7 @@ final class LightShowPlayer {
         player.replaceCurrentItem(with: item)
         seekGeneration += 1 // a seek still landing was in the old item
         seeking = false
+        plainSeek = nil
         mediaName = url.lastPathComponent
         hasVideo = false
         duration = 0
@@ -275,6 +278,7 @@ final class LightShowPlayer {
         currentCue = nil
         light = [:]
         restore()
+        showPosition(at: 0) // a cue at the very start is the current one, as when seeking there
     }
 
     func seek(to seconds: Double) {
@@ -288,10 +292,15 @@ final class LightShowPlayer {
         // A seek with a completion handler raises before the item is ready to play (still
         // loading, or failed): then a plain one, which needs no waiting for.
         guard player.currentItem?.status == .readyToPlay else {
-            seeking = false
+            // No completion to wait for: treat it as landed once the player's time gets there
+            // (or after a moment, if the item never becomes ready), so the time shown doesn't jump
+            // back meanwhile.
+            seeking = true
+            plainSeek = (t, .now)
             player.seek(to: CMTime(seconds: t, preferredTimescale: 600))
             return
         }
+        plainSeek = nil
         seeking = true
         player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             Task { @MainActor [weak self] in
@@ -336,6 +345,10 @@ final class LightShowPlayer {
     private func tick() {
         let now = CMTimeGetSeconds(player.currentTime())
         guard now.isFinite else { return }
+        if let seek = plainSeek, abs(now - seek.to) < 0.05 || Date.now.timeIntervalSince(seek.at) > 2 {
+            plainSeek = nil
+            seeking = false
+        }
         // Observed values change only when they need to: this runs 100 times a second.
         let playing = player.rate != 0
         if playing != isPlaying { isPlaying = playing }
@@ -533,6 +546,7 @@ final class LightShowPlayer {
         player.replaceCurrentItem(with: nil)
         seekGeneration += 1
         seeking = false
+        plainSeek = nil
         mediaName = nil
         hasVideo = false
         duration = 0
