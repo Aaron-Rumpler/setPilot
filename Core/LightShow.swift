@@ -53,7 +53,9 @@ struct LightShow {
 
     /// Seconds from a number, or from "m:ss.sss" / "h:mm:ss.sss".
     static func seconds(_ value: Any) -> Double? {
-        if let n = value as? NSNumber, !(value is Bool) { return n.doubleValue }
+        // JSON true/false are NSNumbers too, but `is Bool` can't tell them apart: it holds for any
+        // NSNumber that's 0 or 1 (so "t": 0 would be refused). CF's boolean type can.
+        if let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { return n.doubleValue }
         guard let s = value as? String else { return nil }
         let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
         guard (1...3).contains(parts.count) else { return nil }
@@ -112,7 +114,15 @@ final class LightShowPlayer {
 
     /// The media time, for the transport (updated as it plays).
     private(set) var time = 0.0
-    private(set) var isPlaying = false
+    private(set) var isPlaying = false {
+        didSet {
+            #if os(iOS)
+            // Video keeps the screen on by itself; audio doesn't, and a locked phone suspends the
+            // app, show and all.
+            if isPlaying != oldValue { UIApplication.shared.isIdleTimerDisabled = isPlaying }
+            #endif
+        }
+    }
     /// The cue sent most recently, for the cue list.
     private(set) var currentCue: Int?
     /// The show's state as last sent, for the on-screen swatch.
@@ -120,7 +130,10 @@ final class LightShowPlayer {
 
     /// How early cues are sent, in ms (negative: late). Remembered.
     var delay: Double = UserDefaults.standard.object(forKey: LightShowPlayer.delayKey) as? Double ?? 200 {
-        didSet { UserDefaults.standard.set(delay, forKey: Self.delayKey) }
+        didSet {
+            UserDefaults.standard.set(delay, forKey: Self.delayKey)
+            if !isPlaying { showPosition(at: time) } // the highlight and stage follow while paused
+        }
     }
     static let delayKey = "lightShowDelay"
     /// Off: play the show on screen only.
@@ -300,14 +313,7 @@ final class LightShowPlayer {
         guard now.isFinite else { return }
         // Observed values change only when they need to: this runs 100 times a second.
         let playing = player.rate != 0
-        if playing != isPlaying {
-            isPlaying = playing
-            #if os(iOS)
-            // Video keeps the screen on by itself; audio doesn't, and a locked phone suspends the
-            // app, show and all.
-            UIApplication.shared.isIdleTimerDisabled = playing
-            #endif
-        }
+        if playing != isPlaying { isPlaying = playing }
         // Not while a seek lands either: the player still has the old time until then.
         if !scrubbing, !seeking, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
         guard playing, let show, !show.cues.isEmpty else { return }
@@ -382,7 +388,7 @@ final class LightShowPlayer {
             speedTask = Task {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
-                self.send(["speed": speed])
+                self.send(["speed": speed], followUp: true)
             }
         }
     }
@@ -397,7 +403,13 @@ final class LightShowPlayer {
         light = next > 0 ? LightShow.state(after: show.cues[..<next]) : [:]
     }
 
-    private func send(_ pilot: [String: Any]) {
+    /// `followUp`: a scene's speed, sent separately just after it. Anything else sent first
+    /// cancels it: it would switch the bulb on, or apply to whatever came next.
+    private func send(_ pilot: [String: Any], followUp: Bool = false) {
+        if !followUp {
+            speedTask?.cancel()
+            speedTask = nil
+        }
         guard sendsToBulb else { return }
         // The first cue sent: remember the light to put back (whether it's put back is decided
         // when the show stops).
