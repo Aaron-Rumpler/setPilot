@@ -49,6 +49,30 @@ final class PhoneRelay: NSObject {
     private enum Outcome {
         case now(LightSnapshot)
         case settle(after: Duration)
+        /// Not done: the bulb isn't answering (the reply says so).
+        case failed(LightSnapshot)
+    }
+
+    /// When waiting for the bulb last came to nothing. For a while after, commands don't wait
+    /// their turn to find out again: a burst of taps during an outage would queue up, then either
+    /// time out on the watch or land late, long after they were meant. They're answered "not
+    /// answering" at once instead (a connect keeps being tried meanwhile).
+    private var notAnsweringSince: Date?
+
+    /// The bulb can take a command now, waiting (up to `timeout`) only if it hasn't just been
+    /// found not answering.
+    private func bulbReady(_ model: Model, timeout: Double = 5) async -> Bool {
+        if model.canControl {
+            notAnsweringSince = nil
+            return true
+        }
+        if let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10 {
+            _ = model.ensureLive()
+            return false
+        }
+        let ready = await model.waitUntilControllable(timeout: timeout)
+        notAnsweringSince = ready ? nil : .now
+        return ready
     }
 
     /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
@@ -58,10 +82,11 @@ final class PhoneRelay: NSObject {
         guard let model else { return .now(LightSnapshot()) }
         switch command {
         case .state:
-            _ = await model.waitUntilControllable(timeout: 3)
+            _ = await bulbReady(model, timeout: 3)
             return .now(model.snapshot)
         case .savePreset(let name):
-            _ = await model.waitUntilControllable(timeout: 3)
+            // The light as it is: not saved from a state that may be out of date.
+            guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot) }
             model.savePreset(named: name)
             return .now(model.snapshot)
         case .deletePreset(let id):
@@ -82,12 +107,13 @@ final class PhoneRelay: NSObject {
             return .now(model.snapshot)
         case let .chooseBulb(address, mac):
             model.choose(address, mac: mac)
-            _ = await model.waitUntilControllable(timeout: 4)
+            notAnsweringSince = nil // another bulb: worth waiting for
+            _ = await bulbReady(model, timeout: 4)
             return .now(model.snapshot)
         default:
             break
         }
-        guard await model.waitUntilControllable() else { return .now(model.snapshot) }
+        guard await bulbReady(model) else { return .failed(model.snapshot) }
         var pause = Duration.zero
         switch command {
         case .sync:
@@ -295,6 +321,8 @@ extension PhoneRelay: WCSessionDelegate {
         switch await run(message.command) {
         case .now(let snapshot):
             finish(message, snapshot)
+        case .failed(let snapshot):
+            finish(message, snapshot, error: "Your bulb isn't answering. It may be off at the wall or out of Wi-Fi range.")
         case .settle(let pause):
             Task {
                 try? await Task.sleep(for: pause)
@@ -304,7 +332,7 @@ extension PhoneRelay: WCSessionDelegate {
         }
     }
 
-    private func finish(_ message: Incoming, _ snapshot: LightSnapshot) {
+    private func finish(_ message: Incoming, _ snapshot: LightSnapshot, error: String? = nil) {
         let command = message.command
         // The presets changed: the watch's copy for when the iPhone is out of reach.
         switch command {
@@ -317,6 +345,7 @@ extension PhoneRelay: WCSessionDelegate {
            let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
             response[WatchKey.deviceInfo] = data
         }
+        if let error { response[WatchKey.error] = error }
         message.reply(response)
     }
 }
