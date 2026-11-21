@@ -118,6 +118,8 @@ struct MillisecondsField: View {
                 if let n = Int(digits.prefix(6)) {
                     let clamped = min(max(n, 0), maximum)
                     if clamped != value { value = clamped }
+                    // Over the limit (or too long): show what's used.
+                    if String(clamped) != digits { text = String(clamped) }
                 }
             }
             // Changed elsewhere (the stepper, the watch): show it, unless it's what's typed.
