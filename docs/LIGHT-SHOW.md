@@ -44,8 +44,9 @@ Each cue:
 - `trans` is the fade into this state, in ms. Without it the bulb uses its own fade (often ~0.5 s),
   so give `"trans": 0` for a hard cut.
 - `speed` only takes effect in a `setPilot` of its own, so give it its own cue just after the
-  scene's. A speed cue while the show has the bulb off is held, and sent once a cue switches it
-  back on (on its own it would switch the bulb on).
+  scene's. A speed cue while the show has the bulb off is held (on its own it would switch the
+  bulb on), and sent once a cue switches it back on, unless that cue brings a new colour, scene or
+  speed of its own.
 - `r` `g` `b` `c` `w` given only in part change just those channels; the bulb keeps the others.
   A `temp` or `sceneId` replaces the colour altogether.
 - Keep cues at least ~80 ms apart. The bulb handles about ten changes a second; much faster and

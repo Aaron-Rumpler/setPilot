@@ -11,10 +11,9 @@ extension Model {
         ])
         scale.name = uniqueScaleName(defaultScale == nil ? "Scale" : "Bulb default", for: mac)
         library.updateScale(scale, for: mac)
-        // Made active only as the bulb's first: otherwise it would look chosen (in the editor and
-        // the Scale picker) while the light stayed on the scale it's using. "Use for Temperature"
-        // makes it the one.
-        if activeScale == nil { library.setActiveScale(scale.id, for: mac) }
+        // Not made active: it would look chosen (in the editor and the Scale picker) while the
+        // light stayed on the scale in use. "Use for Temperature" makes it the one; a bulb's first
+        // scale is active anyway (the active one falls back to the first).
         return scale
     }
 
