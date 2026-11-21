@@ -2,7 +2,7 @@ import SwiftUI
 
 extension Model {
     /// A new scale for the chosen bulb: a copy of the bulb's own table if it's known (otherwise a
-    /// plain warm-to-cool scale), made the one in use.
+    /// plain warm-to-cool scale). Not made the one in use (see below).
     @discardableResult
     func newScale() -> CCTScale? {
         guard let mac = chosenMAC else { return nil }

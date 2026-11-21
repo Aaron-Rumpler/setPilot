@@ -243,6 +243,7 @@ final class Model {
                 lastState = powerBefore
                 status = "The bulb didn't answer the power switch"
                 refusal = status
+                setStatesAnswered = setStatesSent // settled, if not as hoped
             default:
                 break
             }
@@ -423,6 +424,7 @@ final class Model {
         unsent = [] // a slider move still waiting was for the previous bulb
         quietReads = 0
         speedOwed = false
+        setStatesAnswered = setStatesSent // any still waiting won't be answered on the new connection
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -1336,16 +1338,20 @@ final class Model {
         while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
 
+    /// For Shortcuts: where the power switches sent stand, taken before a change (`outcome`
+    /// waits only for those sent after it).
+    var switchMark: Int { setStatesSent }
+
     /// For Shortcuts, after a change: nil once the bulb has taken it (read back, or for a power
-    /// switch, answered), or why not: its refusal, or no answer within `timeout`.
-    func outcome(timeout: Double = 3) async -> String? {
-        let switches = setStatesSent
+    /// switch sent since `mark`, answered), or why not: its refusal, or no answer within `timeout`.
+    func outcome(since mark: Int, timeout: Double = 3) async -> String? {
+        let switching = setStatesSent > mark
         let end = Date().addingTimeInterval(timeout)
-        while refusal == nil, pending || setStatesAnswered < switches, Date() < end {
+        while refusal == nil, pending || switching && setStatesAnswered < setStatesSent, Date() < end {
             try? await Task.sleep(for: .milliseconds(100))
         }
         if let refusal { return refusal }
-        return pending || setStatesAnswered < switches ? "The bulb didn't answer." : nil
+        return pending || switching && setStatesAnswered < setStatesSent ? "The bulb didn't answer." : nil
     }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
@@ -1409,6 +1415,7 @@ final class Model {
             if method == "setState" { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
                 lastState = powerBefore
+                setStatesAnswered = setStatesSent
             }
             let code = err["code"] as? Int
             var text = code == -32601 ? "not supported by this firmware" : "\(err["message"] ?? err)"
