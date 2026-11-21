@@ -565,6 +565,11 @@ struct JSONEditor: NSViewRepresentable {
         context.coordinator.parent = self
         guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
         view.string = text
+        // Replaced from outside (Raw switched, Format, Edit in Console): the undo steps were for
+        // the text before, and applied to this one would garble it or go out of range.
+        // (Text edits' undo steps aren't registered against one target we can name, and the
+        // console window has nothing else to undo.)
+        view.undoManager?.removeAllActions()
         Self.colour(view)
     }
 
