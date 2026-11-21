@@ -19,8 +19,8 @@ trademark of Signify.
   scene), dimming or speed. The firmware ignores some valid parameters when they're combined with
   others, and this doesn't undo changes made meanwhile by other apps.
 - The sliders never switch the bulb on or off: a `setPilot` to a bulb that's off carries
-  `"state": false` (one without `state` switches it on). Only the power switch, applying a preset,
-  and Compose with Power set change it.
+  `"state": false` (one without `state` switches it on). Only the power switch (and Shortcuts'
+  on/off), applying a preset, Compose with Power set and a light show change it.
 - Three modes, by the same names everywhere: **RGBCW**, **Temperature** and **Scenes** (with speed).
   Temperature's Scale is the bulb's own (`temp`) or one of your CCT scales (Custom CCT, below); the
   kelvin carries over when you switch. The slider's track shows the colour of each temperature,
