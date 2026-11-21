@@ -205,7 +205,15 @@ struct ComposeControls: View {
                 .help("Start again from the bulb's current state")
             Spacer()
             Button {
+                #if os(macOS)
+                // A click doesn't end a number field's editing either (see ⌘Return below).
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                DispatchQueue.main.async {
+                    if model.canControl, model.draftHasChange { model.sendDraft() }
+                }
+                #else
                 model.sendDraft()
+                #endif
             } label: {
                 Label("Send", systemImage: "paperplane.fill")
             }
