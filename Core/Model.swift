@@ -962,6 +962,11 @@ final class Model {
         sendSeq += 1
         pending = true
         if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
+        // A new colour replaces the scene a delayed speed was for.
+        if p.keys.contains(where: { $0 != "state" && $0 != "trans" && $0 != "dimming" }) {
+            delayedSpeed?.cancel()
+            delayedSpeed = nil
+        }
         if let speedParams {
             delayedSpeed?.cancel() // out of date: this one replaces it
             delayedSpeed = nil
@@ -1488,6 +1493,8 @@ final class Model {
                 guard seq == sendSeq else { return }
                 verifyingSeq = nil
                 pending = false
+                // The read-back says how the power is: a switch's lost replies mustn't undo it.
+                if result["state"] != nil { pilotSwitches = false }
                 applyPilot(result)
                 verify(result)
             } else if quietReads > 0 {
