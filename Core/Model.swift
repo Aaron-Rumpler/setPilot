@@ -137,6 +137,9 @@ final class Model {
     @ObservationIgnored private var sendScheduled = false
     /// What has changed since the last setPilot (coalesced slider moves).
     @ObservationIgnored private var unsent: Set<PilotField> = []
+    /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
+    /// on): it goes once the bulb is on, with the next change or after switching on.
+    @ObservationIgnored private var speedOwed = false
     @ObservationIgnored private var lastPilot: [String: Int] = [:]
     @ObservationIgnored private var lastState: Bool?
     @ObservationIgnored private var sendSeq = 0
@@ -391,6 +394,7 @@ final class Model {
         mismatch = nil
         wrongBulb = false
         unsent = [] // a slider move still waiting was for the previous bulb
+        speedOwed = false
         // Nothing carries over from the previous bulb.
         isOn = nil
         rssi = nil
@@ -636,6 +640,16 @@ final class Model {
         lastMethod = "setState"
         lastSent = on ? #"{"state":true}"# : #"{"state":false}"#
         bulb.send("setState", ["state": on], retry: true)
+        if on, speedOwed, mode == .scene {
+            // The speed changed while it was off: now it's on, after the switch-on has landed.
+            speedOwed = false
+            let generation = connectGeneration
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard connectGeneration == generation, isOn == true, mode == .scene else { return }
+                bulb.send("setPilot", ["speed": Int(speed)], retry: true)
+            }
+        }
     }
 
     /// Switches between the three controls. Temperature goes back to whichever scale it last used:
@@ -794,7 +808,7 @@ final class Model {
         var p: [String: Any] = [:]
         if fields.contains(.dimming) { p["dimming"] = Int(dimming) }
         if fields.contains(.colour) { p.merge(colourParams()) { $1 } }
-        let speed = fields.contains(.speed) && mode == .scene ? Int(speed) : nil
+        let speed = (fields.contains(.speed) || speedOwed) && mode == .scene ? Int(speed) : nil
         if !p.isEmpty, let fade = fadeForControls { p["trans"] = fade }
         transmit(p, speed: speed, power: nil, retry: retry)
     }
@@ -843,8 +857,9 @@ final class Model {
             if !p.isEmpty, isOn == false { p["state"] = false }
         }
         // Not while it's (to be) off: a setPilot without "state" switches the bulb on, and speed
-        // can't go with anything else. It goes with the next change once it's on.
+        // can't go with anything else. It's owed until the bulb is on (`speedOwed`).
         let speedParams: [String: Any]? = isOn == false ? nil : speed.map { ["speed": $0] }
+        if speed != nil { speedOwed = speedParams == nil }
         guard !p.isEmpty || speedParams != nil || power != nil else { return }
         // What goes out first: the setPilot, else speed on its own, else setState to switch on.
         let shown: [String: Any]
