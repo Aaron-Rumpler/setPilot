@@ -11,9 +11,10 @@ struct PresetGrid: View {
     @State private var deleting: Preset?
     /// The name in the delete confirmation, kept while it closes (deleting is cleared first).
     @State private var deletingName = ""
-    /// Which prompt was opened, kept while it closes: deciding by `renaming`, which closing
-    /// clears, showed the delete prompt for a moment as a rename prompt faded out.
-    @State private var promptIsRename = true
+    /// Which prompt each tile last opened (rename true, delete false), kept while it closes:
+    /// deciding by `renaming`, which closing clears, showed the delete prompt for a moment as a
+    /// rename prompt faded out. Per tile, so another tile's prompt can't change it meanwhile.
+    @State private var promptIsRename: [UUID: Bool] = [:]
 
     var body: some View {
         let lib = model.library
@@ -73,7 +74,7 @@ struct PresetGrid: View {
     }
 
     @ViewBuilder private func prompt(for preset: Preset) -> some View {
-        if promptIsRename {
+        if promptIsRename[preset.id] ?? true {
             NamePrompt(title: "Rename Preset", name: $newName,
                        onSave: {
                            model.renamePreset(preset.id, to: newName)
@@ -101,7 +102,7 @@ struct PresetGrid: View {
         let i = lib.presets.firstIndex(where: { $0.id == preset.id }) ?? 0
         Button("Rename…") {
             newName = preset.name
-            promptIsRename = true
+            promptIsRename[preset.id] = true
             renaming = preset
         }
         Button("Update to Current Light") { model.updatePreset(preset.id) }
@@ -113,7 +114,7 @@ struct PresetGrid: View {
         Button("Move Later") { model.movePreset(preset.id, by: 1) }.disabled(i >= lib.presets.count - 1)
         Divider()
         Button("Delete…", role: .destructive) {
-            promptIsRename = false
+            promptIsRename[preset.id] = false
             deleting = preset
         }
     }
