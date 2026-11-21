@@ -140,6 +140,12 @@ final class Model {
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     @ObservationIgnored private var speedOwed = false
+    /// A scene's speed waiting to go after the scene: a newer speed replaces it, rather than this
+    /// one landing after it.
+    @ObservationIgnored private var delayedSpeed: Task<Void, Never>?
+    /// The setPilot just sent switches the bulb on (a preset, say): if it gets no answer, the power
+    /// switch goes back to how it was, as for a setState.
+    @ObservationIgnored private var pilotSwitchesOn = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String?
@@ -227,6 +233,11 @@ final class Model {
                 pending = false
                 verifyingSeq = nil
                 refusal = message
+                if pilotSwitchesOn { // it was to switch the bulb on: as far as we know, it didn't
+                    isOn = powerBefore
+                    lastState = powerBefore
+                    pilotSwitchesOn = false
+                }
             case "setState"?:
                 isOn = powerBefore
                 lastState = powerBefore
@@ -664,9 +675,10 @@ final class Model {
             // The speed changed while it was off: now it's on, after the switch-on has landed
             // (still owed if switching on failed).
             let generation = connectGeneration
-            Task {
+            delayedSpeed?.cancel()
+            delayedSpeed = Task {
                 try? await Task.sleep(for: .milliseconds(400))
-                guard connectGeneration == generation, speedOwed, isOn == true, mode == .scene else { return }
+                guard !Task.isCancelled, connectGeneration == generation, speedOwed, isOn == true, mode == .scene else { return }
                 speedOwed = false
                 bulb.send("setPilot", ["speed": Int(speed)], retry: true)
             }
@@ -886,12 +898,16 @@ final class Model {
         refusal = nil
         if power != nil { powerBefore = isOn } // what a refused or unanswered setState puts back
         switch power {
-        case true?: isOn = true
+        case true?:
+            isOn = true
+            pilotSwitchesOn = !p.isEmpty && powerBefore != true
         case false?:
             p["state"] = false
             isOn = false
+            pilotSwitchesOn = false
         case nil:
             if !p.isEmpty, isOn == false { p["state"] = false }
+            pilotSwitchesOn = false
         }
         // Not while it's (to be) off: a setPilot without "state" switches the bulb on, and speed
         // can't go with anything else. It's owed until the bulb is on (`speedOwed`).
@@ -925,16 +941,18 @@ final class Model {
             bulb.send("setState", ["state": true], retry: retry)
         }
         if let speedParams {
+            delayedSpeed?.cancel() // out of date: this one replaces it
+            delayedSpeed = nil
             if p.isEmpty {
                 bulb.send("setPilot", speedParams, retry: retry)
             } else {
                 // After the scene has started (and so retries of the two don't overlap). Not if
                 // another bulb has been chosen meanwhile.
                 let generation = connectGeneration
-                Task {
+                delayedSpeed = Task {
                     try? await Task.sleep(for: .milliseconds(400))
                     // Switched off meanwhile: on its own it would switch it back on. Owed instead.
-                    guard connectGeneration == generation else { return }
+                    guard !Task.isCancelled, connectGeneration == generation else { return }
                     guard isOn != false else {
                         speedOwed = true
                         lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
@@ -1132,16 +1150,19 @@ final class Model {
         bulb.send("setPilot", pilot, retry: false)
     }
 
-    /// Sets the given values and sends the fields named (from the watch).
+    /// Sets the fields named from the given values, and sends them (from the watch). The rest
+    /// stay as they are: the watch's copy of them may be out of date.
     func apply(_ v: LightValues, fields: [PilotField]) {
-        if v.mode != .scene || v.sceneId != Scenes.inlineCustom { customSceneId = nil }
-        mode = v.mode
-        (r, g, b, c, w) = (v.r, v.g, v.b, v.c, v.w)
-        temp = v.temp
-        customKelvin = v.customKelvin
-        sceneId = v.sceneId
-        speed = v.speed
-        dimming = v.dimming
+        if fields.contains(.colour) {
+            if v.mode != .scene || v.sceneId != Scenes.inlineCustom { customSceneId = nil }
+            mode = v.mode
+            (r, g, b, c, w) = (v.r, v.g, v.b, v.c, v.w)
+            temp = v.temp
+            customKelvin = v.customKelvin
+            sceneId = v.sceneId
+        }
+        if fields.contains(.speed) { speed = v.speed }
+        if fields.contains(.dimming) { dimming = v.dimming }
         // The watch switching to Scene mode sends the last scene, which may be one that can't be set.
         if mode == .scene, fields.contains(.colour) { useSendableScene() }
         sendPilot(Set(fields), retry: true)
@@ -1372,6 +1393,7 @@ final class Model {
             // The controls already show the refused change: read the bulb's actual state, without
             // letting that read's status replace the error below.
             if method == "setPilot" {
+                pilotSwitchesOn = false // the read that follows says how it is
                 quietReads += 1
                 bulb.send("getPilot", retry: true)
             } else if method == "getPilot" {
@@ -1440,6 +1462,8 @@ final class Model {
             if let m = result["mac"] as? String { mac = m }
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
+        case "setPilot":
+            pilotSwitchesOn = false // answered: it's on
         case "setState":
             setStatesAnswered = setStatesSent
             status = isOn == false ? "Switched off" : "Switched on"
