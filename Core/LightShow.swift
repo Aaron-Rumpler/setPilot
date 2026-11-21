@@ -480,10 +480,11 @@ extension Model {
 
     func restore(_ saved: SavedLight) {
         guard canControl else { return }
-        isOn = true // the show left it on; the colour goes back first, then the power
+        // The show left it on. Off before: one setPilot with "state": false (the colour kept for
+        // when it's switched on, with no flash of it now, and no speed, which would switch it on).
+        isOn = saved.isOn != false
         if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
         // A scene's speed too: the show may have changed it.
         apply(saved.values, fields: saved.values.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
-        if saved.isOn == false { power(false) }
     }
 }
