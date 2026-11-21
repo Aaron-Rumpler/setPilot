@@ -269,10 +269,12 @@ struct WatchComposeView: View {
             switch kind {
             case .rgbcw: ch.colour = .rgbcw(r: Int(r), g: Int(g), b: Int(b), c: Int(c), w: Int(w))
             case .temperature:
+                // Within the range as it is now: the scale may have gone since it was chosen.
+                let k = s.map { r in Int(min(max(kelvin, kelvinRange(r).lowerBound), kelvinRange(r).upperBound)) } ?? Int(kelvin)
                 if let s, let chosen = scale(s) {
-                    ch.colour = LightColour.customCCT(scale: chosen.id, kelvin: Int(kelvin))
+                    ch.colour = LightColour.customCCT(scale: chosen.id, kelvin: k)
                 } else {
-                    ch.colour = .temp(Int(kelvin))
+                    ch.colour = .temp(k)
                 }
             case .scenes:
                 switch scene {
