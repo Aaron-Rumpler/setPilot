@@ -213,10 +213,13 @@ private struct LightShowScreen: View {
     @ViewBuilder private var status: some View {
         if let error = player.error {
             Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(1)
-        } else if let warning = player.show?.warnings.first {
-            Label(warning, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary).lineLimit(1).help(warning)
         } else if player.sendsToBulb && !model.canControl {
+            // Ahead of a show's warnings: nothing reaches the bulb until it's fixed.
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+        } else if let show = player.show, let warning = show.warnings.first {
+            // The summary too (on iPhone it's the only place the title shows).
+            Label("\(summary(show)) · \(warning)", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.secondary).lineLimit(1).help(warning)
         } else if let show = player.show {
             Text(verbatim: summary(show)).foregroundStyle(.secondary).lineLimit(1)
         } else if player.mediaName != nil {
