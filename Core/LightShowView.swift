@@ -213,6 +213,8 @@ private struct LightShowScreen: View {
     @ViewBuilder private var status: some View {
         if let error = player.error {
             Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(1)
+        } else if let note = player.restoreNote {
+            Label(note, systemImage: "info.circle").foregroundStyle(.secondary).lineLimit(1).help(note)
         } else if player.sendsToBulb && !model.canControl {
             // Ahead of a show's warnings: nothing reaches the bulb until it's fixed.
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)

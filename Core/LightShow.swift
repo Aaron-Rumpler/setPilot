@@ -122,6 +122,8 @@ final class LightShowPlayer {
     private(set) var show: LightShow?
     private(set) var showName: String?
     var error: String?
+    /// Why the light wasn't wholly put back after the last show, until the next one starts.
+    private(set) var restoreNote: String?
 
     /// The media time, for the transport (updated as it plays).
     private(set) var time = 0.0
@@ -236,6 +238,7 @@ final class LightShowPlayer {
     }
 
     func openShow(_ url: URL) {
+        restoreNote = nil // about the last show
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
@@ -329,7 +332,7 @@ final class LightShowPlayer {
         pendingSpeed = nil
         guard let saved else { return }
         self.saved = nil
-        if restores { model.restore(saved) }
+        if restores { restoreNote = model.restore(saved) }
     }
 
     // MARK: Sending
@@ -511,7 +514,7 @@ final class LightShowPlayer {
         guard sendsToBulb else { return }
         // The first cue sent: remember the light to put back (whether it's put back is decided
         // when the show stops).
-        if saved == nil { saved = model.savedLight }
+        if saved == nil { saved = model.savedLight; restoreNote = nil }
         model.sendLightCue(pilot)
         // On (a setPilot without "state": false switches it on), with a speed waiting: send it.
         // (A fade on its own isn't taken as switching it on, as elsewhere.)
@@ -579,8 +582,10 @@ extension Model {
 
     var savedLight: SavedLight { SavedLight(values: values, customScene: customSceneId, isOn: isOn, mac: chosenMAC) }
 
-    func restore(_ saved: SavedLight) {
-        guard canControl, saved.mac == chosenMAC else { return }
+    /// Nil, or why only part of it could be put back.
+    @discardableResult
+    func restore(_ saved: SavedLight) -> String? {
+        guard canControl, saved.mac == chosenMAC else { return nil }
         // The show left it on. Off before: one setPilot with "state": false (the colour kept for
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
         // (Not known when the show started: as it is now.)
@@ -593,9 +598,9 @@ extension Model {
         if v.mode == .scene, !Scenes.isKnown(v.sceneId),
            !(v.sceneId == Scenes.inlineCustom && saved.customScene.flatMap(library.customScene) != nil) {
             apply(v, fields: [.dimming])
-            status = "The scene from before the show (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
-            return
+            return "The scene from before (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
         }
         apply(v, fields: v.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
+        return nil
     }
 }
