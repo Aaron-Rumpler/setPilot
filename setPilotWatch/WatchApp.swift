@@ -204,10 +204,12 @@ struct CustomScenesView: View {
     }
 
     private func binding(_ s: LightSnapshot, _ kp: WritableKeyPath<LightValues, Double>, _ field: PilotField) -> Binding<Double> {
+        // The snapshot as it is when asked, not as it was when drawn: a pushed editor may keep
+        // the binding (as for the controls' fade time).
         Binding(
-            get: { (pending ?? s.values)[keyPath: kp] },
+            get: { (pending ?? link.snapshot?.values ?? s.values)[keyPath: kp] },
             set: { new in
-                var v = pending ?? s.values
+                var v = pending ?? link.snapshot?.values ?? s.values
                 v[keyPath: kp] = new
                 pending = v
                 link.sendLive(v, fields: [field])
