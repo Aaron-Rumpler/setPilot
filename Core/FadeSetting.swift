@@ -95,15 +95,17 @@ struct FadeRow: View {
     }
 }
 
-/// A fade time in ms (0–60000), taken as it's typed: a `value:` field only takes it when editing
+/// A time in ms (0 to `maximum`), taken as it's typed: a `value:` field only takes it when editing
 /// ends, which on iPhone (a number pad has no Return) is only once focus moves, so a slider moved
 /// or Send tapped straight after would use the old one.
 struct MillisecondsField: View {
+    var label = "Fade time"
     @Binding var value: Int
+    var maximum = 60_000
     @State private var text = ""
 
     var body: some View {
-        TextField("Fade time", text: $text)
+        TextField(label, text: $text)
             .labelsHidden()
             .multilineTextAlignment(.trailing)
             #if os(iOS)
@@ -114,7 +116,7 @@ struct MillisecondsField: View {
                 let digits = new.filter(\.isNumber)
                 if digits != new { text = digits; return }
                 if let n = Int(digits.prefix(6)) {
-                    let clamped = min(max(n, 0), 60_000)
+                    let clamped = min(max(n, 0), maximum)
                     if clamped != value { value = clamped }
                 }
             }
