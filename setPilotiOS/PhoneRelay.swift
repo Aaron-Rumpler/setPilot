@@ -336,6 +336,11 @@ extension PhoneRelay: WCSessionDelegate {
         // Woken for this, perhaps from the background: commands for the bulb get live updates
         // going again (and the state read again if the app was suspended) through
         // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
+        let sends = switch message.command {
+        case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
+        default: false
+        }
+        if sends { model?.forgetRefusal() }
         switch await run(message.command) {
         case .now(let snapshot):
             finish(message, snapshot)
@@ -346,11 +351,7 @@ extension PhoneRelay: WCSessionDelegate {
                 try? await Task.sleep(for: pause)
                 await model?.waitUntilSettled()
                 // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
-                // Only for commands that send: the reason stays until the next change is sent.
-                let sends = switch message.command {
-                case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
-                default: false
-                }
+                // Only for commands that send (cleared above, so not an earlier change's reason).
                 finish(message, model?.snapshot ?? LightSnapshot(), error: sends ? model?.refusal : nil)
             }
         }

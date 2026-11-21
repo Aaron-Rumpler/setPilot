@@ -151,6 +151,9 @@ final class Model {
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String?
+    /// Starts an action whose refusal will be reported: one that sends nothing (already as asked)
+    /// mustn't report an earlier change's reason.
+    func forgetRefusal() { refusal = nil }
     /// Reads after refused setPilots, still to come: they put the controls right, leaving the
     /// error as the status (one per refusal: a slider drag can be refused several times over).
     @ObservationIgnored private var quietReads = 0

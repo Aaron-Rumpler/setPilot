@@ -19,6 +19,10 @@ struct CustomScenesList: View {
                             .tint(.green)
                             .disabled(!model.canControl)
                     }
+                    // A row with swipe actions loses onDelete's swipe, so Delete is given here.
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { deleting = scene } label: { Label("Delete", systemImage: "trash") }
+                    }
                     .contextMenu {
                         Button { model.playCustom(scene) } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
