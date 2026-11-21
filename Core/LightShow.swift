@@ -538,7 +538,8 @@ final class LightShowPlayer {
     nonisolated static func format(_ seconds: Double) -> String {
         // Int() traps on infinity and huge values (a media duration can be either).
         guard seconds.isFinite, seconds < 1e9 else { return "–" }
-        let s = max(seconds, 0)
+        // Rounded to hundredths first, so 59.996 is 1:00.00 rather than 0:60.00.
+        let s = (max(seconds, 0) * 100).rounded() / 100
         let m = Int(s) / 60
         return String(format: "%d:%05.2f", m, s - Double(m * 60))
     }

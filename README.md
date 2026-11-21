@@ -20,7 +20,8 @@ trademark of Signify.
   others, and this doesn't undo changes made meanwhile by other apps.
 - The sliders never switch the bulb on or off: a `setPilot` to a bulb that's off carries
   `"state": false` (one without `state` switches it on). Only the power switch (and Shortcuts'
-  on/off), applying a preset, Compose with Power set and a light show change it.
+  on/off), applying a preset, Compose with Power set, a light show and the console's `setPilot` (unless
+  Don't switch on is set) change it.
 - Three modes, by the same names everywhere: **RGBCW**, **Temperature** and **Scenes** (with speed).
   Temperature's Scale is the bulb's own (`temp`) or one of your CCT scales (Custom CCT, below); the
   kelvin carries over when you switch. The slider's track shows the colour of each temperature,
