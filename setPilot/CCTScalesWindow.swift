@@ -11,10 +11,11 @@ struct CCTScalesWindow: View {
         NavigationSplitView {
             List(selection: $selection) {
                 ForEach(scales) { scale in
-                    CCTScaleRow(scale: scale, inUse: model.temperatureScale == scale.id)
+                    CCTScaleRow(scale: scale, inUse: model.scaleForTemperature == scale.id)
                         .tag(scale.id)
                         .contextMenu {
-                            Button("Use for Temperature") { model.useTemperatureScale(scale.id) }
+                            Button("Use for Temperature") { model.assignTemperatureScale(scale.id) }
+                                .disabled(scale.range == nil)
                             Button("Duplicate") { selection = model.duplicateScale(scale)?.id }
                             Divider()
                             Button("Delete…", role: .destructive) { deleting = scale }

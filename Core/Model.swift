@@ -678,6 +678,20 @@ final class Model {
     /// (Custom CCT). The kelvin carries over, kept within the new scale's range.
     var temperatureScale: UUID? { mode == .custom ? activeScale?.id : nil }
 
+    /// The scale Temperature uses (whether or not the light is on Temperature now).
+    var scaleForTemperature: UUID? {
+        UserDefaults.standard.bool(forKey: Self.temperatureScaleKey) && activeScale?.range != nil ? activeScale?.id : nil
+    }
+
+    /// The CCT scales' "Use for Temperature": on Temperature now, it switches to it; otherwise it
+    /// only becomes Temperature's scale for next time, without changing the light.
+    func assignTemperatureScale(_ id: UUID) {
+        guard mode.choice != .temperature else { return useTemperatureScale(id) }
+        guard let mac = chosenMAC else { return }
+        library.setActiveScale(id, for: mac)
+        UserDefaults.standard.set(true, forKey: Self.temperatureScaleKey)
+    }
+
     func useTemperatureScale(_ id: UUID?) {
         UserDefaults.standard.set(id != nil, forKey: Self.temperatureScaleKey)
         let kelvin = mode == .custom ? customKelvin : temp

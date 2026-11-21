@@ -124,11 +124,12 @@ struct CCTScaleEditor: View {
                     ScaleStrip(scale: scale)
                         .frame(height: 14)
                         .clipShape(Capsule())
-                    if model.temperatureScale == scaleID {
+                    if model.scaleForTemperature == scaleID {
                         Label("In use by Temperature", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.secondary)
                     } else {
-                        Button("Use for Temperature") { model.useTemperatureScale(scaleID) }
+                        Button("Use for Temperature") { model.assignTemperatureScale(scaleID) }
+                            .disabled(scale.range == nil) // needs two points to cover any kelvin
                     }
                     Button {
                         if let extended = scale.extendedDownwards() { binding.wrappedValue = extended }

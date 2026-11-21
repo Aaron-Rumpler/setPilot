@@ -57,7 +57,10 @@ extension Model {
             switch d.kind {
             case .rgbcw: ch.colour = .rgbcw(r: d.r, g: d.g, b: d.b, c: d.c, w: d.w)
             case .temperature:
-                if let scale = draftScale { ch.colour = .customCCT(scale: scale.id, kelvin: d.kelvin) } else { ch.colour = .temp(d.kelvin) }
+                // Within the range as it is now: the scale may have gone since it was chosen.
+                let range = draftKelvinRange
+                let kelvin = min(max(d.kelvin, range.lowerBound), range.upperBound)
+                if let scale = draftScale { ch.colour = .customCCT(scale: scale.id, kelvin: kelvin) } else { ch.colour = .temp(kelvin) }
             case .scenes:
                 switch d.scene {
                 case .builtin(let id): ch.colour = .scene(id: id, speed: d.includeSpeed ? d.speed : nil)

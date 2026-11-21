@@ -11,10 +11,11 @@ struct CCTScalesList: View {
         List {
             ForEach(scales) { scale in
                 NavigationLink(value: scale.id) {
-                    CCTScaleRow(scale: scale, inUse: model.temperatureScale == scale.id)
+                    CCTScaleRow(scale: scale, inUse: model.scaleForTemperature == scale.id)
                 }
                 .contextMenu {
-                    Button { model.useTemperatureScale(scale.id) } label: { Label("Use for Temperature", systemImage: "checkmark") }
+                    Button { model.assignTemperatureScale(scale.id) } label: { Label("Use for Temperature", systemImage: "checkmark") }
+                        .disabled(scale.range == nil)
                     Button { _ = model.duplicateScale(scale) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                     Button(role: .destructive) { deleting = scale } label: { Label("Delete", systemImage: "trash") }
                 }
