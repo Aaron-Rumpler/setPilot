@@ -22,8 +22,10 @@ extension LightChange {
         if power == false || (power == nil && isOn == false && !parts.isEmpty) { parts.append("\"state\":false") }
         if parts.isEmpty { return "Nothing to send" }
         var text = "setPilot {" + parts.joined(separator: ",") + "}"
+        // As Model.send: no speed while it's (to be) off, as on its own it would switch it on.
+        let off = power == false || (power == nil && isOn == false)
         switch colour {
-        case let .scene(_, s?)?, let .custom(_, s?)?: text += "\nthen setPilot {\"speed\":\(s)}"
+        case let .scene(_, s?)?, let .custom(_, s?)?: if !off { text += "\nthen setPilot {\"speed\":\(s)}" }
         default: break
         }
         return text
@@ -39,6 +41,7 @@ extension LightChange {
         }
         switch colour {
         case .scene(_, _?)?, .custom(_, _?)?:
+            // (Off, the notes above have said so: no speed is sent then.)
             return "The speed goes in a setPilot of its own just after: the firmware ignores it alongside anything else."
         default:
             return nil

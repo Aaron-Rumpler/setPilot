@@ -452,12 +452,7 @@ struct MillisecondsRow: View {
     var body: some View {
         HStack {
             Text(label).frame(width: 100, alignment: .leading)
-            TextField(label, value: Binding(get: { value }, set: { value = max(0, $0) }), format: .number.grouping(.never))
-                .labelsHidden()
-                .multilineTextAlignment(.trailing)
-                #if os(iOS)
-                .keyboardType(.numberPad)
-                #endif
+            MillisecondsField(label: label, value: $value, maximum: 999_999)
             Text("ms").foregroundStyle(.secondary)
         }
     }

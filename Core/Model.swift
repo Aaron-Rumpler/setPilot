@@ -842,7 +842,10 @@ final class Model {
         case nil:
             if !p.isEmpty, isOn == false { p["state"] = false }
         }
-        let speedParams: [String: Any]? = speed.map { ["speed": $0] }
+        // Not while it's (to be) off: a setPilot without "state" switches the bulb on, and speed
+        // can't go with anything else. It goes with the next change once it's on.
+        let speedParams: [String: Any]? = isOn == false ? nil : speed.map { ["speed": $0] }
+        guard !p.isEmpty || speedParams != nil || power != nil else { return }
         // What goes out first: the setPilot, else speed on its own, else setState to switch on.
         let shown: [String: Any]
         if !p.isEmpty {
@@ -859,7 +862,7 @@ final class Model {
             lastSent = String(decoding: data, as: UTF8.self)
         }
         lastPilot = p.filter { $0.key != "state" && $0.key != "trans" }.compactMapValues { $0 as? Int }
-        if let speed { lastPilot["speed"] = speed }
+        if let speed, speedParams != nil { lastPilot["speed"] = speed }
         lastState = isOn
         sendSeq += 1
         pending = true

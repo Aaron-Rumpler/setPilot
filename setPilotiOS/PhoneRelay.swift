@@ -45,57 +45,67 @@ final class PhoneRelay: NSObject {
 
     // MARK: Commands
 
-    private func run(_ command: WatchCommand) async -> LightSnapshot {
-        guard let model else { return LightSnapshot() }
+    /// What's left once a command has run: reply now, or after a pause and the bulb's read-back.
+    private enum Outcome {
+        case now(LightSnapshot)
+        case settle(after: Duration)
+    }
+
+    /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
+    /// apart from the queue: only the sending needs to keep the order, and the next command
+    /// shouldn't wait out this one's read-back.
+    private func run(_ command: WatchCommand) async -> Outcome {
+        guard let model else { return .now(LightSnapshot()) }
         switch command {
         case .state:
             _ = await model.waitUntilControllable(timeout: 3)
-            return model.snapshot
+            return .now(model.snapshot)
         case .savePreset(let name):
             _ = await model.waitUntilControllable(timeout: 3)
             model.savePreset(named: name)
-            return model.snapshot
+            return .now(model.snapshot)
         case .deletePreset(let id):
             model.library.presets.removeAll { $0.id == id }
-            return model.snapshot
+            return .now(model.snapshot)
         case let .renamePreset(id, name):
             model.renamePreset(id, to: name)
-            return model.snapshot
+            return .now(model.snapshot)
         case let .movePreset(id, offset):
             model.movePreset(id, by: offset)
-            return model.snapshot
+            return .now(model.snapshot)
         case let .controlsFade(choice, ms):
             model.controlsFade = choice
             model.controlsFadeMs = min(max(ms, 0), 60_000)
-            return model.snapshot
+            return .now(model.snapshot)
         case let .renameBulb(mac, name):
             model.rename(mac: mac, to: name)
-            return model.snapshot
+            return .now(model.snapshot)
         case let .chooseBulb(address, mac):
             model.choose(address, mac: mac)
             _ = await model.waitUntilControllable(timeout: 4)
-            return model.snapshot
+            return .now(model.snapshot)
         default:
             break
         }
-        guard await model.waitUntilControllable() else { return model.snapshot }
+        guard await model.waitUntilControllable() else { return .now(model.snapshot) }
+        var pause = Duration.zero
         switch command {
         case .sync:
             model.sync()
-            try? await Task.sleep(for: .milliseconds(500))
+            pause = .milliseconds(500)
         case .power(let on):
             model.power(on)
-            try? await Task.sleep(for: .milliseconds(400))
+            pause = .milliseconds(400)
         case .togglePower:
             model.power(!(model.isOn ?? false))
-            try? await Task.sleep(for: .milliseconds(400))
+            pause = .milliseconds(400)
         case .applyPreset(let id):
             if let preset = model.library.presets.first(where: { $0.id == id }) { model.apply(preset) }
         case .set(let values, let fields):
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
             // when this answers. Later state reaches it as the iPhone's usual updates.
-            return model.snapshot
+            return .now(model.snapshot)
         case .dimDelta(let delta):
             model.adjustDimming(by: delta)
         case .playCustom(let id):
@@ -111,12 +121,11 @@ final class PhoneRelay: NSObject {
         case .deviceInfo:
             model.readConfig()
             // The reads go out 60 ms apart; give the replies time to come in.
-            try? await Task.sleep(for: .milliseconds(2500))
+            pause = .milliseconds(2500)
         case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .controlsFade, .renameBulb:
             break
         }
-        await model.waitUntilSettled()
-        return model.snapshot
+        return .settle(after: pause)
     }
 
     // MARK: Keeping the watch up to date
@@ -280,11 +289,23 @@ extension PhoneRelay: WCSessionDelegate {
     }
 
     private func handle(_ message: Incoming) async {
-        let command = message.command
         // Woken for this, perhaps from the background: commands for the bulb get live updates
         // going again (and the state read again if the app was suspended) through
         // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
-        let snapshot = await run(command)
+        switch await run(message.command) {
+        case .now(let snapshot):
+            finish(message, snapshot)
+        case .settle(let pause):
+            Task {
+                try? await Task.sleep(for: pause)
+                await model?.waitUntilSettled()
+                finish(message, model?.snapshot ?? LightSnapshot())
+            }
+        }
+    }
+
+    private func finish(_ message: Incoming, _ snapshot: LightSnapshot) {
+        let command = message.command
         // The presets changed: the watch's copy for when the iPhone is out of reach.
         switch command {
         case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset: updateContext()
