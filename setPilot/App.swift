@@ -268,6 +268,7 @@ struct SettingsView: View {
 
     private func setOpenAtLogin(_ on: Bool) {
         let service = SMAppService.mainApp
+        loginItemNote = nil // an earlier failure's; a new one sets it again
         do {
             if on, service.status != .enabled { try service.register() }
             // Waiting for approval counts as on (the toggle shows it so), so it can be turned off too.
