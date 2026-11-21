@@ -880,7 +880,8 @@ final class Model {
                 let generation = connectGeneration
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
-                    guard connectGeneration == generation else { return }
+                    // Switched off meanwhile: on its own it would switch it back on.
+                    guard connectGeneration == generation, isOn != false else { return }
                     bulb.send("setPilot", speedParams, retry: retry)
                 }
             }
