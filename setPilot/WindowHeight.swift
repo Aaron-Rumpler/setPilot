@@ -11,7 +11,9 @@ extension View {
     /// back: so if it was showing everything, it's made taller to keep doing so.
     func windowHeight(content: CGFloat?, minimum: CGFloat) -> some View {
         let full = content.map { $0.rounded(.up) }
-        return frame(minHeight: min(full ?? minimum, minimum), idealHeight: full, maxHeight: full ?? .infinity)
+        // Not measured (macOS 14 can't measure a scrolling Form): no limits here, so the content's
+        // own size sets the window's, as it did before it could scroll.
+        return frame(minHeight: full.map { min($0, minimum) }, idealHeight: full, maxHeight: full)
             .modifier(GrowsWithContent(content: full))
     }
 }
