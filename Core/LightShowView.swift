@@ -195,7 +195,10 @@ struct LightShowView: View {
         } else if let show = player.show {
             Text("\(show.cues.count) cues").foregroundStyle(.secondary)
         } else if player.mediaName != nil {
-            Button("Open Light Show…") { open(.show) }.buttonStyle(.link)
+            Button("Open Light Show…") { open(.show) }
+                #if os(macOS)
+                .buttonStyle(.link)
+                #endif
         }
     }
 
