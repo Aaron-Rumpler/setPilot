@@ -76,7 +76,7 @@ trademark of Signify.
 - **Presets**: save the light as it is (colour, temperature, scene or custom scene, with its
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
   switches the bulb on. Right-click a preset to rename, update, move or delete it.
-- **Custom scenes** (Window › Custom Scenes, or the pencil next to the scene picker): up to 12
+- **Custom scenes** (Window › Custom Scenes, or Edit Scenes… next to the scene picker): up to 12
   steps, each with a colour (RGBCW, a temperature, or dark), a level, how long it holds and how
   long it fades into the next, and optionally a random variation of those times. A scene can start
   on any step, and use the bulb's slow or quick fixed timings instead of its steps' own. They're
