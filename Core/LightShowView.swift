@@ -81,7 +81,7 @@ struct LightShowView: View {
     @ViewBuilder private var screen: some View {
         HStack(spacing: 10) {
             if player.hasVideo {
-                VideoPlayer(player: player.player)
+                PlayerView(player: player.player)
                     .frame(minHeight: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
