@@ -236,6 +236,9 @@ final class LightShowPlayer {
             showName = url.lastPathComponent
             error = nil
             sentUpTo = nil // catch up to wherever the media is, on the next tick that plays
+            pendingSpeed = nil // the old show's
+            speedTask?.cancel()
+            speedTask = nil
             nextCue = 0
             showPosition(at: time)
         case .failure(let e):
@@ -381,6 +384,11 @@ final class LightShowPlayer {
     private func catchUp(to showTime: Double, in show: LightShow) {
         nextCue = show.cues.firstIndex { $0.time > showTime + Self.slack } ?? show.cues.count
         sentUpTo = showTime
+        // The state at the new place is the whole story, its speed included (none, before the
+        // first cue): a speed from before the jump is out of date.
+        pendingSpeed = nil
+        speedTask?.cancel()
+        speedTask = nil
         guard nextCue > 0 else {
             currentCue = nil
             light = [:]
@@ -391,7 +399,6 @@ final class LightShowPlayer {
         let latest = show.cues[nextCue - 1]
         let fresh = showTime - latest.time <= max(delay, 0) / 1000 + 0.1
         // (A cue without one gets the bulb's own fade, as it would sent alone.)
-        pendingSpeed = nil // the state at the new place is the whole story, its speed included
         let trans: Any? = fresh ? latest.pilot["trans"] : 0
         sendState(LightShow.state(after: show.cues[..<nextCue]), trans: trans)
         currentCue = nextCue - 1
