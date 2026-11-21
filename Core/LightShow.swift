@@ -1,5 +1,8 @@
 import AVFoundation
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 /// A light show file: setPilot states to send at times in a piece of media. See docs/LIGHT-SHOW.md.
 struct LightShow {
@@ -145,6 +148,8 @@ final class LightShowPlayer {
     /// A seek is under way: the player's time is still the old one until it finishes.
     @ObservationIgnored private var seeking = false
     @ObservationIgnored private var seekGeneration = 0
+    /// A scene's speed, sent separately just after it: cancelled by a stop (or a newer state).
+    @ObservationIgnored private var speedTask: Task<Void, Never>?
     /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
     @ObservationIgnored private var sentDelay: Double?
 
@@ -270,6 +275,8 @@ final class LightShowPlayer {
     /// Puts the light back if anything was sent (`saved` is set then), even if sending has since
     /// been turned off.
     private func restore() {
+        speedTask?.cancel() // a speed still to come would switch the bulb back on
+        speedTask = nil
         guard let saved else { return }
         self.saved = nil
         if restores { model.restore(saved) }
@@ -293,13 +300,17 @@ final class LightShowPlayer {
         guard now.isFinite else { return }
         // Observed values change only when they need to: this runs 100 times a second.
         let playing = player.rate != 0
-        if playing != isPlaying { isPlaying = playing }
+        if playing != isPlaying {
+            isPlaying = playing
+            #if os(iOS)
+            // Video keeps the screen on by itself; audio doesn't, and a locked phone suspends the
+            // app, show and all.
+            UIApplication.shared.isIdleTimerDisabled = playing
+            #endif
+        }
         // Not while a seek lands either: the player still has the old time until then.
         if !scrubbing, !seeking, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
         guard playing, let show, !show.cues.isEmpty else { return }
-        // Started (here or with the video's own controls): remember the light to put back (whether
-        // it's put back is decided when the show stops).
-        if saved == nil, sendsToBulb { saved = model.savedLight }
         // Nothing while the position is being dragged or a seek is landing: the state at the new
         // place goes once it's there, not once per step on the way.
         guard !scrubbing, !seeking else { return }
@@ -365,9 +376,12 @@ final class LightShowPlayer {
         let speed = state.removeValue(forKey: "speed")
         state["trans"] = trans
         if state.count > 1 || state["state"] != nil { send(state) }
+        speedTask?.cancel()
+        speedTask = nil
         if let speed {
-            Task {
+            speedTask = Task {
                 try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
                 self.send(["speed": speed])
             }
         }
@@ -385,6 +399,9 @@ final class LightShowPlayer {
 
     private func send(_ pilot: [String: Any]) {
         guard sendsToBulb else { return }
+        // The first cue sent: remember the light to put back (whether it's put back is decided
+        // when the show stops).
+        if saved == nil { saved = model.savedLight }
         model.sendLightCue(pilot)
     }
 
@@ -423,6 +440,9 @@ final class LightShowPlayer {
         mediaAccess = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
     }
 }
 

@@ -17,7 +17,10 @@ enum QuickBulb {
                 throw WidgetError(localizedStringResource: "Open setPilot once to update its presets.")
             }
             _ = try await send(host, "setPilot", params) // no "state": switches the bulb on
-            remember { $0.isOn = true }
+            remember { s in
+                s.isOn = true
+                if let d = (params["dimming"] as? NSNumber)?.doubleValue { s.dimming = d }
+            }
         case .power(let on):
             let on = on ?? !(isOn ?? false)
             _ = try await send(host, "setState", ["state": on])

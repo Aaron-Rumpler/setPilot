@@ -72,7 +72,8 @@ final class Bulb {
         guard retry, let method else {
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
                 guard let error else { return }
-                Task { @MainActor in self?.onError?(method, "\(name): couldn't send (\(error))") }
+                // "" for a raw message without a method: nil is the connection itself failing.
+                Task { @MainActor in self?.onError?(method ?? "", "\(name): couldn't send (\(error))") }
             })
             return
         }

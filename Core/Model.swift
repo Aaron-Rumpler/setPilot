@@ -444,10 +444,13 @@ final class Model {
         pending = false
         verifyingSeq = nil
         guard let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
-        guard Date.now.timeIntervalSince(lastAutoReconnect) > 30 else {
+        let since = Date.now.timeIntervalSince(lastAutoReconnect)
+        guard since > 30 else {
             // Lost again straight after reconnecting: on the Mac, look for the bulb elsewhere (it
-            // may have a new address, and another device its old one).
+            // may have a new address, and another device its old one), and try again once the 30 s
+            // are up (the lost connection hears nothing more, even if the bulb comes back).
             relocate()
+            reconnect(a, after: 30 - since)
             return
         }
         lastAutoReconnect = .now
@@ -457,6 +460,23 @@ final class Model {
             try? await Task.sleep(for: .seconds(2))
             guard connectGeneration == generation, UserDefaults.standard.string(forKey: Self.addressKey) == a else { return }
             connect(a)
+        }
+    }
+
+    @ObservationIgnored private var reconnectScheduled = false
+
+    /// A new connection to `address` after `seconds`, unless something else connects first.
+    private func reconnect(_ address: String, after seconds: Double) {
+        guard !reconnectScheduled else { return }
+        reconnectScheduled = true
+        let generation = connectGeneration
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            reconnectScheduled = false
+            guard connectGeneration == generation, link == .unreachable,
+                  UserDefaults.standard.string(forKey: Self.addressKey) == address else { return }
+            lastAutoReconnect = .now
+            connect(address)
         }
     }
 

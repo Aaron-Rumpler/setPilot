@@ -132,6 +132,8 @@ final class PhoneLink: NSObject {
     }
 
     private func apply(_ s: LightSnapshot) {
+        // Older than the one we have (a late context or message): keep ours.
+        if let new = s.sentAt, let old = snapshot?.sentAt, new < old { return }
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
         // For the complications: reloaded only when something they show changes.
@@ -188,14 +190,13 @@ final class PhoneLink: NSObject {
         case "preset":
             if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
         case "power":
-            send(.power(!(snapshot?.isOn ?? false)))
+            send(.togglePower) // the iPhone knows how it is now; our copy may be from last time
         default:
             refresh()
         }
     }
 
-    /// `live`: the iPhone is reachable, so its messages are newer than the context's state.
-    private func applyContext(_ context: [String: Any], live: Bool) {
+    private func applyContext(_ context: [String: Any]) {
         let decoder = JSONDecoder()
         // Only what changed: the context also carries the state, and comes again with each change.
         if let d = context[WatchKey.presets] as? Data, d != defaults.data(forKey: WatchKey.presets),
@@ -214,7 +215,7 @@ final class PhoneLink: NSObject {
             SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
             WidgetCenter.shared.reloadAllTimelines()
         }
-        if !live, let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
+        if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
             apply(s)
         }
     }
@@ -226,7 +227,7 @@ extension PhoneLink: WCSessionDelegate {
         let reachable = session.isReachable
         let box = UncheckedContext(context)
         Task { @MainActor in
-            self.applyContext(box.value, live: reachable)
+            self.applyContext(box.value)
             self.reachable = reachable
             if reachable {
                 self.refresh()
@@ -249,8 +250,7 @@ extension PhoneLink: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
         let box = UncheckedContext(context)
-        let reachable = session.isReachable
-        Task { @MainActor in self.applyContext(box.value, live: reachable) }
+        Task { @MainActor in self.applyContext(box.value) }
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {

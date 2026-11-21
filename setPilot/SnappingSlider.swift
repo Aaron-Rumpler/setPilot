@@ -106,7 +106,7 @@ struct SnappingSlider: NSViewRepresentable {
         @objc func moved(_ sender: SnapSlider) {
             // Pressing the knob without moving it (say, to hold it for a fine drag) changes nothing:
             // snapping now would move a value that's off the round steps before it's dragged.
-            if sender.atPressPosition { return }
+            if sender.stillAtPress() { return }
             let snapped = sender.snap(sender.value)
             sender.value = snapped // knob jumps between steps
             if parent.value != snapped { parent.value = snapped }
@@ -183,10 +183,13 @@ final class SnapSlider: NSSlider {
     /// The knob's position when the mouse went down, while it's down.
     private var pressPosition: Double?
 
-    /// The mouse is down and the knob hasn't moved from where it was.
-    var atPressPosition: Bool {
+    /// The mouse is down and the knob hasn't moved from where it was pressed yet. Once it has,
+    /// false for the rest of the drag, even back at that point (which is then a value to set).
+    func stillAtPress() -> Bool {
         guard tracking, let pressPosition else { return false }
-        return abs(doubleValue - pressPosition) < 1e-9
+        if abs(doubleValue - pressPosition) < 1e-9 { return true }
+        self.pressPosition = nil
+        return false
     }
 
     private func showFine(_ on: Bool) {

@@ -86,6 +86,9 @@ final class PhoneRelay: NSObject {
         case .power(let on):
             model.power(on)
             try? await Task.sleep(for: .milliseconds(400))
+        case .togglePower:
+            model.power(!(model.isOn ?? false))
+            try? await Task.sleep(for: .milliseconds(400))
         case .applyPreset(let id):
             if let preset = model.library.presets.first(where: { $0.id == id }) { model.apply(preset) }
         case .set(let values, let fields):
@@ -144,7 +147,7 @@ final class PhoneRelay: NSObject {
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
             if session.isReachable {
-                if let data = try? JSONEncoder().encode(snapshot) {
+                if let data = try? JSONEncoder().encode(Self.stamped(snapshot)) {
                     session.sendMessage([WatchKey.snapshot: data], replyHandler: nil, errorHandler: nil)
                 }
             } else if snapshot.link == .connected {
@@ -155,6 +158,13 @@ final class PhoneRelay: NSObject {
                 scheduleStateContext()
             }
         }
+    }
+
+    /// The state as it goes to the watch, marked with when.
+    private static func stamped(_ snapshot: LightSnapshot) -> LightSnapshot {
+        var s = snapshot
+        s.sentAt = .now
+        return s
     }
 
     private var stateContextScheduled = false
@@ -234,7 +244,7 @@ final class PhoneRelay: NSObject {
         if let data = try? encoder.encode(model.library.presets) { context[WatchKey.presets] = data }
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
-        if model.snapshot.link == .connected, let data = try? encoder.encode(model.snapshot) {
+        if model.snapshot.link == .connected, let data = try? encoder.encode(Self.stamped(model.snapshot)) {
             context[WatchKey.snapshot] = data
         } else if let kept = session.applicationContext[WatchKey.snapshot] {
             context[WatchKey.snapshot] = kept
@@ -281,7 +291,7 @@ extension PhoneRelay: WCSessionDelegate {
         default: break
         }
         var response: [String: Any] = [:]
-        if let data = try? JSONEncoder().encode(snapshot) { response[WatchKey.snapshot] = data }
+        if let data = try? JSONEncoder().encode(Self.stamped(snapshot)) { response[WatchKey.snapshot] = data }
         if case .deviceInfo = command, let model,
            let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
             response[WatchKey.deviceInfo] = data

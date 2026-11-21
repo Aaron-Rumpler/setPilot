@@ -5,6 +5,9 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     enum Link: String, Codable, Sendable { case none, connecting, connected, unreachable }
 
     var link: Link = .none
+    /// When the iPhone sent it (its clock), so the watch can tell which of a message, a reply and
+    /// the application context is newest: they can arrive in any order.
+    var sentAt: Date?
     var bulbName: String?
     var isOn: Bool?
     var mode: Mode = .temp
@@ -81,6 +84,9 @@ enum WatchCommand: Codable, Sendable {
     case state
     case sync
     case power(Bool)
+    /// Switches the bulb the other way from how it is on the iPhone (the watch's copy may be old:
+    /// a complication tap that launched the app).
+    case togglePower
     case applyPreset(UUID)
     case set(LightValues, fields: [PilotField])
     case dimDelta(Int)

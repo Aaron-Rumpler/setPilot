@@ -66,8 +66,8 @@ private struct WindowReader: NSViewRepresentable {
 }
 
 extension View {
-    /// Reports the height of a scrolling view's content (macOS 15 and later; on 14 the window just
-    /// has no upper limit).
+    /// Reports the height of a scrolling view's content (macOS 15 and later). On 14 it can't be
+    /// measured, so the view is as tall as it wants to be instead, as before it could scroll.
     @ViewBuilder func scrollContentHeight(_ action: @escaping (CGFloat) -> Void) -> some View {
         if #available(macOS 15.0, *) {
             onScrollGeometryChange(for: CGFloat.self) { g in
@@ -76,7 +76,7 @@ extension View {
                 action(height)
             }
         } else {
-            self
+            fixedSize(horizontal: false, vertical: true)
         }
     }
 }

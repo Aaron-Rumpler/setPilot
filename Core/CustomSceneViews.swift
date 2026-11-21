@@ -104,7 +104,7 @@ struct CustomSceneEditor: View {
                     Text("Step \(i + 1) of \(binding.wrappedValue.steps.count)")
                     Spacer()
                     Button {
-                        selected = binding.wrappedValue.steps[i - 1].id
+                        selectStep(binding, from: id, by: -1)
                     } label: {
                         Image(systemName: "chevron.left")
                     }
@@ -113,7 +113,7 @@ struct CustomSceneEditor: View {
                     .help("Previous step (⌘[)")
                     .accessibilityLabel("Previous step")
                     Button {
-                        selected = binding.wrappedValue.steps[i + 1].id
+                        selectStep(binding, from: id, by: 1)
                     } label: {
                         Image(systemName: "chevron.right")
                     }
@@ -190,6 +190,14 @@ struct CustomSceneEditor: View {
     }
 
     /// A copy of the chosen step, after it, and chosen.
+    /// Selects the step `offset` away from `id`, found as the steps are now (they can change under
+    /// the view: iCloud).
+    private func selectStep(_ scene: Binding<CustomScene>, from id: UUID, by offset: Int) {
+        let steps = scene.wrappedValue.steps
+        guard let i = steps.firstIndex(where: { $0.id == id }), steps.indices.contains(i + offset) else { return }
+        selected = steps[i + offset].id
+    }
+
     private func addStep(_ scene: Binding<CustomScene>) {
         guard scene.wrappedValue.steps.count < CustomScene.maxSteps else { return }
         let i = selectedIndex(scene.wrappedValue) ?? scene.wrappedValue.steps.count - 1
