@@ -1,5 +1,8 @@
 import SwiftUI
 import UIKit
+#if WIZ_ICLOUD
+import CloudKit
+#endif
 
 /// Home Screen quick actions (touch and hold the app's icon): power, and your three most used presets.
 @MainActor
@@ -50,7 +53,19 @@ final class PhoneSceneDelegate: NSObject, UIWindowSceneDelegate {
         if let item = connectionOptions.shortcutItem {
             MainActor.assumeIsolated { QuickActions.perform(item) }
         }
+        #if WIZ_ICLOUD
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            MainActor.assumeIsolated { CloudLibrary.shared.progress.invitation = metadata }
+        }
+        #endif
     }
+
+    #if WIZ_ICLOUD
+    /// An invitation to a household library, opened from Messages or Mail.
+    func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
+        MainActor.assumeIsolated { CloudLibrary.shared.progress.invitation = cloudKitShareMetadata }
+    }
+    #endif
 
     func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem,
                      completionHandler: @escaping (Bool) -> Void) {

@@ -82,9 +82,21 @@ final class CloudLibrary {
         var deleting: Set<String> = []
         /// The library has been offered to iCloud since the last account change.
         var seeded = false
+        /// A household library shared with this account (iCloud sharing), synced instead of its own.
+        var shared: SharedZone?
     }
 
-    private let zoneID = CKRecordZone.ID(zoneName: "Library", ownerName: CKCurrentUserDefaultName)
+    struct SharedZone: Codable {
+        var zoneName: String
+        var ownerName: String
+    }
+
+    private static let ownZone = CKRecordZone.ID(zoneName: "Library", ownerName: CKCurrentUserDefaultName)
+    /// This account's library, or the household's it has joined.
+    private var zoneID: CKRecordZone.ID {
+        saved.shared.map { CKRecordZone.ID(zoneName: $0.zoneName, ownerName: $0.ownerName) } ?? Self.ownZone
+    }
+    private var container: CKContainer { CKContainer(identifier: Self.containerID) }
     private var engine: CKSyncEngine?
     private var saved = Saved()
     private weak var model: Model?
@@ -107,12 +119,7 @@ final class CloudLibrary {
         if let data = try? Data(contentsOf: Self.fileURL), let s = try? JSONDecoder().decode(Saved.self, from: data) {
             saved = s
         }
-        let container = CKContainer(identifier: Self.containerID)
-        var config = CKSyncEngine.Configuration(database: container.privateCloudDatabase,
-                                                stateSerialization: saved.state, delegate: self)
-        config.automaticallySync = true
-        engine = CKSyncEngine(config)
-        status = "Waiting for iCloud"
+        makeEngine()
         if !saved.seeded {
             seed()
         } else {
@@ -178,16 +185,8 @@ final class CloudLibrary {
             saved.seeded = true
             persist()
         case .replace:
-            applying = true
-            model.library.takeFromCloud {
-                $0.presets = []
-                $0.customScenes = []
-                $0.cctScales = [:]
-            }
-            model.setNamesFromCloud([:])
-            model.setSigningKeysFromCloud([:])
-            model.setKnownBulbsFromCloud([])
-            applying = false
+            _ = model
+            clearLibraryHere()
             saved.seeded = true
             persist()
             Task { try? await engine?.fetchChanges() }
@@ -213,10 +212,26 @@ final class CloudLibrary {
     #if WIZ_ICLOUD
     // MARK: Engine
 
+    /// For this account's own library (the private database) or a household's (the shared one).
+    private func makeEngine() {
+        let database = saved.shared == nil ? container.privateCloudDatabase : container.sharedCloudDatabase
+        var config = CKSyncEngine.Configuration(database: database, stateSerialization: saved.state, delegate: self)
+        config.automaticallySync = true
+        engine = CKSyncEngine(config)
+        progress.household = saved.shared?.ownerName
+        status = "Waiting for iCloud"
+    }
+
+    /// Its own zone is made if need be; a household's belongs to its owner.
+    private func ensureZone() {
+        guard saved.shared == nil else { return }
+        engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+    }
+
     /// Offers everything here to iCloud, stamped as old so that anything iCloud already has wins.
     private func seed() {
         guard let engine else { return }
-        engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+        ensureZone()
         var pending: [CKSyncEngine.PendingRecordZoneChange] = []
         for kind in Kind.allCases {
             for (id, item) in current(kind) {
@@ -239,7 +254,7 @@ final class CloudLibrary {
         }
         pending += saved.deleting.map { .deleteRecord(CKRecord.ID(recordName: $0, zoneID: zoneID)) }
         guard !pending.isEmpty else { return }
-        engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+        ensureZone()
         engine.state.add(pendingRecordZoneChanges: pending)
     }
 
@@ -251,6 +266,66 @@ final class CloudLibrary {
         saved.seeded = false
         persist()
         if reseed { seed() }
+    }
+
+    // MARK: Household sharing
+
+    /// The share of this account's library (made if there isn't one), for Share Library.
+    func makeShare() async throws -> CKShare {
+        let db = container.privateCloudDatabase
+        _ = try? await db.save(CKRecordZone(zoneID: Self.ownZone))
+        let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: Self.ownZone)
+        if let existing = try? await db.record(for: shareID) as? CKShare { return existing }
+        let share = CKShare(recordZoneID: Self.ownZone)
+        share[CKShare.SystemFieldKey.title] = "setPilot Library"
+        share.publicPermission = .none
+        let (results, _) = try await db.modifyRecords(saving: [share], deleting: [])
+        guard let saved = try results[shareID]?.get() as? CKShare else { throw CKError(.internalError) }
+        return saved
+    }
+
+    /// An invitation accepted (opened from Messages or Mail): join that household's library,
+    /// adding this device's library to it, or replacing this device's with it.
+    func join(_ metadata: CKShare.Metadata, addMine: Bool) async {
+        do {
+            _ = try await container.accept(metadata)
+        } catch {
+            status = Self.describe(error)
+            return
+        }
+        let zone = metadata.share.recordID.zoneID
+        guard zone.ownerName != CKCurrentUserDefaultName else { return } // our own share
+        if !addMine { clearLibraryHere() }
+        switchLibrary(to: SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName))
+    }
+
+    /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).
+    func leaveHousehold() async {
+        guard saved.shared != nil else { return }
+        _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
+        switchLibrary(to: nil)
+    }
+
+    /// Syncs another library from now on: a new engine on its database, with what's here offered to it.
+    private func switchLibrary(to shared: SharedZone?) {
+        saved = Saved(shared: shared)
+        persist()
+        makeEngine()
+        seed()
+    }
+
+    private func clearLibraryHere() {
+        guard let model else { return }
+        applying = true
+        model.library.takeFromCloud {
+            $0.presets = []
+            $0.customScenes = []
+            $0.cctScales = [:]
+        }
+        model.setNamesFromCloud([:])
+        model.setSigningKeysFromCloud([:])
+        model.setKnownBulbsFromCloud([])
+        applying = false
     }
 
     private func persist() {
@@ -474,6 +549,12 @@ final class CloudLibrary {
             }
 
         case .fetchedDatabaseChanges(let e):
+            // A household library this account left, or its owner stopped sharing: back to its
+            // own, with what's here (offered to it as on signing in).
+            if saved.shared != nil, e.deletions.contains(where: { $0.zoneID == zoneID }) {
+                switchLibrary(to: nil)
+                return
+            }
             // The zone deleted (iCloud's data removed in Settings, say): forget what was synced.
             // The library here stays, and all of it goes up again with the next change here.
             if e.deletions.contains(where: { $0.zoneID == zoneID }) {
@@ -485,10 +566,11 @@ final class CloudLibrary {
 
         case .fetchedRecordZoneChanges(let e):
             var changes: [Kind: [String: Item?]] = [:]
-            for m in e.modifications {
+            // Only this library's zone (a shared database can hold others' shares too).
+            for m in e.modifications where m.record.recordID.zoneID == zoneID {
                 if let (kind, id, item) = take(m.record) { changes[kind, default: [:]].updateValue(item, forKey: id) }
             }
-            for d in e.deletions {
+            for d in e.deletions where d.recordID.zoneID == zoneID {
                 let name = d.recordID.recordName
                 saved.deleting.remove(name)
                 guard let kind = Self.kind(of: name), let id = itemID(name, kind) else { continue }
@@ -521,7 +603,7 @@ final class CloudLibrary {
                         changes[kind, default: [:]].updateValue(item, forKey: itemID)
                     }
                 case .zoneNotFound:
-                    engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+                    ensureZone()
                     retry.append(.saveRecord(id))
                 case .unknownItem:
                     // Gone from iCloud: save it afresh.
@@ -590,6 +672,12 @@ final class CloudProgress {
     var lastSync: Date?
     /// iCloud is now another Apple ID, and what to do with this device's library hasn't been chosen.
     var accountSwitched = false
+    /// The owner of the household library this account has joined, if any (their user record name).
+    var household: String?
+    #if WIZ_ICLOUD
+    /// An invitation to a household library, opened here and waiting for an answer.
+    var invitation: CKShare.Metadata?
+    #endif
 }
 
 import SwiftUI
@@ -611,4 +699,67 @@ private struct AccountSwitchPrompt: ViewModifier {
             Text("This device has presets, custom scenes, CCT scales, bulbs and signing keys from the account it used before. Add them to this account, keep them here without adding them (anything you change is added), or replace them with this account's?")
         }
     }
+}
+
+#if WIZ_ICLOUD
+import CoreTransferable
+
+/// Share Library: an invitation to this account's library (iCloud sharing), for the share sheet.
+struct HouseholdShare: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        CKShareTransferRepresentation { (_: HouseholdShare) in
+            .prepareShare(container: CKContainer(identifier: CloudLibrary.containerID)) {
+                try await CloudLibrary.shared.makeShare()
+            }
+        }
+    }
+}
+#endif
+
+/// Settings' household rows: share this library, or the one joined and leaving it.
+struct HouseholdRows: View {
+    var body: some View {
+        #if WIZ_ICLOUD
+        if let owner = CloudLibrary.shared.progress.household {
+            LabeledContent("Library", value: "Shared with you")
+                .help("Owner: \(owner)")
+            Button("Leave Household Library") { Task { await CloudLibrary.shared.leaveHousehold() } }
+        } else {
+            ShareLink(item: HouseholdShare(), preview: SharePreview("setPilot Library")) {
+                Label("Share Library with Household…", systemImage: "person.2")
+            }
+        }
+        #endif
+    }
+}
+
+extension View {
+    /// Asks what to do when an invitation to a household library is opened here.
+    func householdInvitationPrompt() -> some View { modifier(HouseholdInvitationPrompt()) }
+}
+
+private struct HouseholdInvitationPrompt: ViewModifier {
+    func body(content: Content) -> some View {
+        #if WIZ_ICLOUD
+        let progress = CloudLibrary.shared.progress
+        content.alert("Join this household's setPilot library?",
+                      isPresented: Binding(get: { progress.invitation != nil }, set: { if !$0 { progress.invitation = nil } })) {
+            Button("Join, Adding Mine") { answer(addMine: true) }
+            Button("Join, Replacing Mine", role: .destructive) { answer(addMine: false) }
+            Button("Not Now", role: .cancel) { progress.invitation = nil }
+        } message: {
+            Text("Presets, custom scenes, CCT scales, bulbs and signing keys are then shared with everyone in it, on all your devices.")
+        }
+        #else
+        content
+        #endif
+    }
+
+    #if WIZ_ICLOUD
+    private func answer(addMine: Bool) {
+        guard let metadata = CloudLibrary.shared.progress.invitation else { return }
+        CloudLibrary.shared.progress.invitation = nil
+        Task { await CloudLibrary.shared.join(metadata, addMine: addMine) }
+    }
+    #endif
 }

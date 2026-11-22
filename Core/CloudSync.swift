@@ -149,6 +149,7 @@ struct CloudSyncSection: View {
                 if let last = progress.lastSync {
                     LabeledContent("Last synced", value: last.formatted(date: .abbreviated, time: .shortened))
                 }
+                HouseholdRows()
                 Button(syncing ? "Syncing…" : "Sync Now") {
                     syncing = true
                     Task {

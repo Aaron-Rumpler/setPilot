@@ -53,6 +53,7 @@ struct RootView: View {
         .flashingGuard()
         .accountSwitchPrompt()
         .incomingItemsPrompt(model)
+        .householdInvitationPrompt()
         // Continued from another device (Handoff), or opened from Spotlight: go there.
         .onContinueHandoff { HandoffRouter.shared.open($0, info: $1) }
         .onChange(of: HandoffRouter.shared.request, initial: true) { _, route in

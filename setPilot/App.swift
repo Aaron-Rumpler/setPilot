@@ -1,4 +1,7 @@
 import AppKit
+#if WIZ_ICLOUD
+import CloudKit
+#endif
 import ServiceManagement
 import SwiftUI
 
@@ -28,7 +31,7 @@ struct SetPilotApp: App {
     }
 
     var body: some Scene {
-        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard().accountSwitchPrompt().incomingItemsPrompt(model) }
+        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard().accountSwitchPrompt().incomingItemsPrompt(model).householdInvitationPrompt() }
             .windowResizability(.contentSize)
             // setpilot:// links go to the app delegate, not to opening this window.
             .handlesExternalEvents(matching: [])
@@ -154,6 +157,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HandoffRouter.shared.open(route, info: info)
         return true
     }
+
+    #if WIZ_ICLOUD
+    /// An invitation to a household library, opened from Messages or Mail.
+    func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        CloudLibrary.shared.progress.invitation = metadata
+        HandoffRouter.shared.open(.controls) // the main window, where it's asked
+    }
+    #endif
 
     /// setpilot:// links (Core/URLCommands.swift).
     func application(_ application: NSApplication, open urls: [URL]) {
