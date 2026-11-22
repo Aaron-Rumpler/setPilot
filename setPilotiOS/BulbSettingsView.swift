@@ -14,6 +14,7 @@ struct BulbSettingsView: View {
     @FocusState private var nameFocused: Bool
     @AppStorage(Stepping.snapKey) private var snaps = true
     @AppStorage(Flashing.warnKey) private var warnsFlashing = true
+    @AppStorage(Flashing.askKey) private var asksFlashing = true
 
     var body: some View {
         Form {
@@ -146,11 +147,12 @@ struct BulbSettingsView: View {
             }
 
             Section {
-                Toggle("Warn About Flashing Light", isOn: $warnsFlashing)
+                Toggle("Note Flashing Light", isOn: $warnsFlashing)
+                Toggle("Ask Before Playing It", isOn: $asksFlashing)
             } header: {
                 Text("Flashing")
             } footer: {
-                Text("A note on custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light.")
+                Text("For custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light: a note on them, and a question before one plays.")
             }
 
             Section {

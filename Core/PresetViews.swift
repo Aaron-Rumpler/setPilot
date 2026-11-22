@@ -24,14 +24,19 @@ struct PresetGrid: View {
     var body: some View {
         let lib = model.library
         Group {
-            if lib.presets.isEmpty {
+            if featuredOnly, !lib.presets.isEmpty, lib.presets.favourites.isEmpty {
+                Text(Favourites.none)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if lib.presets.isEmpty {
                 Text("No presets yet. Set up the light, then save it as a preset.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 LazyVGrid(columns: gridColumns, spacing: 8) {
-                    ForEach(featuredOnly ? lib.presets.featured : lib.presets) { preset in
+                    ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
                         Button {
                             let flashes = lib.customSceneOf(preset.colour)?.flashes ?? false
                             confirmFlashing(preset.name, flashes: flashes) { model.apply(preset) }

@@ -56,7 +56,7 @@ struct BulbProvider: TimelineProvider {
     }
 
     private var current: BulbEntry {
-        BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: SharedStore.presets.featured)
+        BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: SharedStore.presets.favourites)
     }
 }
 
@@ -90,7 +90,7 @@ struct PresetsProvider: AppIntentTimelineProvider {
         // None chosen: the favourites (or all, with none starred).
         var seen = Set<UUID>() // a preset chosen twice shows once
         let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }.filter { seen.insert($0.id).inserted }
-        return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all.featured : chosen)
+        return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all.favourites : chosen)
     }
 }
 
@@ -129,7 +129,7 @@ struct PresetsWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             header
             if entry.presets.isEmpty {
-                Text("Save presets in setPilot.")
+                Text(SharedStore.presets.isEmpty ? "Save presets in setPilot." : "No favourites yet. Star presets in setPilot, or choose some with Edit Widget.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)

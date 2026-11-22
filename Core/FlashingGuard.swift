@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Asks before playing a custom scene or light show that flashes quickly (Flashing), from the
 /// places a person starts one: Play on a scene, a preset of one, the light show's Play. The
-/// question comes up in the window it was asked from; "Don't Ask Again" turns the warning off
-/// (Settings turns it back on).
+/// question comes up in the window it was asked from; "Don't Ask Again" turns the question off
+/// (Settings turns it back on), leaving the note on the scene or show.
 struct ConfirmFlashing {
     fileprivate var run: (_ name: String, _ flashes: Bool, _ action: @escaping () -> Void) -> Void = { _, _, action in action() }
 
@@ -29,7 +29,7 @@ extension View {
 }
 
 private struct FlashingGuard: ViewModifier {
-    @AppStorage(Flashing.warnKey) private var warns = true
+    @AppStorage(Flashing.askKey) private var asks = true
     @State private var pending: Pending?
     /// The name in the question, kept while it closes (pending is cleared first).
     @State private var shownName = ""
@@ -42,7 +42,7 @@ private struct FlashingGuard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, action in
-                if warns && flashes { pending = Pending(name: name, action: action) } else { action() }
+                if asks && flashes { pending = Pending(name: name, action: action) } else { action() }
             })
             .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
             .alert("“\(pending?.name ?? shownName)” flashes quickly",
@@ -50,7 +50,7 @@ private struct FlashingGuard: ViewModifier {
                    presenting: pending) { p in
                 Button("Play") { p.action() }
                 Button("Play, and Don't Ask Again") {
-                    warns = false
+                    asks = false
                     p.action()
                 }
                 Button("Cancel", role: .cancel) {}

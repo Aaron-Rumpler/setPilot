@@ -146,7 +146,10 @@ struct LightChange: Codable, Hashable, Sendable {
 /// custom scene or light show changes the light more than 3 times a second (Settings can turn the
 /// warning off).
 enum Flashing {
+    /// The note on a flashing scene or show.
     static let warnKey = "warnFlashing"
+    /// The question before playing one (FlashingGuard).
+    static let askKey = "askFlashing"
     static let warning = "This flashes quickly (more than 3 times a second). Take care if you, or anyone who'll see it, is sensitive to flashing light."
 
     /// A scene whose steps differ and come round faster than 3 a second.
@@ -216,11 +219,12 @@ struct Preset: Codable, Hashable, Identifiable, Sendable {
 }
 
 extension Array where Element == Preset {
-    /// The favourites, in order, or all of them when none are starred.
-    var featured: [Preset] {
-        let starred = filter(\.isFavourite)
-        return starred.isEmpty ? self : starred
-    }
+    /// The starred ones, in order (none starred: none; the places that show them say so).
+    var favourites: [Preset] { filter(\.isFavourite) }
+}
+
+enum Favourites {
+    static let none = "No favourites yet. Star presets to have them here."
 }
 
 /// One of setPilot's own scenes: 1–12 keyframes the bulb steps through, holding and fading as

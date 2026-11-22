@@ -54,7 +54,12 @@ struct PresetsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(showAll ? link.presets : link.presets.featured) { preset in
+                    if !showAll, !link.presets.isEmpty, link.presets.favourites.isEmpty {
+                        Text("No favourites yet. Star presets from their edit screen (swipe one, then Edit).")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(showAll ? link.presets : link.presets.favourites) { preset in
                         Button { link.send(.applyPreset(preset.id)) } label: {
                             HStack(spacing: 10) {
                                 Swatch(rgb: swatch(preset.colour), isScene: preset.colour.isScene)
@@ -74,7 +79,7 @@ struct PresetsView: View {
                         }
                     }
                     // With favourites starred, those come first; the rest are a tap away.
-                    if link.presets.contains(where: \.isFavourite) {
+                    if !link.presets.isEmpty {
                         Button(showAll ? "Favourites Only" : "All Presets") { showAll.toggle() }
                             .foregroundStyle(.secondary)
                     }

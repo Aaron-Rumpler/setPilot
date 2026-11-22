@@ -308,13 +308,25 @@ final class Model {
         }
         Log.app.info("setPilot \(BuildInfo.summary, privacy: .public) started")
         CloudSync.shared.start()
+        adoptBulbInUse()
         CloudLibrary.shared.start(model: self)
         CloudDocuments.shared.start()
         MetricReports.shared.start() // crash and hang reports, for Export Diagnostics
     }
 
+    /// No bulb chosen here: use the one your other devices use (BulbNudge), if there is one.
+    private func adoptBulbInUse() {
+        let defaults = UserDefaults.standard
+        guard (defaults.string(forKey: Self.addressKey) ?? "").isEmpty,
+              let value = defaults.string(forKey: BulbNudge.key) else { return }
+        let parts = value.split(separator: " ", maxSplits: 1).map(String.init)
+        guard parts.count == 2, !parts[1].isEmpty else { return }
+        choose(parts[1], mac: parts[0])
+    }
+
     /// Settings from another device (CloudSync) have been written to the defaults: take them.
     private func reloadSyncedSettings() {
+        adoptBulbInUse()
         let defaults = UserDefaults.standard
         let fade = FadeChoice(rawValue: defaults.string(forKey: Self.controlsFadeKey) ?? "") ?? .setting
         if fade != controlsFade { controlsFade = fade }
@@ -459,7 +471,7 @@ final class Model {
         // typed before its MAC was known; one with the same MAC is this bulb at an old address.
         list.removeAll { $0.address == address || (entry.mac != nil && $0.mac == entry.mac) }
         list.insert(entry, at: 0)
-        knownBulbs = Array(list.prefix(50)) // room for a home's worth from the WiZ import
+        knownBulbs = list // all of them, until you forget one
     }
 
     func forgetBulb(_ bulb: KnownBulb) { knownBulbs.removeAll { $0.id == bulb.id } }

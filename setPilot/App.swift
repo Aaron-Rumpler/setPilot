@@ -206,8 +206,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         power.target = self
         power.isEnabled = model.canControl
         menu.addItem(power)
-        let presets = model.library.presets.featured
-        if !presets.isEmpty { menu.addItem(.separator()) }
+        let presets = model.library.presets.favourites
+        menu.addItem(.separator())
+        if presets.isEmpty {
+            let none = NSMenuItem(title: "No Favourites", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        }
         for (i, preset) in presets.prefix(20).enumerated() {
             let item = NSMenuItem(title: preset.name, action: #selector(dockPreset(_:)), keyEquivalent: "")
             item.target = self
@@ -260,6 +265,7 @@ struct SettingsView: View {
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @AppStorage(Stepping.snapKey) private var snaps = true
     @AppStorage(Flashing.warnKey) private var warnsFlashing = true
+    @AppStorage(Flashing.askKey) private var asksFlashing = true
     @State private var importingHome = false
     /// The height of all the settings, for the window's size limits.
     @State private var contentHeight: CGFloat?
@@ -290,11 +296,12 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Warn about flashing light", isOn: $warnsFlashing)
+                Toggle("Note flashing light", isOn: $warnsFlashing)
+                Toggle("Ask before playing it", isOn: $asksFlashing)
             } header: {
                 Text("Flashing")
             } footer: {
-                Text("A note on custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light.")
+                Text("For custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light: a note on them, and a question before one plays.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

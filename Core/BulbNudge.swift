@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// When this device has no bulb, or its bulb isn't answering: offers the bulb your other devices
-/// last used (synced through iCloud as "MAC address", CloudSync).
+/// When this device's bulb isn't answering: offers the bulb your other devices last used (synced
+/// through iCloud as "MAC address", CloudSync). With no bulb chosen, the model just uses it.
 struct BulbNudge: View {
     static let key = "bulbInUse"
     let model: Model
