@@ -15,10 +15,18 @@ extension Model {
             }
             if setKeys, let key = plan.key { setSigningKey(key, for: item.mac) }
         }
+        // Bulbs not used here yet join Your Bulbs, without an address until one's found (on the
+        // Mac by searching for the MAC; on iPhone, entered).
+        var added = 0
+        for item in chosen where !item.known && !knownBulbs.contains(where: { $0.mac?.lowercased() == item.mac }) {
+            knownBulbs.append(KnownBulb(address: "", mac: item.mac))
+            added += 1
+        }
         let keys = setKeys && plan.key != nil ? chosen.count : 0
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         var parts = ["Named \(count(named, "bulb"))"]
         if keys > 0 { parts.append("set the signing key for \(count(keys, "bulb"))") }
+        if added > 0 { parts.append("added \(count(added, "bulb")) to Your Bulbs") }
         return parts.joined(separator: " and ") + "."
     }
 }
@@ -38,6 +46,8 @@ struct HomeImportView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var result: String?
+    /// Names typed in the list, by MAC: kept when the naming options change.
+    @State private var edited: [String: String] = [:]
 
     var body: some View {
         Form {
@@ -69,7 +79,12 @@ struct HomeImportView: View {
                         Toggle(isOn: Binding(get: { self.plan?.items[i].include ?? false },
                                              set: { self.plan?.items[i].include = $0 })) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(plan.items[i].newName ?? "No name")
+                                TextField("Name", text: Binding(get: { self.plan?.items[i].newName ?? "" }, set: { new in
+                                    guard let mac = self.plan?.items[i].mac else { return }
+                                    edited[mac] = new
+                                    self.plan?.items[i].newName = new.isEmpty ? nil : new
+                                }))
+                                .accessibilityLabel("Name for \(detail(plan.items[i]))")
                                 Text(detail(plan.items[i])).font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -77,7 +92,7 @@ struct HomeImportView: View {
                 } header: {
                     Text(plan.homeName.map { "Lights in “\($0)”" } ?? "Lights")
                 } footer: {
-                    Text("Matched by MAC. Bulbs not used with setPilot yet keep the name and key for when they are. Room and home IDs aren't kept.")
+                    Text("Matched by MAC. Names can be changed here first. Bulbs not used with setPilot yet join Your Bulbs, with their name and key, until their address is found. Room and home IDs aren't kept.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Section {
@@ -143,7 +158,10 @@ struct HomeImportView: View {
         var p = HomeImportPlan(export, naming: naming, currentNames: model.names,
                                knownMACs: Set(model.knownBulbs.compactMap(\.mac)),
                                currentKeys: currentKeys(export))
-        for i in p.items.indices where excluded.contains(p.items[i].mac) { p.items[i].include = false }
+        for i in p.items.indices {
+            if excluded.contains(p.items[i].mac) { p.items[i].include = false }
+            if let name = edited[p.items[i].mac] { p.items[i].newName = name.isEmpty ? nil : name }
+        }
         plan = p
     }
 }

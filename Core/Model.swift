@@ -451,7 +451,7 @@ final class Model {
         // typed before its MAC was known; one with the same MAC is this bulb at an old address.
         list.removeAll { $0.address == address || (entry.mac != nil && $0.mac == entry.mac) }
         list.insert(entry, at: 0)
-        knownBulbs = Array(list.prefix(12))
+        knownBulbs = Array(list.prefix(50)) // room for a home's worth from the WiZ import
     }
 
     func forgetBulb(_ bulb: KnownBulb) { knownBulbs.removeAll { $0.id == bulb.id } }
@@ -743,6 +743,20 @@ final class Model {
             return false
         }
         return true
+    }
+
+    /// A bulb's address, by its MAC: on the Mac by searching the network (and remembering it); on
+    /// iPhone only if it's been used before (no searching there).
+    func locate(mac: String) async -> String? {
+        let mac = mac.lowercased()
+        if let known = knownBulbs.first(where: { $0.mac?.lowercased() == mac && !$0.address.isEmpty }) { return known.address }
+        #if os(macOS)
+        guard let found = await discover().first(where: { $0.mac.lowercased() == mac }) else { return nil }
+        rememberBulb(address: found.ip, mac: mac)
+        return found.ip
+        #else
+        return nil
+        #endif
     }
 
     /// If the chosen bulb (known by MAC) isn't at its saved IP, search for it and reconnect at its

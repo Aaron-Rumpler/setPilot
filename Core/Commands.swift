@@ -83,7 +83,15 @@ enum Scripting {
                                   also: { b in [b.address] + (b.mac.map { [$0] } ?? []) }) else {
                 throw ScriptError(code: .notFound, message: "No bulb called “\(query)” (or with that MAC or address) in your bulbs.")
             }
-            model.choose(bulb.address, mac: bulb.mac)
+            if bulb.address.isEmpty {
+                // Known only by its MAC (from the WiZ import): find it first.
+                guard let mac = bulb.mac, let address = await model.locate(mac: mac) else {
+                    throw ScriptError(code: .notFound, message: "\(bulb.name ?? "That bulb") hasn't been found on the network yet.")
+                }
+                model.choose(address, mac: mac)
+            } else {
+                model.choose(bulb.address, mac: bulb.mac)
+            }
             try await ready(model)
             return ScriptResult(state: state(of: model))
         case .get:

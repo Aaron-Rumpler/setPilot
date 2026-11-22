@@ -2,6 +2,9 @@ import SwiftUI
 
 /// Choosing the bulb (typed: no network search on iPhone), naming it, its details, and settings.
 struct BulbSettingsView: View {
+    /// A bulb from the WiZ import being given its address.
+    @State private var locating: KnownBulb?
+    @State private var locatingAddress = ""
     let model: Model
     @AppStorage(Model.addressKey) private var saved = ""
     @State private var address = ""
@@ -35,6 +38,12 @@ struct BulbSettingsView: View {
                 Section {
                     ForEach(model.namedBulbs) { bulb in
                         Button {
+                            if bulb.address.isEmpty {
+                                // From the WiZ import, not used here yet: its address is needed.
+                                locating = bulb
+                                locatingAddress = ""
+                                return
+                            }
                             address = bulb.address
                             // With its MAC, so a different bulb that now has the address isn't used.
                             use(bulb.address, mac: bulb.mac)
@@ -42,7 +51,9 @@ struct BulbSettingsView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(bulb.name ?? bulb.address).foregroundStyle(.primary)
-                                    if bulb.name != nil {
+                                    if bulb.address.isEmpty {
+                                        Text("Address not known yet: tap to enter it").font(.caption).foregroundStyle(.secondary)
+                                    } else if bulb.name != nil {
                                         Text(bulb.address).font(.caption).foregroundStyle(.secondary)
                                     }
                                 }
@@ -60,6 +71,22 @@ struct BulbSettingsView: View {
                     Text("Your Bulbs")
                 } footer: {
                     Text("Bulbs you've used. Tap one to switch to it; the watch can switch too.")
+                }
+                .alert("Address of \(locating?.name ?? "the bulb")", isPresented: Binding(get: { locating != nil }, set: { if !$0 { locating = nil } })) {
+                    TextField("IP address or DNS name", text: $locatingAddress)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    Button("Use") {
+                        let a = locatingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if let bulb = locating, !a.isEmpty {
+                            address = a
+                            use(a, mac: bulb.mac) // its MAC: a different bulb at that address isn't taken for it
+                        }
+                        locating = nil
+                    }
+                    Button("Cancel", role: .cancel) { locating = nil }
+                } message: {
+                    Text("The Mac app's bulb search and your router show it.")
                 }
             }
 

@@ -283,7 +283,7 @@ struct BulbsView: View {
 
     var body: some View {
         let s = link.snapshot
-        let bulbs = s?.bulbs ?? []
+        let bulbs = (s?.bulbs ?? []).filter { !$0.address.isEmpty } // ones not found yet (WiZ import) need the iPhone
         List {
             ErrorRow(link: link)
             ForEach(bulbs) { bulb in
