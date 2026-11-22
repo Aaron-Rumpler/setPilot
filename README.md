@@ -82,6 +82,16 @@ trademark of Signify.
   `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App
   Groups and a development team, signed with a development certificate rather than "Sign to Run
   Locally" (set `DEVELOPMENT_TEAM` in `Account.xcconfig`; see below).
+- **AppleScript and JavaScript for Automation** (Mac): `tell application "setPilot" to turn on`,
+  `apply preset "Evening" fade 2000`, `change brightness by -10`, `set light temperature 2700
+  brightness 40 power true`, `switch bulb "Lounge"`; the `power` and `brightness` properties can be
+  read and set, and `light state`, `preset names`, `custom scene names`, `scene names` and `bulb
+  names` read. Commands return the light state; a failure is a script error numbered 1000 plus the
+  command-line tool's exit code. The dictionary is in Script Editor's Library.
+- **Siri, Spotlight and suggestions**: Get Light State, power and brightness actions show the light
+  with power, brighter and dimmer buttons. Presets and custom scenes can be found by name in
+  Spotlight (iOS 18, macOS 15; a custom scene opens its editor). Applying presets tells Siri when
+  you use them, for Siri Suggestions and the Smart Stack.
 - **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
   for a room's only light, optionally with the home's name first) and give them the home's signing
@@ -136,7 +146,12 @@ trademark of Signify.
   delay** slider sends every cue that much early, to make up for the bulb's lag; seeking sends the
   state at the new place first; and stopping (or the end) can put the light back as it was. The format is in
   [docs/LIGHT-SHOW.md](docs/LIGHT-SHOW.md).
-- **Light menu** (Mac): switch on or off (⇧⌘P), sync, and the first nine presets on ⌘1–⌘9.
+- **Light menu** (Mac, and an iPad with a keyboard): switch on or off (⇧⌘P), undo the last light
+  change, sync, and the first nine presets on ⌘1–⌘9. The Mac's Dock icon menu has power and the
+  presets.
+- **Undo**: Edit › Undo (⌘Z) on the Mac, shaking the iPhone, or the Undo button by the Light
+  controls puts the light back as it was before the last change (a drag or a burst of changes
+  counts as one; up to 20 back; choosing another bulb starts afresh).
 - **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
   and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
   what's there and updates items exported from there before.
@@ -151,8 +166,9 @@ trademark of Signify.
   `setCctTable`, is cloud-only.)
 - **Fade** under Dimming: what the main controls send as `trans` (sliders, presets, brighter and
   dimmer): the fade time setting, none, or a value of their own, as in Compose.
-- **Fade time** (Settings; off by default, so no `trans` is sent): the `trans`, in milliseconds,
-  that the controls' Fade and Compose offer as the default; the bulb's own fades (from
+- **Fade time** (Settings; off by default, so no `trans` is sent): the `trans`, entered in ms, s,
+  min or h (up to a day; whether bulbs take fades that long is still to be tried), that the
+  controls' Fade and Compose offer as the default; the bulb's own fades (from
   `getUserConfig`) are shown alongside. Turning off always uses the bulb's fade-out.
 
 ## iPhone and Apple Watch
@@ -180,6 +196,15 @@ The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to s
 - **Lock Screen** (iPhone): a bulb status, with a power toggle on the rectangular size.
 - **Control Center:** controls for power, a preset of your choice, brighter and dimmer. On iPhone
   they also work from the Action button; on the Mac, from the menu bar.
+- **Tinted and clear** Home Screen styles (iOS 18 and 26, macOS 26): preset tiles keep their
+  lightness in the tint.
+- **Light show Live Activity** (iPhone): the show's title, current cue and its colour, progress, and
+  play/pause and stop, on the Lock Screen and in the Dynamic Island, and small in the watch's Smart
+  Stack. Audio carries on with the phone locked.
+- **Home Screen quick actions** (touch and hold the app icon): power and the first three presets.
+
+On iPad the controls sit beside the custom scenes, light show, CCT scales or settings, in two
+columns; a hardware keyboard gets the Light menu, and presets lift under the pointer.
 
 On iPhone their actions run in the app in the background, on its connection to the bulb. If the
 system runs them in the widget extension instead, the extension sends the request itself. On the
@@ -189,7 +214,9 @@ command-line tool does.
 The watch has complications (status, a preset, power) for watch faces and the Smart Stack, and
 Control Center controls (power, a preset, brighter, dimmer), which also work from the Smart Stack
 and the Action button. A tap opens the watch app, which asks the iPhone: watch widgets can't do it
-themselves.
+themselves. A preset you apply at about the same time of day on several days comes forward in the
+Smart Stack around then. Double tap (Series 9 and Ultra 2 on) switches the power on the main
+screen.
 
 The Watch app's main screen is power and the presets (tap to apply). Below them:
 - **Controls**: mode, channels, temperature, Custom CCT (and which scale), scene (the bulb's and
@@ -233,7 +260,7 @@ compilation conditions, so the code that needs them is left out otherwise.
 | Switch | Default | What it gives | Needs |
 |---|---|---|---|
 | `WIZ_APP_GROUPS` | YES | The widgets and Control Center controls on iPhone and Mac, the watch complications and controls (they read the apps' data through the group), and the Mac's command-line tool (it reaches the app through the group container) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps. On the Mac the group is Team-ID-prefixed, so the Mac widgets and the command-line tool also need a development team (an ad-hoc build has no Team ID, so no container) |
-| `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
+| `WIZ_ICLOUD` | NO | iCloud sync between Mac and iPhone: presets, custom scenes, CCT scales and bulb names item by item through CloudKit (changes to different items on two devices both survive; the later change to the same item wins), and settings (the fades, the adapting white, snapping, the light show's options, the flashing warning) through key-value storage. Also Handoff (the light, a custom scene or CCT scale being edited, the light show; the watch offers its controls) and a setPilot folder in iCloud Drive, where the library and light show dialogs start. Signing keys, the chosen bulb and the light show delay stay on each device | A paid account, the iCloud container `iCloud.nz.aaronrumpler.setPilot` on both App IDs, and before a release the CloudKit schema deployed to production |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
 back, so writing one could overwrite a scene the WiZ app stored), changing the bulb's own settings
@@ -268,7 +295,7 @@ python3 tools/make_icon_layers.py 4800
 
 ## Requirements
 
-macOS 14 or later; iOS 26 and watchOS 26. Building needs Xcode 26 (for the Icon Composer app icon;
+macOS 14 or later; iOS 26 (iPhone and iPad; it also runs on Vision Pro as the iPad app) and watchOS 26. Building needs Xcode 26 (for the Icon Composer app icon;
 Xcode 26 also generates the fallback icons for older macOS).
 
 ## Build and run
@@ -300,7 +327,8 @@ file added to a folder is picked up without editing the project:
 | `setPilotWatchWidgets/` | the watch complications and Control Center controls |
 | `Scripting/` | Mac and iPhone apps and the command-line tool: what scripting can ask for, and setpilot:// parsing |
 | `setpilotCLI/` | the command-line tool (target "setpilot CLI", built into the Mac app's `Contents/Helpers`) |
-| `Tests/` | unit tests (target "setPilotTests", with Common and Scripting), run in CI with `xctest` |
+| `Tests/` | unit tests (target "setPilotTests", with Common, Scripting and the widgets' views), run in CI with `xctest`; `Tests/Snapshots/` holds the widget pictures they compare with |
+| `UITests/` | UI tests of the Mac app (target "setPilotUITests", in the "setPilot" scheme) |
 
 Each app records the commit it was built from (from `git describe`, with `-dirty` for uncommitted
 changes) and shows it in Settings and the About panel (on the watch, on the Bulb screen).
@@ -321,12 +349,25 @@ Pushing a version tag (`v1.0.0`, say) runs the Release workflow, which puts the 
 release as a DMG. With the `DEVELOPER_ID_P12`, `DEVELOPER_ID_PASSWORD` and `DEVELOPMENT_TEAM`
 repository secrets (a paid account's Developer ID certificate) it's signed, and with
 `NOTARY_APPLE_ID` and `NOTARY_PASSWORD` too, notarised; without them it's the same ad-hoc build.
-The CI also builds and runs the unit tests.
+The CI also builds and runs the unit tests, renders the widgets (uploaded as `widget-snapshots`)
+and runs the Mac UI tests. Run it by hand with "variants" to compile with iCloud on and App Groups
+off as well.
+
+The TestFlight workflow (by hand) archives the iPhone app with the watch app, signs it for the App
+Store with an App Store Connect API key and uploads it; the secrets it needs are listed at the top
+of `.github/workflows/testflight.yml`. Each app and extension has a privacy manifest (nothing
+collected or tracked) and a String Catalog, ready for translation.
 
 ## Notes
 
-- Local Network access is required. If it was denied, turn it on in System Settings › Privacy &
-  Security › Local Network.
+- Local Network access is required. If it's off, the app says so, with a button to the setting
+  (System Settings › Privacy & Security › Local Network; on iPhone, Settings › Apps › setPilot).
+- **Export Diagnostics** (Settings): a text file for a bug report, with the versions, recent
+  messages to and from the bulb, setPilot's own log (also in Console.app, subsystem
+  `nz.aaronrumpler.setPilot`) and any crash or hang reports; MAC addresses and signing keys are
+  taken out.
+- Custom scenes and light shows that change the light more than 3 times a second carry a warning
+  for people sensitive to flashing light; Settings can turn it off.
 - Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen
   by DNS name is resolved to its IPv4 address for them.
 - R, G, B, C and W don't correspond directly to LED drive: the firmware remaps them (with a white
