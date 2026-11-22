@@ -107,7 +107,10 @@ struct PresetsWidget: Widget {
 
 struct PresetsWidgetView: View {
     let entry: BulbEntry
-    @Environment(\.widgetFamily) private var family
+    /// The size; set only by the snapshot tests (outside a widget the environment's isn't a real one).
+    var size: WidgetFamily? = nil
+    @Environment(\.widgetFamily) private var environmentFamily
+    private var family: WidgetFamily { size ?? environmentFamily }
     /// Full colour, or tinted and clear (iOS 18 and 26, macOS 26), where colours are taken away.
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -254,7 +257,10 @@ struct StatusWidget: Widget {
 
 struct StatusWidgetView: View {
     let entry: BulbEntry
-    @Environment(\.widgetFamily) private var family
+    /// The size; set only by the snapshot tests (outside a widget the environment's isn't a real one).
+    var size: WidgetFamily? = nil
+    @Environment(\.widgetFamily) private var environmentFamily
+    private var family: WidgetFamily { size ?? environmentFamily }
 
     var body: some View {
         let s = entry.snapshot

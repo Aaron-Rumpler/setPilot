@@ -10,11 +10,12 @@ import XCTest
 @MainActor
 final class WidgetSnapshotTests: XCTestCase {
     func testPresetsWidget() throws {
-        try snapshot("presets-small", PresetsWidgetView(entry: .sample), size: CGSize(width: 170, height: 170))
+        try snapshot("presets-small", PresetsWidgetView(entry: .sample, size: .systemSmall), size: CGSize(width: 170, height: 170))
+        try snapshot("presets-medium", PresetsWidgetView(entry: .sample, size: .systemMedium), size: CGSize(width: 364, height: 170))
     }
 
     func testBulbWidget() throws {
-        try snapshot("bulb-small", StatusWidgetView(entry: .sample), size: CGSize(width: 170, height: 170))
+        try snapshot("bulb-small", StatusWidgetView(entry: .sample, size: .systemSmall), size: CGSize(width: 170, height: 170))
     }
 
     func testBulbWidgetOff() throws {
@@ -22,7 +23,7 @@ final class WidgetSnapshotTests: XCTestCase {
         var off = base.snapshot ?? LightSnapshot()
         off.isOn = false
         let entry = BulbEntry(date: base.date, snapshot: off, presets: base.presets)
-        try snapshot("bulb-small-off", StatusWidgetView(entry: entry), size: CGSize(width: 170, height: 170))
+        try snapshot("bulb-small-off", StatusWidgetView(entry: entry, size: .systemSmall), size: CGSize(width: 170, height: 170))
     }
 
     // MARK: Rendering and comparing
