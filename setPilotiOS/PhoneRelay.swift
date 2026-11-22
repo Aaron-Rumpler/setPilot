@@ -110,7 +110,7 @@ final class PhoneRelay: NSObject {
         case let .controlsFade(choice, ms):
             model.controlsFade = choice
             // The time only with Custom: another choice mustn't send back an old one.
-            if choice == .custom { model.controlsFadeMs = min(max(ms, 0), 60_000) }
+            if choice == .custom { model.controlsFadeMs = min(max(ms, 0), Fade.maximum) }
             return .now(model.snapshot)
         case let .renameBulb(mac, name):
             model.rename(mac: mac, to: name)

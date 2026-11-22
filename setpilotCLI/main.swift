@@ -29,7 +29,7 @@ usage: setpilot [--json] <command> [arguments]
 
   --on     also switch the bulb on (colour, temp, scene, custom); otherwise
            the power is left as it is, as the app's controls do
-  --fade <ms>  this change's fade (0–60000); otherwise the controls' fade
+  --fade <ms>  this change's fade (0–86400000, a day); otherwise the controls' fade
   --json   JSON output (watch: one object per line)
 
 Changes are reported once the bulb has answered and read back as asked.

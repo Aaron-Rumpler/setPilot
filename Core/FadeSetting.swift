@@ -21,14 +21,7 @@ struct FadeSetting: View {
         .onChange(of: stored) { model.library.onChange?() }
         if stored >= 0 {
             LabeledContent("Fade time") {
-                HStack {
-                    MillisecondsField(value: $stored)
-                        .frame(maxWidth: 80)
-                    Text("ms").foregroundStyle(.secondary)
-                    Stepper("Fade time", value: Binding(get: { stored }, set: { stored = min(max($0, 0), 60_000) }),
-                            in: 0...60_000, step: 100) // the range disables − and + at the ends
-                        .labelsHidden()
-                }
+                DurationField(value: $stored)
             }
         }
         LabeledContent("The bulb's own", value: bulbDefault)
@@ -85,14 +78,102 @@ struct FadeRow: View {
             .fixedSize()
             #endif
             if shown.wrappedValue == .custom {
-                MillisecondsField(value: $ms)
-                    .frame(width: 70)
-                Text("ms").foregroundStyle(.secondary)
+                DurationField(value: $ms)
             }
             #if os(macOS)
             Spacer(minLength: 0)
             #endif
         }
+    }
+}
+
+/// A fade time in ms, entered as a number and a unit (ms, s, min or h), taken as it's typed (as
+/// MillisecondsField below). The number stays when the unit changes: 30 then "min" is 30 minutes.
+struct DurationField: View {
+    var label = "Fade time"
+    @Binding var value: Int
+    var maximum = Fade.maximum
+    @State private var unit = Unit.ms
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    enum Unit: Int, CaseIterable, Identifiable {
+        case ms = 1, s = 1000, min = 60_000, h = 3_600_000
+        var id: Int { rawValue }
+        var title: String {
+            switch self {
+            case .ms: "ms"
+            case .s: "s"
+            case .min: "min"
+            case .h: "h"
+            }
+        }
+
+        /// The largest unit `ms` is a whole number of (ms for 0).
+        static func fitting(_ ms: Int) -> Unit {
+            allCases.reversed().first { ms >= $0.rawValue && ms % $0.rawValue == 0 } ?? .ms
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField(label, text: $text)
+                .focused($focused)
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .frame(width: 70)
+                #if os(iOS)
+                .keyboardType(.decimalPad)
+                .toolbar {
+                    if focused {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { focused = false }
+                        }
+                    }
+                }
+                #endif
+            Picker("Unit", selection: $unit) {
+                ForEach(Unit.allCases) { Text($0.title).tag($0) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel("\(label) unit")
+        }
+        .onAppear {
+            unit = .fitting(value)
+            text = Self.format(value, unit)
+        }
+        .onChange(of: text) { _, _ in take() }
+        .onChange(of: unit) { _, _ in take() }
+        // Emptied and left: show the value that's still in use, rather than a blank.
+        .onChange(of: focused) { _, now in if !now, text.isEmpty { text = Self.format(value, unit) } }
+        // Changed elsewhere (another device, the watch): show it, unless it's what's typed.
+        .onChange(of: value) { _, new in
+            if Self.ms(text, unit) != new {
+                unit = .fitting(new)
+                text = Self.format(new, unit)
+            }
+        }
+    }
+
+    private func take() {
+        guard let ms = Self.ms(text, unit) else { return }
+        let clamped = min(max(ms, 0), maximum)
+        if clamped != value { value = clamped }
+        if clamped != ms { text = Self.format(clamped, unit) } // over the limit: show what's used
+    }
+
+    /// What's typed, in ms ("1.5" s is 1500; a comma works as the decimal point too).
+    private static func ms(_ text: String, _ unit: Unit) -> Int? {
+        let t = text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
+        guard let n = Double(t), n.isFinite, n >= 0 else { return nil }
+        return Int(min(n * Double(unit.rawValue), Double(Int32.max)).rounded())
+    }
+
+    private static func format(_ ms: Int, _ unit: Unit) -> String {
+        let n = Double(ms) / Double(unit.rawValue)
+        return n == n.rounded() ? String(Int(n)) : String(format: "%.3g", n)
     }
 }
 

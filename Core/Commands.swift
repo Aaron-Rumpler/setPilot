@@ -23,8 +23,8 @@ enum Scripting {
     private static var queue: Task<Void, Never>?
 
     private static func runNow(_ command: ScriptCommand, fade: Int?, on model: Model) async -> ScriptResult {
-        if let fade, !(0...60_000).contains(fade) {
-            return ScriptResult(state: state(of: model), error: bad("The fade is 0–60000 ms."))
+        if let fade, !(0...Fade.maximum).contains(fade) {
+            return ScriptResult(state: state(of: model), error: bad("The fade is 0–\(Fade.maximum) ms (a day)."))
         }
         do {
             return try await perform(command, fade, model)

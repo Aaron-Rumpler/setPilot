@@ -144,6 +144,12 @@ struct LightChange: Codable, Hashable, Sendable {
 
 /// How a composed change fades: the fade time setting (only offered when one is set), none
 /// (no `trans`: the bulb's own fade), or a value just for this change.
+/// Limits on a fade (`trans`, ms). Up to a day can be asked for; whether a bulb takes fades that
+/// long hasn't been tried yet.
+enum Fade {
+    static let maximum = 86_400_000
+}
+
 enum FadeChoice: String, Codable, Hashable, Sendable {
     case setting, none, custom
 
