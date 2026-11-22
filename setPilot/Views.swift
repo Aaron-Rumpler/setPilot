@@ -87,6 +87,9 @@ struct ContentView: View {
                 .controlSize(.small)
                 .opacity(model.pending ? 1 : 0)
                 .help("Waiting for the bulb to confirm")
+            UndoLightButton(model: model)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
             ComposeToggle(model: model)
             // At the top of the light: the first thing to reach for.
             Toggle("Power", isOn: model.powerBinding)

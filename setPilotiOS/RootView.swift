@@ -48,6 +48,7 @@ struct RootView: View {
                 }
             }
         }
+        .providesUndo(to: model) // shake to undo a light change
         // Continued from another device (Handoff), or opened from Spotlight: go there.
         .onContinueHandoff { HandoffRouter.shared.open($0) }
         .onChange(of: HandoffRouter.shared.request, initial: true) { _, route in
@@ -197,6 +198,9 @@ struct RootView: View {
             HStack {
                 Text("Light")
                 Spacer()
+                UndoLightButton(model: model)
+                    .labelStyle(.iconOnly)
+                    .font(.subheadline)
                 ComposeToggle(model: model)
                     .font(.subheadline)
                     .textCase(nil)

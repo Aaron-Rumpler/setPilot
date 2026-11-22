@@ -312,6 +312,50 @@ final class Model {
         library.onChange?() // the widgets' ready-made requests carry the fade setting too
     }
 
+    // MARK: Undo
+
+    /// How the light was before each of the last changes made here (a drag or a burst of
+    /// changes counts once), newest last.
+    private(set) var undoHistory: [SavedLight] = []
+    @ObservationIgnored private var lastUndoPoint = Date.distantPast
+    @ObservationIgnored private var undoing = false
+    /// The window's undo manager (set by the main view), so Edit › Undo, ⌘Z and shaking the
+    /// iPhone undo light changes too.
+    @ObservationIgnored weak var undoManager: UndoManager?
+    static let undoActionName = "Light Change"
+
+    var canUndo: Bool { !undoHistory.isEmpty && canControl }
+
+    /// Called before a change: keeps how the light is now, unless a change was made in the last
+    /// moment and a half (then it's part of the same one).
+    func noteUndoPoint() {
+        guard !undoing, canControl else { return }
+        let now = Date.now
+        defer { lastUndoPoint = now }
+        guard now.timeIntervalSince(lastUndoPoint) > 1.5 else { return }
+        undoHistory.append(savedLight)
+        if undoHistory.count > 20 { undoHistory.removeFirst() }
+        undoManager?.registerUndo(withTarget: self) { model in MainActor.assumeIsolated { model.undoNow() } }
+        undoManager?.setActionName(Self.undoActionName)
+    }
+
+    /// The Undo button: through the undo manager when the change is the last thing on it, so the
+    /// two stay in step.
+    func undo() {
+        if let m = undoManager, m.canUndo, m.undoActionName == Self.undoActionName {
+            m.undo()
+        } else {
+            undoNow()
+        }
+    }
+
+    private func undoNow() {
+        guard let last = undoHistory.popLast() else { return }
+        undoing = true
+        defer { undoing = false; lastUndoPoint = .distantPast }
+        if let note = restore(last) { status = note }
+    }
+
     // MARK: Connection
 
     /// The saved bulb address (IP or DNS name). Changed by `choose`, and by `relocate` when the
@@ -449,6 +493,7 @@ final class Model {
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
+        undoHistory = [] // undoing is for this bulb's changes
         retriedAt = nil // chosen by hand: worth another try if it doesn't answer
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
@@ -754,6 +799,7 @@ final class Model {
     /// the way every other change does (read back, refusals reported). A speed changed while it
     /// was off goes with switching on.
     func power(_ on: Bool) {
+        noteUndoPoint()
         var p: [String: Any] = [:]
         if let fade = fadeForControls { p["trans"] = fade }
         let owed = on && speedOwed && mode == .scene ? Int(speed) : nil
@@ -763,6 +809,7 @@ final class Model {
     /// Switches between the three controls. Temperature goes back to whichever scale it last used:
     /// the bulb's own, or a CCT scale (if this bulb still has one).
     func setModeChoice(_ choice: ModeChoice) {
+        noteUndoPoint()
         switch choice {
         case .rgbcw: setMode(Mode.rgbcw)
         case .scenes: setMode(Mode.scene)
@@ -812,6 +859,7 @@ final class Model {
     }
 
     func setMode(_ m: Mode) {
+        noteUndoPoint()
         // Custom CCT without a scale (deleted since) can't send anything: the bulb's own instead.
         let m = m == .custom && activeScale?.range == nil ? Mode.temp : m
         mode = m
@@ -832,6 +880,7 @@ final class Model {
     }
 
     func setScene(_ id: Int) {
+        noteUndoPoint()
         customSceneId = nil
         sceneId = id
         sendPilot([.colour], retry: true)
@@ -1089,6 +1138,7 @@ final class Model {
     /// False if nothing could be sent (the status, and `refusal`, say why).
     @discardableResult
     func send(_ change: LightChange) -> Bool {
+        if !change.isEmpty { noteUndoPoint() }
         guard !change.isEmpty else {
             status = "Nothing to send"
             refusal = status
@@ -1240,6 +1290,7 @@ final class Model {
     /// from elsewhere aren't overwritten.
     func adjustDimming(by delta: Int) {
         guard delta != 0 else { refusal = nil; return } // nothing to do: no earlier reason applies
+        noteUndoPoint()
         dimming = min(max(dimming + Double(delta), minDimming), 100)
         // The new level, not dimDelta: a retry (its reply lost or late) would add the step again.
         var p: [String: Any] = ["dimming": Int(dimming)]

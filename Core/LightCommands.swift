@@ -11,6 +11,8 @@ struct LightCommands: Commands {
             Button(model.isOn == true ? "Switch Off" : "Switch On") { model.power(model.isOn != true) }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(!model.canControl)
+            Button("Undo Light Change") { model.undo() } // also Edit › Undo (⌘Z)
+                .disabled(!model.canUndo)
             Button("Sync") { model.sync() }
                 .disabled(model.link == .none)
             Divider()

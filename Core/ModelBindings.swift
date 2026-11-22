@@ -9,6 +9,7 @@ extension Model {
             set: {
                 let v = $0.rounded()
                 guard v != self[keyPath: kp] else { return } // continuous sliders move in fractions
+                self.noteUndoPoint() // before the change: how it was
                 self[keyPath: kp] = v
                 self.changed(field)
             }
