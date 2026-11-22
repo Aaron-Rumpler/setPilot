@@ -1070,6 +1070,12 @@ final class Model {
             // Temperature is on the bulb's own now: it goes back to that after another mode.
             UserDefaults.standard.set(false, forKey: Self.temperatureScaleKey)
         case let .scene(id, s):
+            // One this app doesn't know (an imported preset from a newer version, say) can't be
+            // sent: leave the controls as they are rather than show it.
+            guard Scenes.isKnown(id) else {
+                status = "\(Scenes.name(id)) can't be sent"
+                return false
+            }
             mode = .scene
             sceneId = id
             customSceneId = nil
