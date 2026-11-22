@@ -11,6 +11,9 @@ struct SetPilotWidgets: WidgetBundle {
         PresetControl()
         BrighterControl()
         DimmerControl()
+        #if os(iOS)
+        LightShowLiveActivityWidget()
+        #endif
     }
 }
 

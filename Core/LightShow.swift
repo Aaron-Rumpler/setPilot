@@ -144,14 +144,24 @@ final class LightShowPlayer {
     private(set) var isPlaying = false {
         didSet {
             #if os(iOS)
-            // Video keeps the screen on by itself; audio doesn't, and a locked phone suspends the
-            // app, show and all.
-            if isPlaying != oldValue { UIApplication.shared.isIdleTimerDisabled = isPlaying }
+            // Video keeps the screen on by itself; audio doesn't. Audio carries on with the phone
+            // locked (the audio background mode), with the Live Activity on the Lock Screen, but
+            // video pauses then: kept awake so it doesn't lock part way.
+            if isPlaying != oldValue {
+                UIApplication.shared.isIdleTimerDisabled = isPlaying
+                LightShowLiveActivity.shared.changed(self)
+            }
             #endif
         }
     }
     /// The cue sent most recently, for the cue list.
-    private(set) var currentCue: Int?
+    private(set) var currentCue: Int? {
+        didSet {
+            #if os(iOS)
+            if currentCue != oldValue, isPlaying { LightShowLiveActivity.shared.changed(self) }
+            #endif
+        }
+    }
     /// The show's state as last sent, for the on-screen swatch.
     private(set) var light: [String: Any] = [:]
 
@@ -311,10 +321,16 @@ final class LightShowPlayer {
         light = [:]
         restore()
         showPosition(at: 0) // a cue at the very start is the current one, as when seeking there
+        #if os(iOS)
+        LightShowLiveActivity.shared.end()
+        #endif
     }
 
     func seek(to seconds: Double) {
         guard player.currentItem != nil else { return } // no media to go to (a cue tapped with only a show open)
+        #if os(iOS)
+        defer { LightShowLiveActivity.shared.changed(self) } // the Live Activity's progress jumps too
+        #endif
         // The duration is 0 until it's known (or with no media): only the bottom limit then.
         let t = duration > 0 ? min(max(seconds, 0), duration) : max(seconds, 0)
         time = t
@@ -349,6 +365,9 @@ final class LightShowPlayer {
     private func ended() {
         isPlaying = false
         restore()
+        #if os(iOS)
+        LightShowLiveActivity.shared.end()
+        #endif
     }
 
     /// Puts the light back if anything was sent (`saved` is set then), even if sending has since
