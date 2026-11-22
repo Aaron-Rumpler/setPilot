@@ -144,6 +144,28 @@ struct LightChange: Codable, Hashable, Sendable {
 
 /// How a composed change fades: the fade time setting (only offered when one is set), none
 /// (no `trans`: the bulb's own fade), or a value just for this change.
+/// Fast-flashing light, which can affect people with photosensitive epilepsy: setPilot warns when a
+/// custom scene or light show changes the light more than 3 times a second (Settings can turn the
+/// warning off).
+enum Flashing {
+    static let warnKey = "warnFlashing"
+    static let warning = "This flashes quickly (more than 3 times a second). Take care if you, or anyone who'll see it, is sensitive to flashing light."
+
+    /// A scene whose steps differ and come round faster than 3 a second.
+    static func flashes(_ scene: CustomScene) -> Bool {
+        guard scene.steps.count >= 2, Set(scene.steps.map(\.look)).count >= 2 else { return false }
+        switch scene.timing {
+        case .slow, .quick: return false // 3 s and 0.9 s a step
+        case .steps: return scene.steps.contains { $0.hold + $0.fade < 333 }
+        }
+    }
+}
+
+extension CustomScene.Step {
+    /// What it looks like (not its timing), to tell steps that change the light from ones that don't.
+    fileprivate var look: [Int] { dark ? [0] : useTemp ? [1, temp, level] : [2, r, g, b, c, w, level] }
+}
+
 /// Limits on a fade (`trans`, ms). Up to a day can be asked for; whether a bulb takes fades that
 /// long hasn't been tried yet.
 enum Fade {

@@ -28,6 +28,7 @@ private struct LightShowScreen: View {
     @State private var choosing = Choosing.media
     /// The cue list (an inspector; on iPhone a sheet over the player, so off to start with).
     @AppStorage("lightShowCues") private var showsCues = LightShowScreen.cuesByDefault
+    @AppStorage(Flashing.warnKey) private var warnsFlashing = true
     #if os(iOS)
     private static let cuesByDefault = false
     #else
@@ -231,6 +232,9 @@ private struct LightShowScreen: View {
             // Ahead of a show's warnings: nothing reaches the bulb until it's fixed. (Connected
             // with its state still to be read is fine: cues go anyway.)
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+        } else if warnsFlashing, let show = player.show, show.flashes {
+            Label(Flashing.warning, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange).lineLimit(Self.statusLines).help(Flashing.warning)
         } else if let show = player.show, let warning = show.warnings.first {
             // The summary too (on iPhone it's the only place the title shows).
             Label("\(summary(show)) · \(warning)", systemImage: "exclamationmark.triangle")

@@ -16,6 +16,7 @@ struct CustomSceneEditor: View {
     #else
     @State private var showsStep = false
     #endif
+    @AppStorage(Flashing.warnKey) private var warnsFlashing = true
 
     var body: some View {
         if let binding = sceneBinding {
@@ -43,7 +44,13 @@ struct CustomSceneEditor: View {
                         }
                     }
                 } footer: {
-                    Text("The bulb steps through these in order and repeats. Changes take effect the next time it's played. The bulb can't store or read back setPilot's scenes, so they're kept on this device.")
+                    VStack(alignment: .leading, spacing: 6) {
+                        if warnsFlashing, Flashing.flashes(binding.wrappedValue) {
+                            Label(Flashing.warning, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        Text("The bulb steps through these in order and repeats. Changes take effect the next time it's played. The bulb can't store or read back setPilot's scenes, so they're kept on this device.")
+                    }
                 }
                 Section {
                     Picker("Timing", selection: binding.timing) {

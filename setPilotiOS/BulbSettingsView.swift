@@ -10,6 +10,7 @@ struct BulbSettingsView: View {
     @FocusState private var focused: Bool
     @FocusState private var nameFocused: Bool
     @AppStorage(Stepping.snapKey) private var snaps = true
+    @AppStorage(Flashing.warnKey) private var warnsFlashing = true
 
     var body: some View {
         Form {
@@ -112,6 +113,14 @@ struct BulbSettingsView: View {
                 Text("Sliders")
             } footer: {
                 Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. Touch and hold a slider for a moment before dragging to move it in 1s anyway, or tap a value to type it or fine-tune it.")
+            }
+
+            Section {
+                Toggle("Warn About Flashing Light", isOn: $warnsFlashing)
+            } header: {
+                Text("Flashing")
+            } footer: {
+                Text("A note on custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light.")
             }
 
             Section {

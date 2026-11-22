@@ -247,6 +247,7 @@ struct SettingsView: View {
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @AppStorage(Stepping.snapKey) private var snaps = true
+    @AppStorage(Flashing.warnKey) private var warnsFlashing = true
     @State private var importingHome = false
     /// The height of all the settings, for the window's size limits.
     @State private var contentHeight: CGFloat?
@@ -272,6 +273,16 @@ struct SettingsView: View {
                 Text("Sliders")
             } footer: {
                 Text("Steps of 5 for dimming, 50 K for temperatures, 32 for colour channels. To move in 1s anyway, hold Option while dragging (or with the arrow keys), or hold the knob still for a moment before dragging.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Warn about flashing light", isOn: $warnsFlashing)
+            } header: {
+                Text("Flashing")
+            } footer: {
+                Text("A note on custom scenes and light shows that change the light more than 3 times a second, which can affect people sensitive to flashing light.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

@@ -76,6 +76,16 @@ struct LightShow {
         return valid(total)
     }
 
+    /// More than 3 changes of the light in some second (Flashing).
+    var flashes: Bool {
+        var start = 0
+        for end in cues.indices {
+            while cues[end].time - cues[start].time >= 1 { start += 1 }
+            if end - start + 1 > 3 { return true }
+        }
+        return false
+    }
+
     private static func warnings(_ cues: [Cue]) -> [String] {
         var out: [String] = []
         let close = zip(cues, cues.dropFirst()).filter { $1.time - $0.time < 0.08 }.count

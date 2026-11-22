@@ -25,7 +25,7 @@ final class CloudSync {
     /// The user-defaults keys that sync.
     static let settingKeys = [
         Model.fadeKey, Model.controlsFadeKey, Model.controlsFadeMsKey, ColourTemperature.adaptingWhiteKey,
-        Stepping.snapKey, LightShowPlayer.sendKey, LightShowPlayer.restoreKey,
+        Stepping.snapKey, LightShowPlayer.sendKey, LightShowPlayer.restoreKey, Flashing.warnKey,
     ]
     private static let prefix = "setting."
 
