@@ -1423,6 +1423,8 @@ final class Model {
         let method = reply["method"] as? String ?? "?"
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
+            // Back after not answering, as for a result below: what it showed may be out of date.
+            if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
             link = .connected
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.
