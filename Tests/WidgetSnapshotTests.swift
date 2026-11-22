@@ -46,7 +46,9 @@ final class WidgetSnapshotTests: XCTestCase {
         let reference = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Snapshots/\(name).png")
         guard let data = try? Data(contentsOf: reference), let expected = NSBitmapImageRep(data: data)?.cgImage else {
+            // Also in the log, for when the uploaded pictures can't be fetched.
             print("No picture to compare \(name) with yet: recorded only")
+            print("SNAPSHOT \(name) \(png.base64EncodedString())")
             return
         }
         let difference = Self.difference(image, expected)

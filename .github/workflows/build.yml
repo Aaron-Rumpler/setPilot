@@ -45,8 +45,6 @@ jobs:
           path: ${{ runner.temp }}/snapshots
           if-no-files-found: ignore
       - name: UI tests
-        # Not yet required: whether the runner lets UI tests drive the app is still to be seen.
-        continue-on-error: true
         run: |
           xcodebuild test -project setPilot.xcodeproj -scheme setPilot -destination 'platform=macOS' \
             -only-testing:setPilotUITests -derivedDataPath build/uitests \
