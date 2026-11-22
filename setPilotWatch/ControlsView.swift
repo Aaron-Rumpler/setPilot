@@ -320,6 +320,11 @@ struct WatchComposeView: View {
         } else if Scenes.isKnown(s.sceneId) {
             scene = .builtin(s.sceneId)
         }
+        // A scene that can't be sent (Rhythm, a deleted custom scene): Colour starts off, so a
+        // brightness change leaves it playing (as on the iPhone).
+        let sendable = s.mode != .scene || Scenes.isKnown(s.sceneId)
+            || (s.customScene.map { id in link.scenes.contains { $0.id == id } } ?? false)
+        includeColour = sendable
         kind = s.mode.choice
     }
 
@@ -351,6 +356,10 @@ struct ControlsFadePicker: View {
         Picker("Fade", selection: Binding(get: { current }, set: { link.send(.controlsFade($0, ms: Int(time))) })) {
             ForEach(options, id: \.self) { Text($0.title(setting: s.fade)).tag($0) }
         }
+        // Once the iPhone has it (or it changed there), show its value; not while a newer turn is
+        // still to be sent, or the value would jump back to an older one. On the picker, so it's
+        // followed whatever's chosen (or the next choice would send an old time back).
+        .onChange(of: s.controlsFadeMs) { if !unsent { ms = nil } }
         if current == .custom {
             // Read when asked, not captured with this body: the pushed editor may keep the binding.
             ValueRow(label: "Fade time", value: Binding(get: {
@@ -367,9 +376,6 @@ struct ControlsFadePicker: View {
                     link.send(.controlsFade(.custom, ms: Int(new)))
                 }
             }), range: 0...60_000, unit: " ms")
-            // Once the iPhone has it (or it changed there), show its value; not while a newer
-            // turn is still to be sent, or the value would jump back to an older one.
-            .onChange(of: s.controlsFadeMs) { if !unsent { ms = nil } }
         }
     }
 }

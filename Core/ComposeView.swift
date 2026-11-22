@@ -106,6 +106,9 @@ extension Model {
         d.scene = sceneChoice.wrappedValue
         d.speed = min(max(Int(speed), 10), 200)
         d.includeSpeed = false
+        // A scene that can't be sent (Rhythm, a deleted custom scene): the picker needs a choice,
+        // but Colour starts off, so changing only the brightness leaves the scene playing.
+        d.includeColour = currentColour != nil
         if case .builtin(let id) = d.scene, !Scenes.isKnown(id) { d.scene = .builtin(1) }
         if case .custom(let id) = d.scene, library.customScene(id) == nil { d.scene = .builtin(1) }
         d.kind = mode.choice
