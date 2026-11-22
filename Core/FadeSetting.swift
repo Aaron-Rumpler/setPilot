@@ -7,10 +7,10 @@ struct FadeSetting: View {
     @AppStorage(Model.fadeKey) private var stored: Int = -1
 
     var body: some View {
-        Group { rows }
-            // The controls' fade may be this setting, and on iPhone the widgets' ready-made preset
-            // requests and the watch carry it: pass the change on, as for a change to the presets.
-            .onChange(of: stored) { model.library.onChange?() }
+        // The controls' fade may be this setting, and on iPhone the widgets' ready-made preset
+        // requests and the watch carry it: pass the change on, as for a change to the presets.
+        // (On the rows' first, not a Group, which would give each row its own and pass it on twice.)
+        rows
     }
 
     @ViewBuilder private var rows: some View {
@@ -18,6 +18,7 @@ struct FadeSetting: View {
             get: { stored >= 0 },
             set: { stored = $0 ? 500 : -1 }
         ))
+        .onChange(of: stored) { model.library.onChange?() }
         if stored >= 0 {
             LabeledContent("Fade time") {
                 HStack {

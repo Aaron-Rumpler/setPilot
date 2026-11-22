@@ -373,6 +373,8 @@ struct ControlsFadePicker: View {
                     try? await Task.sleep(for: .milliseconds(350))
                     guard !Task.isCancelled else { return }
                     unsent = false
+                    // Out of reach, it won't get there: show the iPhone's value again, not this one.
+                    if !link.reachable { ms = nil }
                     link.send(.controlsFade(.custom, ms: Int(new)))
                 }
             }), range: 0...60_000, unit: " ms")

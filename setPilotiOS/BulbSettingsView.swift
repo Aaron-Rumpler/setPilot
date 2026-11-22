@@ -8,6 +8,7 @@ struct BulbSettingsView: View {
     @State private var appeared = false
     @State private var name = ""
     @FocusState private var focused: Bool
+    @FocusState private var nameFocused: Bool
     @AppStorage(Stepping.snapKey) private var snaps = true
 
     var body: some View {
@@ -80,6 +81,7 @@ struct BulbSettingsView: View {
                     if let mac = model.chosenMAC {
                         LabeledContent("Name") {
                             TextField("Name", text: $name, prompt: Text("None"))
+                                .focused($nameFocused)
                                 .multilineTextAlignment(.trailing)
                                 .submitLabel(.done)
                                 .onSubmit { model.rename(mac: mac, to: name) }
@@ -143,6 +145,9 @@ struct BulbSettingsView: View {
         }
         // A typed address's MAC (and so its name) is only known once the bulb answers.
         .onChange(of: model.chosenMAC) { name = model.currentName ?? "" }
+        // Chosen or renamed elsewhere (the watch, iCloud): follow it, unless it's being typed.
+        .onChange(of: saved) { _, new in if !focused { address = new } }
+        .onChange(of: model.currentName) { _, new in if !nameFocused { name = new ?? "" } }
     }
 
     private func connect() { use(address, mac: nil) }
