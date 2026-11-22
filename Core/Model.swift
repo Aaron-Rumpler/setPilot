@@ -441,6 +441,7 @@ final class Model {
         // A draft is for the bulb it was started on (its scales, its state). The same bulb again
         // keeps it, as reconnecting does (coming back from the background, a new IP).
         if !sameBulb {
+            infoWanted = false // another bulb's: read when it's asked for
             composing = false
             draft.loaded = false
         }
@@ -486,7 +487,7 @@ final class Model {
         firmware = nil
         // Device info read in full (or being read) is read again from the new connection: the old
         // one's replies, and its retries' giving up, won't come.
-        let rereadInfo = info.count > 4 || !infoReading.isEmpty
+        let rereadInfo = infoWanted
         configTask?.cancel()
         infoReading = []
         info = [:]
@@ -599,6 +600,8 @@ final class Model {
             wrongBulb = true
             link = .unreachable
             live = false
+            registerTask?.cancel() // not the other bulb's pushes
+            registerTask = nil
             status = "A different bulb answered at this address"
             relocate()
             return false
@@ -827,6 +830,7 @@ final class Model {
     /// isn't sent 22 requests at once.
     func readConfig() {
         configTask?.cancel()
+        infoWanted = true
         infoReading = Set(BulbAPI.deviceInfo)
         configTask = Task {
             for m in BulbAPI.deviceInfo {
@@ -837,6 +841,8 @@ final class Model {
         }
     }
     @ObservationIgnored private var configTask: Task<Void, Never>?
+    /// Device Info has been read for this bulb: read again after a reconnect.
+    @ObservationIgnored private var infoWanted = false
 
     /// Sends any method from the console. A setPilot is tracked like the controls' own (read
     /// back, mismatches shown), with `"state": false` added while the bulb is off if
@@ -882,6 +888,8 @@ final class Model {
             endConsoleWait(after: retry)
             scheduleVerify()
         case "setState":
+            refusal = nil // a new change, as for setPilot
+            pilotAnswered = false
             powerBefore = isOn // what a refusal puts back, whatever this one carries
             if let s = p["state"] as? Bool {
                 isOn = s

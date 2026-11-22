@@ -9,13 +9,14 @@ enum QuickBulb {
             throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
         }
         var isOn = SharedStore.snapshot?.isOn
-        // Not known (the app was left connecting): read it, rather than guess at a toggle, or switch
-        // the bulb on with a dimDelta that has no "state".
+        // Read it, rather than trust the app's last state (it may have been switched since, from
+        // the WiZ app say, while this app was suspended) or guess at a toggle: a dimDelta with the
+        // wrong "state" switches the bulb.
         let needsPower = switch command {
         case .power(.none), .dimDelta: true
         default: false
         }
-        if isOn == nil, needsPower {
+        if needsPower {
             let reply = try await send(host, "getPilot", [:])
             isOn = (reply["result"] as? [String: Any])?["state"] as? Bool
             guard isOn != nil else { throw WidgetError(localizedStringResource: "Couldn't read whether the bulb is on.") }
