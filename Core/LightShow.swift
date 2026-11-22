@@ -303,6 +303,7 @@ final class LightShowPlayer {
     }
 
     func seek(to seconds: Double) {
+        guard player.currentItem != nil else { return } // no media to go to (a cue tapped with only a show open)
         // The duration is 0 until it's known (or with no media): only the bottom limit then.
         let t = duration > 0 ? min(max(seconds, 0), duration) : max(seconds, 0)
         time = t
@@ -560,6 +561,8 @@ final class LightShowPlayer {
         // Rounded to hundredths first, so 59.996 is 1:00.00 rather than 0:60.00.
         let s = (max(seconds, 0) * 100).rounded() / 100
         let m = Int(s) / 60
+        // An hour or more as h:mm:ss.ss, as a show file can give it.
+        if m >= 60 { return String(format: "%d:%02d:%05.2f", m / 60, m % 60, s - Double(m * 60)) }
         return String(format: "%d:%05.2f", m, s - Double(m * 60))
     }
 
@@ -607,7 +610,6 @@ extension Model {
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
         // (Not known when the show started: as it is now.)
         if let was = saved.isOn { isOn = was }
-        if saved.values.mode == .scene, saved.values.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
         // A scene's speed too: the show may have changed it. A scene that can't be sent (Rhythm, one
         // newer than this app, a custom scene deleted meanwhile) would become another: only the
         // brightness and power go back then.
@@ -617,6 +619,8 @@ extension Model {
             apply(v, fields: [.dimming])
             return "The scene from before (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
         }
+        // Only now (it's being put back): not a deleted scene's ID above.
+        if v.mode == .scene, v.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }
         apply(v, fields: v.mode == .scene ? [.colour, .dimming, .speed] : [.colour, .dimming])
         return nil
     }

@@ -107,7 +107,7 @@ struct ConsoleComposer: View {
                 .frame(minHeight: 70)
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
         } else {
-            Text(verbatim: "No params: the request is {\"method\": \"\(trimmedMethod)\"} and nothing else.")
+            Text(verbatim: "No params: the request is \(JSONText.compact(["method": trimmedMethod])) and nothing else.")
                 .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)

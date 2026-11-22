@@ -520,7 +520,7 @@ extension Library {
     func duplicate(_ scene: CustomScene) -> CustomScene {
         var copy = scene
         copy.id = UUID()
-        copy.name = uniqueSceneName(scene.name)
+        copy.name = uniqueSceneName(scene.name + " copy") // as a CCT scale's duplicate is named
         copy.steps = scene.steps.map { var s = $0; s.id = UUID(); return s }
         let i = customScenes.firstIndex { $0.id == scene.id }.map { $0 + 1 } ?? customScenes.endIndex
         customScenes.insert(copy, at: i)
