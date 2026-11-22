@@ -199,7 +199,10 @@ final class SnapSlider: NSSlider {
     }
 
     private func nudge(_ steps: Double) {
-        value = snap(snap(value) + steps * currentStep)
+        // To the next round step, as the − and + beside it do (37 → 40 or 35, not 45 or 30).
+        var v = value
+        for _ in 0..<Int(abs(steps)) { v = Stepping.next(v, up: steps > 0, by: currentStep, in: range) }
+        value = v
         sendAction(action, to: target)
     }
 
