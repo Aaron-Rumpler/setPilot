@@ -67,10 +67,10 @@ final class WidgetPublisher {
         }
         SharedStore.save(s, SharedStore.snapshotKey)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
-        let key = model?.signingKey(for: model?.chosenMAC)
-        if key != publishedKey { // the Keychain only when it changes
-            publishedKey = key
-            SigningKeyStore.set(key, for: SigningKeyStore.current)
+        let signingKey = model?.signingKey(for: model?.chosenMAC)
+        if signingKey != publishedKey { // the Keychain only when it changes
+            publishedKey = signingKey
+            SigningKeyStore.set(signingKey, for: SigningKeyStore.current)
         }
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
         trailingReload?.cancel()
