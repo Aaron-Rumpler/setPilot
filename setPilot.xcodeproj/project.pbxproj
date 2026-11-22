@@ -11,6 +11,7 @@
 		5A1C0DE00000000000009C03 /* setPilotWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5A1C0DE00000000000009C01 /* setPilot.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A005 /* setPilot.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5A1C0DE00000000000009C04 /* setpilot in Embed Command-Line Tool */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A008 /* setpilot */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		5A1C0DE00000000000009C05 /* setPilotMacWidgets.appex in Embed Widgets */ = {isa = PBXBuildFile; fileRef = 5A1C0DE0000000000000A00A /* setPilotMacWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +42,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A1C0DE0000000000000E006;
 			remoteInfo = "setpilot CLI";
+		};
+		5A1C0DE00000000000009A05 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1C0DE0000000000000E000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1C0DE0000000000000E008;
+			remoteInfo = "setPilot Mac Widgets";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -89,6 +97,17 @@
 			name = "Embed Command-Line Tool";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C007 /* Embed Widgets */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(WIZ_WIDGETS_EMBED_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				5A1C0DE00000000000009C05 /* setPilotMacWidgets.appex in Embed Widgets */,
+			);
+			name = "Embed Widgets";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +120,7 @@
 		5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A008 /* setpilot */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = setpilot; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A009 /* setPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = setPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1C0DE0000000000000A00A /* setPilotMacWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotMacWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -224,6 +244,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C072 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -257,6 +284,7 @@
 				5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */,
 				5A1C0DE0000000000000A008 /* setpilot */,
 				5A1C0DE0000000000000A009 /* setPilotTests.xctest */,
+				5A1C0DE0000000000000A00A /* setPilotMacWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -272,12 +300,14 @@
 				5A1C0DE0000000000000C002 /* Frameworks */,
 				5A1C0DE0000000000000C003 /* Resources */,
 				5A1C0DE0000000000000C006 /* Embed Command-Line Tool */,
+				5A1C0DE0000000000000C007 /* Embed Widgets */,
 				5A1C0DE0000000000000C005 /* Stamp Commit */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				5A1C0DE00000000000009B04 /* PBXTargetDependency */,
+				5A1C0DE00000000000009B05 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5A1C0DE0000000000000B001 /* setPilot */,
@@ -442,6 +472,30 @@
 			productReference = 5A1C0DE0000000000000A009 /* setPilotTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		5A1C0DE0000000000000E008 /* setPilot Mac Widgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F009 /* Build configuration list for PBXNativeTarget "setPilot Mac Widgets" */;
+			buildPhases = (
+				5A1C0DE0000000000000C071 /* Sources */,
+				5A1C0DE0000000000000C072 /* Frameworks */,
+				5A1C0DE0000000000000C073 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B007 /* setPilotWidgets */,
+				5A1C0DE0000000000000B006 /* WidgetShared */,
+				5A1C0DE0000000000000B003 /* Common */,
+			);
+			name = "setPilot Mac Widgets";
+			packageProductDependencies = (
+			);
+			productName = setPilotMacWidgets;
+			productReference = 5A1C0DE0000000000000A00A /* setPilotMacWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -473,6 +527,9 @@
 					5A1C0DE0000000000000E007 = {
 						CreatedOnToolsVersion = 26.0;
 					};
+					5A1C0DE0000000000000E008 = {
+						CreatedOnToolsVersion = 26.0;
+					};
 				};
 			};
 			buildConfigurationList = 5A1C0DE0000000000000F001 /* Build configuration list for PBXProject "setPilot" */;
@@ -496,6 +553,7 @@
 				5A1C0DE0000000000000E005 /* setPilot Watch Widgets */,
 				5A1C0DE0000000000000E006 /* setpilot CLI */,
 				5A1C0DE0000000000000E007 /* setPilotTests */,
+				5A1C0DE0000000000000E008 /* setPilot Mac Widgets */,
 			);
 		};
 /* End PBXProject section */
@@ -537,6 +595,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1C0DE0000000000000C063 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C073 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -658,6 +723,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C071 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -680,6 +752,11 @@
 			isa = PBXTargetDependency;
 			target = 5A1C0DE0000000000000E006 /* setpilot CLI */;
 			targetProxy = 5A1C0DE00000000000009A04 /* PBXContainerItemProxy */;
+		};
+		5A1C0DE00000000000009B05 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1C0DE0000000000000E008 /* setPilot Mac Widgets */;
+			targetProxy = 5A1C0DE00000000000009A05 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1077,6 +1154,62 @@
 			};
 			name = Release;
 		};
+		5A1C0DE00000000000009001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(WIZ_ENTITLEMENTS)/setPilotMacWidgets.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotMacWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot's widgets talk to your WiZ bulb over UDP on your local network.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.Widgets;
+				PRODUCT_NAME = setPilotMacWidgets;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000009002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(WIZ_ENTITLEMENTS)/setPilotMacWidgets.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "setPilotMacWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot's widgets talk to your WiZ bulb over UDP on your local network.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.Widgets;
+				PRODUCT_NAME = setPilotMacWidgets;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1148,6 +1281,15 @@
 			buildConfigurations = (
 				5A1C0DE00000000000008001 /* Debug */,
 				5A1C0DE00000000000008002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F009 /* Build configuration list for PBXNativeTarget "setPilot Mac Widgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000009001 /* Debug */,
+				5A1C0DE00000000000009002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -37,7 +37,7 @@ final class PhoneRelay: NSObject {
             for await message in incoming { await self.handle(message) }
         }
         observeState()
-        publishLibrary()
+        WidgetPublisher.shared.start(model: model) // the widgets and controls (Core/WidgetPublisher.swift)
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -197,7 +197,6 @@ final class PhoneRelay: NSObject {
             pushScheduled = false
             guard let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
             lastSnapshot = snapshot
-            publishState(snapshot)
             guard WCSession.isSupported() else { return }
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
@@ -246,78 +245,10 @@ final class PhoneRelay: NSObject {
         Task {
             try? await Task.sleep(for: .milliseconds(500))
             contextScheduled = false
-            publishLibrary()
+            WidgetPublisher.shared.libraryChanged()
             updateContext()
             SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
         }
-    }
-
-    // MARK: Widgets and controls
-
-    private var widgetKey: String?
-
-    /// Keeps the state widgets show, reloading them when something they show changes (they have
-    /// a reload budget, so not on every slider step).
-    private func publishState(_ s: LightSnapshot) {
-        // The presets' ready-made requests clamp to the bulb's minimum dimming: again once it's
-        // known, or another bulb is chosen (unchanged, nothing's reloaded).
-        if s.minDimming != publishedFloor || s.address != publishedAddress {
-            publishedFloor = s.minDimming
-            publishedAddress = s.address
-            publishLibrary()
-        }
-        SharedStore.save(s, SharedStore.snapshotKey)
-        SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
-        let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
-        trailingReload?.cancel()
-        if key != widgetKey {
-            widgetKey = key
-            reloadedDimming = Int(s.dimming)
-            reloadWidgets()
-        } else if Int(s.dimming) != reloadedDimming {
-            // Within the same step of 5, but they show the exact level: once it's settled, so a
-            // drag costs one more reload, not one per step.
-            trailingReload = Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { return }
-                reloadedDimming = Int(s.dimming)
-                reloadWidgets()
-            }
-        }
-    }
-    private var reloadedDimming: Int?
-    private var trailingReload: Task<Void, Never>?
-
-    /// The presets for widgets and controls, each with its setPilot ready to send.
-    private func publishLibrary() {
-        guard let model else { return }
-        SharedStore.save(model.library.presets, SharedStore.presetsKey)
-        SharedStore.save(model.library.summaries, SharedStore.customScenesKey) // for custom scene swatches
-        var params: [String: Data] = [:]
-        for preset in model.library.presets {
-            if let p = model.pilotParams(for: preset), let d = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) { // compared below: unchanged must match
-                params[preset.id.uuidString] = d
-            }
-        }
-        SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
-        SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
-        // Only when something they show or send has changed (most library edits, a custom scene's
-        // steps say, don't): they have a reload budget.
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        let shown = [try? encoder.encode(model.library.presets), try? encoder.encode(model.library.summaries),
-                     try? encoder.encode(params), try? encoder.encode(model.fadeForControls)]
-        guard shown != publishedLibrary else { return }
-        publishedLibrary = shown
-        reloadWidgets()
-    }
-    private var publishedLibrary: [Data?] = []
-    private var publishedFloor: Double?
-    private var publishedAddress: String?
-
-    private func reloadWidgets() {
-        WidgetCenter.shared.reloadAllTimelines()
-        ControlCenter.shared.reloadAllControls()
     }
 
     /// The application context holds what the watch should show even when the iPhone isn't

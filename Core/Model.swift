@@ -405,10 +405,8 @@ final class Model {
     private func refreshSigning() {
         let key = signingKey(for: chosenMAC)
         bulb.signingKey = key
-        #if os(iOS)
-        // For the widget extension's own requests (the Mac has none, and no App Group).
+        // For the widget extension's own requests (WidgetPublisher keeps it up to date too).
         SharedStore.defaults.set(key, forKey: SharedStore.signingKeyKey)
-        #endif
     }
 
     /// The chosen bulb's name, if it has one.

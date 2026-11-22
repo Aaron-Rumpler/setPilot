@@ -5,9 +5,19 @@ import Foundation
 /// ready-made setPilot parameters. Without the App Group (it needs the entitlement) this falls
 /// back to the process's own defaults, and widgets just show nothing useful.
 enum SharedStore {
-    static let group = "group.nz.aaronrumpler.setPilot"
+    #if os(macOS)
+    /// On the Mac, Team-ID prefixed (no provisioning profile needed), from the Info.plist key the
+    /// build fills in; nil in an ad-hoc build, which has no team.
+    static let group: String? = {
+        guard let id = Bundle.main.object(forInfoDictionaryKey: "SetPilotAppGroup") as? String else { return nil }
+        let team = id.prefix { $0 != "." }
+        return team.count == 10 && team.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }) ? id : nil
+    }()
+    #else
+    static let group: String? = "group.nz.aaronrumpler.setPilot"
+    #endif
     #if WIZ_APP_GROUPS
-    static let defaults = UserDefaults(suiteName: group) ?? .standard
+    static let defaults = group.flatMap { UserDefaults(suiteName: $0) } ?? .standard
     #else
     // Built without App Groups (Account.xcconfig): nothing is shared, widgets show placeholders.
     static let defaults = UserDefaults.standard

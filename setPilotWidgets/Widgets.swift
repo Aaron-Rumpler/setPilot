@@ -9,8 +9,13 @@ struct SetPilotWidgets: WidgetBundle {
         StatusWidget()
         PowerControl()
         PresetControl()
+        BrightnessControl(up: true)
+        BrightnessControl(up: false)
     }
 }
+
+// The same widgets and controls on iPhone (Home Screen, Lock Screen, StandBy, Control Center) and
+// the Mac (desktop, Notification Center, Control Center and the menu bar).
 
 // MARK: Timeline
 
@@ -185,8 +190,12 @@ struct StatusWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Bulb")
-        .description("Whether the bulb is on, and how bright.")
-        .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
+        .description("Whether the bulb is on, and how bright, with a power switch.")
+        #if os(iOS)
+        .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .systemSmall])
+        #else
+        .supportedFamilies([.systemSmall])
+        #endif
     }
 }
 
@@ -198,6 +207,37 @@ struct StatusWidgetView: View {
         let s = entry.snapshot
         let on = s?.isOn == true
         switch family {
+        case .systemSmall:
+            // Home Screen, StandBy, the Mac's desktop: the bulb, its brightness, and its controls.
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: on ? "lightbulb.fill" : "lightbulb")
+                    .font(.title2)
+                    .foregroundStyle(on ? Color.yellow : Color.secondary)
+                    .widgetAccentable()
+                Text(s?.bulbName ?? "setPilot").font(.headline).lineLimit(1)
+                Text(statusText(s)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                HStack {
+                    Button(intent: DimStepIntent(step: -10)) { Image(systemName: "sun.min") }
+                        .accessibilityLabel("Dimmer")
+                    Button(intent: DimStepIntent(step: 10)) { Image(systemName: "sun.max.fill") }
+                        .accessibilityLabel("Brighter")
+                    Spacer(minLength: 0)
+                    Toggle(isOn: on, intent: {
+                        let i = PowerToggleIntent()
+                        i.value = !on
+                        return i
+                    }()) {
+                        Image(systemName: "power")
+                    }
+                    .toggleStyle(.button)
+                    .labelStyle(.iconOnly)
+                    .accessibilityLabel("Power")
+                }
+                .buttonStyle(.plain)
+                .font(.title3)
+            }
+        #if os(iOS)
         case .accessoryCircular:
             Gauge(value: on ? (s?.dimming ?? 0) : 0, in: 0...100) {
                 Image(systemName: on ? "lightbulb.fill" : "lightbulb")
@@ -205,6 +245,7 @@ struct StatusWidgetView: View {
             .gaugeStyle(.accessoryCircularCapacity)
         case .accessoryInline:
             Label(statusText(s), systemImage: on ? "lightbulb.fill" : "lightbulb")
+        #endif
         default:
             HStack {
                 VStack(alignment: .leading) {
@@ -257,5 +298,19 @@ struct PresetControl: ControlWidget {
         .displayName("Preset")
         .description("Applies one of your setPilot presets.")
         .promptsForUserConfiguration()
+    }
+}
+
+struct BrightnessControl: ControlWidget {
+    let up: Bool
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: up ? "brighter" : "dimmer") {
+            ControlWidgetButton(action: DimStepIntent(step: up ? 10 : -10)) {
+                Label(up ? "Brighter" : "Dimmer", systemImage: up ? "sun.max.fill" : "sun.min")
+            }
+        }
+        .displayName(up ? "Brighter" : "Dimmer")
+        .description(up ? "Makes the setPilot bulb brighter by 10%." : "Makes the setPilot bulb dimmer by 10%.")
     }
 }

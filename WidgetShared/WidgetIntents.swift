@@ -34,6 +34,14 @@ struct PresetQuery: EntityQuery {
     }
 }
 
+/// On iPhone the widgets' actions run in the app (a Live Activity intent), on its connection; the
+/// Mac has no such thing, and runs them in the widget extension, which sends them itself.
+#if os(iOS)
+typealias WidgetActionIntent = LiveActivityIntent
+#else
+typealias WidgetActionIntent = AppIntent
+#endif
+
 enum WidgetCommand: Sendable {
     case applyPreset(UUID)
     case power(Bool?) // nil toggles
@@ -52,7 +60,7 @@ enum WidgetPerformer {
             try await QuickBulb.perform(command)
         }
         WidgetCenter.shared.reloadAllTimelines()
-        ControlCenter.shared.reloadAllControls()
+        if #available(macOS 26, iOS 18, *) { ControlCenter.shared.reloadAllControls() }
     }
 }
 
@@ -60,7 +68,7 @@ struct WidgetError: Error, CustomLocalizedStringResourceConvertible {
     let localizedStringResource: LocalizedStringResource
 }
 
-struct ApplyPresetWidgetIntent: LiveActivityIntent {
+struct ApplyPresetWidgetIntent: WidgetActionIntent {
     static let title: LocalizedStringResource = "Apply setPilot Preset"
     static let isDiscoverable = false
 
@@ -78,7 +86,7 @@ struct ApplyPresetWidgetIntent: LiveActivityIntent {
     }
 }
 
-struct PowerToggleIntent: SetValueIntent, LiveActivityIntent {
+struct PowerToggleIntent: SetValueIntent, WidgetActionIntent {
     static let title: LocalizedStringResource = "Switch the Bulb"
     static let isDiscoverable = false
 
@@ -94,7 +102,7 @@ struct PowerToggleIntent: SetValueIntent, LiveActivityIntent {
     }
 }
 
-struct DimStepIntent: LiveActivityIntent {
+struct DimStepIntent: WidgetActionIntent {
     static let title: LocalizedStringResource = "Brighter or Dimmer"
     static let isDiscoverable = false
 

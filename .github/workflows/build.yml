@@ -30,6 +30,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SetPilotCommit" build/Release/setPilot.app/Contents/Info.plist
           # The command-line tool, inside the app.
           test -x build/Release/setPilot.app/Contents/Helpers/setpilot
+          # And its widgets (with App Groups on).
+          ls build/Release/setPilot.app/Contents/PlugIns/setPilotMacWidgets.appex > /dev/null
       - name: Tests
         run: |
           xcodebuild -project setPilot.xcodeproj -target setPilotTests -configuration Release \
