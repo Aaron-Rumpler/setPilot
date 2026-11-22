@@ -68,7 +68,8 @@ struct CustomSceneEntity: AppEntity {
 struct CustomSceneQuery: EntityQuery {
     @MainActor
     func entities(for identifiers: [UUID]) async throws -> [CustomSceneEntity] {
-        try await suggestedEntities().filter { identifiers.contains($0.id) }
+        let all = try await suggestedEntities() // in the order asked
+        return identifiers.compactMap { id in all.first { $0.id == id } }
     }
 
     @MainActor

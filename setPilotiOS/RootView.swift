@@ -46,8 +46,11 @@ struct RootView: View {
             .handoff(.controls)
             .navigationDestination(for: HandoffRoute.self) { route in destination(route) }
         }
-        // Continued from another device: go there.
-        .onContinueHandoff { route in
+        // Continued from another device (Handoff), or opened from Spotlight: go there.
+        .onContinueHandoff { HandoffRouter.shared.open($0) }
+        .onChange(of: HandoffRouter.shared.request, initial: true) { _, route in
+            guard let route else { return }
+            HandoffRouter.shared.request = nil
             var p = NavigationPath()
             switch route {
             case .controls: break

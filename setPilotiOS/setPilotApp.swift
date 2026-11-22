@@ -9,7 +9,11 @@ struct SetPilotMobileApp: App {
     init() {
         // Here rather than in a view: the watch can wake the app in the background, with no UI.
         PhoneRelay.shared.start(model: Shared.model)
-        Shared.model.library.onChange = { PhoneRelay.shared.libraryChanged() }
+        Shared.model.library.onChange = {
+            PhoneRelay.shared.libraryChanged()
+            SpotlightIndex.update(Shared.model.library)
+        }
+        SpotlightIndex.update(Shared.model.library)
         Shared.model.startIfSaved()
         // Widgets and Control Center controls run their actions here, on the app's connection.
         WidgetPerformer.handler = { command in

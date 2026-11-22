@@ -195,7 +195,8 @@ struct PresetEntity: AppEntity {
 struct PresetQuery: EntityQuery {
     @MainActor
     func entities(for identifiers: [UUID]) async throws -> [PresetEntity] {
-        Shared.model.library.presets.filter { identifiers.contains($0.id) }.map(PresetEntity.init)
+        let presets = Shared.model.library.presets // in the order asked
+        return identifiers.compactMap { id in presets.first { $0.id == id } }.map(PresetEntity.init)
     }
 
     @MainActor

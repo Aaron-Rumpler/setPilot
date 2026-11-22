@@ -12,11 +12,13 @@ struct SetPilotApp: App {
         // Shortcuts and Siri learn the preset names from this, at launch and when they change.
         Shared.model.library.onChange = {
             ShortcutNames.update()
+            SpotlightIndex.update(Shared.model.library)
             #if WIZ_APP_GROUPS
             WidgetPublisher.shared.libraryChanged()
             #endif
         }
         SetPilotShortcuts.updateAppShortcutParameters()
+        SpotlightIndex.update(Shared.model.library)
         #if WIZ_APP_GROUPS
         // The command-line tool's way in, and the widgets' and controls' data (both only with a
         // development team: the Mac's App Group is named after it).
