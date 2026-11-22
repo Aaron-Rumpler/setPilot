@@ -21,7 +21,9 @@ struct CustomScenesList: View {
                     }
                     // A row with swipe actions loses onDelete's swipe, so Delete is given here.
                     .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) { deleting = scene } label: { Label("Delete", systemImage: "trash") }
+                        // Not .destructive: that takes the row away at once, before the confirmation.
+                        Button { deleting = scene } label: { Label("Delete", systemImage: "trash") }
+                            .tint(.red)
                     }
                     .contextMenu {
                         Button { model.playCustom(scene) } label: { Label("Play on Bulb", systemImage: "play.fill") }

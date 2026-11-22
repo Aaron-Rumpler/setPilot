@@ -344,7 +344,11 @@ struct PresetEditView: View {
             shownName = name
         }
         // The name for the dialogs once the preset has gone (deleting it closes them).
-        .onChange(of: preset?.name) { _, n in if let n { shownName = n } }
+        .onChange(of: preset?.name) { _, n in
+            guard let n else { return }
+            if name == shownName { name = n } // renamed elsewhere, and not edited here
+            shownName = n
+        }
         .confirmationDialog("Replace “\(preset?.name ?? shownName)” with the current light?", isPresented: $confirmingUpdate,
                             titleVisibility: .visible) {
             Button("Update") { link.send(.updatePreset(presetID)) }

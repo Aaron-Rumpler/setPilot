@@ -112,6 +112,15 @@ struct MillisecondsField: View {
             .multilineTextAlignment(.trailing)
             #if os(iOS)
             .keyboardType(.numberPad)
+            // The number pad has no Return (the value's taken as it's typed; this puts it away).
+            .toolbar {
+                if focused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { focused = false }
+                    }
+                }
+            }
             #endif
             .onAppear { text = String(value) }
             .onChange(of: text) { _, new in

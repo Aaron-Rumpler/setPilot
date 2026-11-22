@@ -161,6 +161,7 @@ struct SigningKeyView: View {
     let model: Model
     let mac: String
     @State private var draft = ""
+    @FocusState private var keyFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private var valid: Bool {
@@ -175,6 +176,14 @@ struct SigningKeyView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.done)
+                    .focused($keyFocused)
+                    // A vertical field takes Return as a new line: Done ends editing instead.
+                    .onChange(of: draft) { _, new in
+                        if new.contains("\n") {
+                            draft = new.replacingOccurrences(of: "\n", with: "")
+                            keyFocused = false
+                        }
+                    }
             } footer: {
                 if !valid {
                     Text("A signing key is 32 hex digits (0–9 and a–f).").foregroundStyle(.red)

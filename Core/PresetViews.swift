@@ -221,14 +221,14 @@ struct SceneMenuItems: View {
     let model: Model
 
     var body: some View {
-        ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) }
+        // Sections, not Dividers: on iPhone the picker is a list, where a Divider is an empty row
+        // (in a menu, sections are divided the same).
+        Section { ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) } }
         if !model.library.customScenes.isEmpty {
-            Divider()
-            ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) }
+            Section { ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) } }
         }
         if model.sceneIsUnlisted {
-            Divider()
-            Text(Scenes.name(model.sceneId)).tag(model.sceneChoice.wrappedValue)
+            Section { Text(Scenes.name(model.sceneId)).tag(model.sceneChoice.wrappedValue) }
         }
     }
 }

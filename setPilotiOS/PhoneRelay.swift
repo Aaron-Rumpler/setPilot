@@ -390,7 +390,10 @@ extension PhoneRelay: WCSessionDelegate {
                 // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
                 // Only for commands that send (cleared above, so not an earlier change's reason), and
                 // only while no later change has started.
-                finish(message, model?.snapshot ?? LightSnapshot(), error: sends && model?.changeMark == mark ? model?.refusal : nil)
+                // Still unanswered by now: say so (outcome's "didn't answer"), as Shortcuts do.
+                var why: String?
+                if sends, let model, model.changeMark == mark { why = await model.outcome(timeout: 0) }
+                finish(message, model?.snapshot ?? LightSnapshot(), error: why)
             }
         }
     }
