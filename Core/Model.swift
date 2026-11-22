@@ -1384,7 +1384,8 @@ final class Model {
     /// The device info, in order, for the watch.
     var deviceInfoEntries: [DeviceInfoEntry] {
         BulbAPI.deviceInfo.compactMap { m in
-            info[m].map { DeviceInfoEntry(method: m, text: $0, error: infoErrors[m]) }
+            // One still being read again goes as that, not as the last read's answer.
+            info[m].map { DeviceInfoEntry(method: m, text: $0, error: infoReading.contains(m) ? "No reply yet" : infoErrors[m]) }
         }
     }
 

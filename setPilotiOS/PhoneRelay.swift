@@ -257,6 +257,13 @@ final class PhoneRelay: NSObject {
     /// Keeps the state widgets show, reloading them when something they show changes (they have
     /// a reload budget, so not on every slider step).
     private func publishState(_ s: LightSnapshot) {
+        // The presets' ready-made requests clamp to the bulb's minimum dimming: again once it's
+        // known, or another bulb is chosen (unchanged, nothing's reloaded).
+        if s.minDimming != publishedFloor || s.address != publishedAddress {
+            publishedFloor = s.minDimming
+            publishedAddress = s.address
+            publishLibrary()
+        }
         SharedStore.save(s, SharedStore.snapshotKey)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
@@ -303,6 +310,8 @@ final class PhoneRelay: NSObject {
         reloadWidgets()
     }
     private var publishedLibrary: [Data?] = []
+    private var publishedFloor: Double?
+    private var publishedAddress: String?
 
     private func reloadWidgets() {
         WidgetCenter.shared.reloadAllTimelines()
