@@ -298,10 +298,11 @@ extension PhoneLink: WCSessionDelegate {
 private struct UncheckedContext: @unchecked Sendable {
     let value: [String: Any]
     init(_ value: [String: Any]) { self.value = value }
+}
 
-    /// The complications and the controls (Control Center, the Smart Stack, the Action button).
-    private func reloadWidgets() {
-        WidgetCenter.shared.reloadAllTimelines()
-        ControlCenter.shared.reloadAllControls()
-    }
+/// The complications and the controls (Control Center, the Smart Stack, the Action button).
+@MainActor
+private func reloadWidgets() {
+    WidgetCenter.shared.reloadAllTimelines()
+    ControlCenter.shared.reloadAllControls()
 }
