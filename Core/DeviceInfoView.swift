@@ -6,7 +6,8 @@ struct DeviceInfoView: View {
     let model: Model
     @State private var expanded = BulbAPI.deviceInfoExpanded
 
-    private var methods: [String] { BulbAPI.deviceInfo }
+    /// The ones the bulb answered first; ones it errored on (or didn't answer) after them, in order.
+    private var methods: [String] { BulbAPI.deviceInfo.erroredLast(model.infoErrors) }
     private var allExpanded: Bool { methods.allSatisfy(expanded.contains) }
 
     var body: some View {
@@ -108,5 +109,12 @@ struct DeviceInfoView: View {
     /// Every reply read so far, in order, each under its method's name.
     private var allText: String {
         methods.compactMap { m in model.info[m].map { "\(m)\n\($0)" } }.joined(separator: "\n\n")
+    }
+}
+
+extension Array where Element == String {
+    /// The methods with no error first, then the ones with one, each in their own order.
+    func erroredLast(_ errors: [String: String]) -> [String] {
+        filter { errors[$0] == nil } + filter { errors[$0] != nil }
     }
 }
