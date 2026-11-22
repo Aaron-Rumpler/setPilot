@@ -28,6 +28,8 @@ jobs:
           codesign --verify --strict --verbose=2 build/Release/setPilot.app
           codesign -d --entitlements - build/Release/setPilot.app
           /usr/libexec/PlistBuddy -c "Print :SetPilotCommit" build/Release/setPilot.app/Contents/Info.plist
+          # The command-line tool, inside the app.
+          test -x build/Release/setPilot.app/Contents/Helpers/setpilot
       - name: Build for iPhone (with the watch app)
         run: |
           xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \

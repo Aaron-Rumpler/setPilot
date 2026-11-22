@@ -12,6 +12,10 @@ struct SetPilotApp: App {
         // Shortcuts and Siri learn the preset names from this, at launch and when they change.
         Shared.model.library.onChange = { ShortcutNames.update() }
         SetPilotShortcuts.updateAppShortcutParameters()
+        #if WIZ_APP_GROUPS
+        // The command-line tool's way in (only with a development team: see CLIServer).
+        CLIServer.shared.start(model: Shared.model)
+        #endif
     }
 
     var body: some Scene {

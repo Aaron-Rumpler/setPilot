@@ -13,6 +13,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>SetPilotAppGroup</key>
+	<string>$(TeamIdentifierPrefix)nz.aaronrumpler.setPilot</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>setPilot talks to your WiZ bulb over UDP and searches for bulbs on your network.</string>
 </dict>
