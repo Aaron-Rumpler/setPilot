@@ -29,8 +29,9 @@ The bulb answers the sender with the same `method` and either a `result` or an `
 `-32601` ("Method not found") means the bulb doesn't take that method, at least not over UDP.
 
 UDP can drop messages, so one-off requests are worth resending until a reply with the same
-method arrives. The app follows pywizlight: up to six sends, 0.75 s apart at first, doubling to
-at most 3 s. Rapid changes (dragging a slider) aren't resent; the next one supersedes them.
+method arrives. pywizlight sends up to six times, 0.75 s apart at first, doubling to at most
+3 s (about 11 s in all). The app is quicker to give up: up to five sends, 0.4 s apart at first,
+doubling to at most 1.5 s, so the last goes at about 4 s. Rapid changes (dragging a slider) aren't resent; the next one supersedes them.
 
 ## Finding bulbs
 

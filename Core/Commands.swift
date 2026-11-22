@@ -257,9 +257,9 @@ enum Scripting {
                 || problem.contains("no reply") || problem.contains("couldn't send") || problem.hasPrefix("Lost the connection")
             throw ScriptError(code: unanswered ? .notAnswering : .refused, message: problem)
         }
-        // Long enough for the read-back's retries (0.7 s after sending, then resent at about 0.75,
-        // 2.25 and 5.25 s): a lost read-back or two isn't taken for no answer.
-        await model.waitUntilSettled(timeout: 7)
+        // Long enough for the read-back's retries (0.7 s after sending, then resent at about 0.4,
+        // 1.2, 2.7 and 4.2 s): a lost read-back or two isn't taken for no answer.
+        await model.waitUntilSettled(timeout: 5)
         // Answered, but not read back (yet): not known to be done.
         if model.pending { throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.") }
         if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }

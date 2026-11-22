@@ -224,7 +224,7 @@ func connectToApp() -> Int32 {
 
 let fd = connectToApp()
 if !watching {
-    // A hung app doesn't hang the tool: longer than a bulb's retries (about 11 s) plus the read-back.
+    // A hung app doesn't hang the tool: longer than a bulb's retries (about 6 s) plus the read-back.
     var wait = timeval(tv_sec: 30, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
 }

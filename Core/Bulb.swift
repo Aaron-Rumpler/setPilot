@@ -48,7 +48,7 @@ final class Bulb {
         c.start(queue: DispatchQueue(label: "wiz.udp"))
     }
 
-    /// `retry` mirrors pywizlight: send up to 6 times (0.75 s apart, doubling, capped at 3 s)
+    /// `retry` sends up to 5 times (0.4 s apart, doubling, capped at 1.5 s; the last at about 4 s)
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
@@ -83,16 +83,16 @@ final class Bulb {
 
         let before = replyCount[method, default: 0]
         Task { [weak self] in
-            var wait = 0.75
-            for attempt in 0..<6 {
+            var wait = 0.4
+            for attempt in 0..<5 {
                 guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))
-                wait = min(wait * 2, 3)
+                wait = min(wait * 2, 1.5)
             }
             guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
-            self.onError?(method, "\(method): no reply after 6 tries")
+            self.onError?(method, "\(method): no reply after 5 tries")
         }
     }
 

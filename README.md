@@ -100,7 +100,7 @@ trademark of Signify.
   request, reply and live update (with times to the millisecond), filterable, indented or one line
   each, copyable, with a button on each message to put it into the console, and a choice of how
   many entries it keeps.
-- Retries one-off commands the way pywizlight does (up to 6 sends with backoff).
+- Retries one-off commands (up to 5 sends over about 4 s, with backoff).
 - **Round numbers**: sliders (and the watch's Digital Crown) snap to round steps, and the steppers
   and − and + step to the next one: 5 for dimming and other percentages, 50 K for temperatures, 32
   for 0–255 channels, 10 for speed, 100 ms for times (50 ms for the light show's bulb delay). Snapping can be turned off in Settings.
