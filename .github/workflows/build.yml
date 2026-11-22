@@ -36,7 +36,21 @@ jobs:
         run: |
           xcodebuild -project setPilot.xcodeproj -target setPilotTests -configuration Release \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
-          xcrun xctest build/Release/setPilotTests.xctest
+          SNAPSHOT_DIR="$RUNNER_TEMP/snapshots" xcrun xctest build/Release/setPilotTests.xctest
+      - name: Widget pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: widget-snapshots
+          path: ${{ runner.temp }}/snapshots
+          if-no-files-found: ignore
+      - name: UI tests
+        # Not yet required: whether the runner lets UI tests drive the app is still to be seen.
+        continue-on-error: true
+        run: |
+          xcodebuild test -project setPilot.xcodeproj -scheme setPilot -destination 'platform=macOS' \
+            -only-testing:setPilotUITests -derivedDataPath build/uitests \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
       - name: Build for iPhone (with the watch app)
         run: |
           xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \

@@ -2,21 +2,6 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-@main
-struct SetPilotWidgets: WidgetBundle {
-    var body: some Widget {
-        PresetsWidget()
-        StatusWidget()
-        PowerControl()
-        PresetControl()
-        BrighterControl()
-        DimmerControl()
-        #if os(iOS)
-        LightShowLiveActivityWidget()
-        #endif
-    }
-}
-
 // The same widgets and controls on iPhone (Home Screen, Lock Screen, StandBy, Control Center) and
 // the Mac (desktop, Notification Center, Control Center and the menu bar).
 
