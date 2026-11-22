@@ -10,11 +10,14 @@ final class HandoffRouter {
     /// The scene or scale to select once its window or list is showing (the Mac).
     var sceneToSelect: UUID?
     var scaleToSelect: UUID?
+    /// A light show to open where another device was (LastShow.handoffInfo), once its screen shows.
+    var lightShowResume: [String: Any]?
 
-    func open(_ route: HandoffRoute) {
+    func open(_ route: HandoffRoute, info: [String: Any]? = nil) {
         switch route {
         case .customScene(let id): sceneToSelect = id
         case .cctScale(let id): scaleToSelect = id
+        case .lightShow: if let info, info["media"] != nil || info["show"] != nil { lightShowResume = info }
         default: break
         }
         request = route
@@ -28,8 +31,8 @@ extension View {
         modifier(HandoffAdvertiser(route: route))
     }
 
-    /// Takes activities continued from another device (every setPilot type).
-    func onContinueHandoff(_ perform: @escaping (HandoffRoute) -> Void) -> some View {
+    /// Takes activities continued from another device (every setPilot type), with what they carry.
+    func onContinueHandoff(_ perform: @escaping (HandoffRoute, [String: Any]?) -> Void) -> some View {
         modifier(HandoffReceiver(perform: perform))
     }
 }
@@ -46,6 +49,7 @@ private struct HandoffAdvertiser: ViewModifier {
             .onDisappear { showing = false }
             .userActivity(route?.activityType ?? HandoffRoute.types[0], isActive: showing && route != nil) { activity in
                 route?.fill(activity)
+                if route == .lightShow { activity.addUserInfoEntries(from: LastShow.handoffInfo(LightShowPlayer.current)) }
             }
         #else
         content
@@ -54,7 +58,7 @@ private struct HandoffAdvertiser: ViewModifier {
 }
 
 private struct HandoffReceiver: ViewModifier {
-    let perform: (HandoffRoute) -> Void
+    let perform: (HandoffRoute, [String: Any]?) -> Void
 
     func body(content: Content) -> some View {
         #if WIZ_ICLOUD
@@ -71,6 +75,8 @@ private struct HandoffReceiver: ViewModifier {
     }
 
     private func take(_ activity: NSUserActivity) {
-        if let route = HandoffRoute(activity) { perform(route) }
+        guard let route = HandoffRoute(activity) else { return }
+        let info = activity.userInfo.map { Dictionary(uniqueKeysWithValues: $0.compactMap { k, v in (k as? String).map { ($0, v) } }) }
+        perform(route, info)
     }
 }

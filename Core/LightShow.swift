@@ -227,8 +227,12 @@ final class LightShowPlayer {
     @ObservationIgnored private var sentDelay: Double?
     @ObservationIgnored private var settingsObserver: NSObjectProtocol?
 
+    /// The one on screen, for Handoff (there's one at a time).
+    static weak var current: LightShowPlayer?
+
     init(model: Model) {
         self.model = model
+        Self.current = self
         startTicking()
         // These two sync through iCloud (CloudSync).
         settingsObserver = NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
@@ -263,6 +267,7 @@ final class LightShowPlayer {
         seeking = false
         plainSeek = nil
         mediaName = url.lastPathComponent
+        LastShow.remember(media: url)
         hasVideo = false
         duration = 0
         time = 0
@@ -299,6 +304,7 @@ final class LightShowPlayer {
         case .success(let s):
             show = s
             showName = url.lastPathComponent
+            LastShow.remember(show: url)
             error = nil
             sentUpTo = nil // catch up to wherever the media is, on the next tick that plays
             pendingSpeed = nil // the old show's

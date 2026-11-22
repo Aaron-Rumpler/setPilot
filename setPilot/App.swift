@@ -150,7 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, continue userActivity: NSUserActivity,
                      restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
         guard let route = HandoffRoute(userActivity) else { return false }
-        HandoffRouter.shared.open(route)
+        let info = userActivity.userInfo.map { Dictionary(uniqueKeysWithValues: $0.compactMap { k, v in (k as? String).map { ($0, v) } }) }
+        HandoffRouter.shared.open(route, info: info)
         return true
     }
 

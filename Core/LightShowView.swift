@@ -44,6 +44,13 @@ private struct LightShowScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             stage
+                // Handed off from another device: open what it had, where it was.
+                .onChange(of: HandoffRouter.shared.lightShowResume != nil, initial: true) { _, has in
+                    guard has, let info = HandoffRouter.shared.lightShowResume else { return }
+                    HandoffRouter.shared.lightShowResume = nil
+                    openLast(media: LastShow.resolve(info["media"] as? String), show: LastShow.resolve(info["show"] as? String),
+                             at: info["position"] as? Double)
+                }
             Divider()
             controls
         }
@@ -62,6 +69,19 @@ private struct LightShowScreen: View {
         }
         .startsInCloudFolder()
         .onDisappear { player.close() }
+    }
+
+    /// Opens a show and its media (the last ones, or another device's), and goes to a place in it.
+    private func openLast(media: URL?, show: URL?, at position: Double?) {
+        if let media { player.openMedia(media) }
+        if let show { player.openShow(show) }
+        if let position, position > 0 {
+            // Once the media's length is known (seeking before then is clamped to the start).
+            Task {
+                for _ in 0..<50 where player.duration == 0 { try? await Task.sleep(for: .milliseconds(100)) }
+                player.seek(to: position)
+            }
+        }
     }
 
     private func open(_ kind: Choosing) {
@@ -96,6 +116,10 @@ private struct LightShowScreen: View {
                 } description: {
                     Text("Open an audio or video file, and a light show to go with it.")
                 } actions: {
+                    if LastShow.media != nil || LastShow.show != nil {
+                        Button("Open Last Show") { openLast(media: LastShow.media, show: LastShow.show, at: nil) }
+                            .help("The show and media last opened from setPilot's iCloud Drive folder, on any of your devices")
+                    }
                     Button("Open Media…") { open(.media) }
                     Button("Open Light Show…") { open(.show) }
                 }
