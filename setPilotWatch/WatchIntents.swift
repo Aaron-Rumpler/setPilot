@@ -282,7 +282,7 @@ struct WatchSetTemperatureIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Colour Temperature"
     static let description = IntentDescription("Sets the bulb to a colour temperature, on its own scale or one of your CCT scales.")
 
-    @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "Temperature", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
     @Parameter(title: "CCT Scale", description: "Empty for the bulb's own.") var scale: WatchScaleEntity?
     @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
     var switchOn: Bool
@@ -355,7 +355,7 @@ struct WatchSetLightIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Light"
     static let description = IntentDescription("Changes any of the temperature (or scene, or custom scene), brightness and power at once, in one change, with an optional fade.")
 
-    @Parameter(title: "Kelvin") var kelvin: Int?
+    @Parameter(title: "Temperature") var kelvin: Int?
     @Parameter(title: "CCT Scale", description: "With a temperature: empty for the bulb's own.") var scale: WatchScaleEntity?
     @Parameter(title: "Scene") var scene: WatchSceneEntity?
     @Parameter(title: "Custom Scene") var customScene: WatchCustomSceneEntity?
@@ -421,7 +421,7 @@ struct WatchShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: WatchPowerIntent(),
-            phrases: ["Switch the light \(\.$action) with \(.applicationName)", "Turn the light \(\.$action) with \(.applicationName)"],
+            phrases: ["Switch the light \(\.$action) with \(.applicationName)", "Switch it \(\.$action) with \(.applicationName)"],
             shortTitle: "Power",
             systemImageName: "lightbulb"
         )

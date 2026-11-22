@@ -250,11 +250,11 @@ struct RootView: View {
             case .temp, .custom:
                 TemperatureScalePicker(model: model)
                 if model.mode == .custom, let range = model.activeScale?.range {
-                    MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.customKelvin),
+                    MobileSlider(label: "Temperature", tint: ColourTemperature.color(kelvin: model.customKelvin),
                                  range: Double(range.lowerBound)...Double(range.upperBound), mired: true,
                                  value: model.binding(\.customKelvin))
                 } else {
-                    MobileSlider(label: "Kelvin", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
+                    MobileSlider(label: "Temperature", tint: ColourTemperature.color(kelvin: model.temp), range: model.tempRange,
                                  mired: true, value: model.binding(\.temp))
                 }
             case .scene:
@@ -262,7 +262,7 @@ struct RootView: View {
                     .pickerStyle(.navigationLink)
                 MobileSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
-            MobileSlider(label: "Dimming", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
+            MobileSlider(label: "Brightness", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
             ControlsFadeRow(model: model)
     }
 

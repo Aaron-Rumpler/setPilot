@@ -251,7 +251,7 @@ struct CustomScenesView: View {
             if let s, s.canControl, let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
                 Section("Playing") {
                     ValueRow(label: "Speed", value: binding(s, \.speed, .speed), range: 10...200)
-                    ValueRow(label: "Dimming", value: binding(s, \.dimming, .dimming), range: s.minDimming...100, unit: "%")
+                    ValueRow(label: "Brightness", value: binding(s, \.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
             }
         }
@@ -375,9 +375,9 @@ struct PresetEditView: View {
                 }
                 .disabled(link.snapshot?.canControl != true)
                 let i = link.presets.firstIndex { $0.id == presetID } ?? 0
-                Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Earlier", systemImage: "arrow.up") }
+                Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Up", systemImage: "arrow.up") }
                     .disabled(i == 0)
-                Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Later", systemImage: "arrow.down") }
+                Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Down", systemImage: "arrow.down") }
                     .disabled(i >= link.presets.count - 1)
                 Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
             } else {

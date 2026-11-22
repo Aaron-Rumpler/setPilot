@@ -50,7 +50,7 @@ struct TemperatureScalePicker: View {
     let model: Model
 
     var body: some View {
-        Picker("Scale", selection: model.temperatureScaleChoice) {
+        Picker("CCT Scale", selection: model.temperatureScaleChoice) {
             Text("Bulb's own").tag(UUID?.none)
             let scales = model.usableScales
             if !scales.isEmpty {
@@ -226,8 +226,8 @@ struct PointEditor: View {
 
     var body: some View {
         HStack {
-            Text("Kelvin").frame(minWidth: labelWidth, alignment: .leading)
-            TextField("Kelvin", value: Binding(get: { point.kelvin }, set: { point.kelvin = min(max($0, 500), 20000) }),
+            Text("Temperature").frame(minWidth: labelWidth, alignment: .leading)
+            TextField("Temperature", value: Binding(get: { point.kelvin }, set: { point.kelvin = min(max($0, 500), 20000) }),
                       format: .number.grouping(.never))
                 .focused($kelvinFocused)
                 .labelsHidden()

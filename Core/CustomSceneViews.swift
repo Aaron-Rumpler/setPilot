@@ -73,7 +73,7 @@ struct CustomSceneEditor: View {
                 // Live, while previewing: the two settings that apply to a playing scene.
                 Section {
                     LiveSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
-                    LiveSlider(label: "Dimming", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
+                    LiveSlider(label: "Brightness", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
                 } header: {
                     Text("Preview")
                 } footer: {
@@ -274,8 +274,8 @@ struct CustomSceneEditor: View {
                 if let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) { scene.wrappedValue.startStep = i }
             }
             .disabled(scene.wrappedValue.startStep == i)
-            Button("Move Earlier") { move(scene, id, by: -1) }.disabled(i == 0)
-            Button("Move Later") { move(scene, id, by: 1) }
+            Button("Move Left") { move(scene, id, by: -1) }.disabled(i == 0)
+            Button("Move Right") { move(scene, id, by: 1) }
                 .disabled(i >= scene.wrappedValue.steps.count - 1)
             Button("Delete", role: .destructive) {
                 guard scene.wrappedValue.steps.count > 1,
@@ -340,7 +340,7 @@ struct StepEditor: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         } else if step.useTemp {
-            IntSliderRow(label: "Kelvin", value: $step.temp, range: kelvinRange, kelvin: true,
+            IntSliderRow(label: "Temperature", value: $step.temp, range: kelvinRange, kelvin: true,
                          tint: ColourTemperature.color(kelvin: Double(step.temp)))
         } else {
             IntSliderRow(label: "Red", value: $step.r, range: 0...255, tint: .red)

@@ -110,7 +110,7 @@ struct LightStateEntity: AppEntity {
     @Property(title: "On") var on: Bool
     @Property(title: "Mode") var mode: String
     @Property(title: "Brightness") var brightness: Int
-    @Property(title: "Kelvin") var kelvin: Int?
+    @Property(title: "Temperature") var kelvin: Int?
     @Property(title: "CCT Scale") var scale: String?
     @Property(title: "Scene") var scene: String?
     @Property(title: "Speed") var speed: Int?
@@ -192,7 +192,7 @@ struct SetTemperatureIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Colour Temperature"
     static let description = IntentDescription("Sets the bulb to a colour temperature, on its own scale or one of your CCT scales.")
 
-    @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "Temperature", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
     @Parameter(title: "CCT Scale", description: "Empty: as Temperature was last used.") var scale: CCTScaleEntity?
     @Parameter(title: "Bulb's Own Scale", description: "Use the bulb's own temperatures, not a CCT scale.", default: false)
     var bulbOwn: Bool
@@ -301,7 +301,7 @@ struct SetLightIntent: AppIntent {
     @Parameter(title: "Blue", default: 0, inclusiveRange: (0, 255)) var b: Int
     @Parameter(title: "Cool White", default: 0, inclusiveRange: (0, 255)) var c: Int
     @Parameter(title: "Warm White", default: 0, inclusiveRange: (0, 255)) var w: Int
-    @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "Temperature", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
     @Parameter(title: "CCT Scale", description: "Empty: as Temperature was last used.") var scale: CCTScaleEntity?
     @Parameter(title: "Scene") var scene: SceneEntity?
     @Parameter(title: "Custom Scene") var customScene: CustomSceneEntity?

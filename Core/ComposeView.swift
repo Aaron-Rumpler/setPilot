@@ -174,7 +174,7 @@ struct ComposeControls: View {
         Toggle("Change Brightness", isOn: $d.includeDimming)
         #endif
         if d.includeDimming {
-            IntSliderRow(label: "Dimming", value: $d.dimming, range: Int(model.minDimming)...100, unit: "%")
+            IntSliderRow(label: "Brightness", value: $d.dimming, range: Int(model.minDimming)...100, unit: "%")
         }
 
         HStack(spacing: 8) {
@@ -264,8 +264,8 @@ struct ComposeControls: View {
             IntSliderRow(label: "Cool white", value: $d.c, range: 0...255, tint: ColourTemperature.color(kelvin: 6500))
             IntSliderRow(label: "Warm white", value: $d.w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
         case .temperature:
-            row("Scale") {
-                Picker("Scale", selection: Binding(get: { model.draftScale?.id }, set: { id in
+            row("CCT Scale") {
+                Picker("CCT Scale", selection: Binding(get: { model.draftScale?.id }, set: { id in
                     d.scaleID = id
                     model.clampDraftKelvin()
                 })) {
@@ -277,7 +277,7 @@ struct ComposeControls: View {
                     }
                 }
             }
-            IntSliderRow(label: "Kelvin", value: $d.kelvin, range: model.draftKelvinRange, kelvin: true,
+            IntSliderRow(label: "Temperature", value: $d.kelvin, range: model.draftKelvinRange, kelvin: true,
                          tint: ColourTemperature.color(kelvin: Double(d.kelvin)))
         case .scenes:
             row("Scene") {

@@ -328,7 +328,7 @@ struct LightControls: View {
                     .id(adaptingWhite)
             case .temp, .custom:
                 HStack(spacing: 8) {
-                    Text("Scale").frame(width: ChannelSlider.labelWidth, alignment: .leading)
+                    Text("CCT Scale").frame(width: ChannelSlider.labelWidth, alignment: .leading)
                     TemperatureScalePicker(model: model)
                         .labelsHidden()
                         .fixedSize()
@@ -337,12 +337,12 @@ struct LightControls: View {
                 }
                 if model.mode == .custom, let scale = model.activeScale, let range = scale.range {
                     // Marks at the scale's points; the track's colours are black-body, not the scale's.
-                    ChannelSlider(label: "Kelvin", range: Double(range.lowerBound)...Double(range.upperBound),
+                    ChannelSlider(label: "Temperature", range: Double(range.lowerBound)...Double(range.upperBound),
                                   marks: spacedMarks(scale.points.map(\.kelvin), in: range),
                                   scale: .mired, colourTemperatureStrip: true, value: model.binding(\.customKelvin))
                         .id("\(adaptingWhite) \(scale.id) \(range)")
                 } else {
-                    ChannelSlider(label: "Kelvin", range: model.tempRange,
+                    ChannelSlider(label: "Temperature", range: model.tempRange,
                                   marks: [2200, 2700, 4200, 6500], scale: .mired, colourTemperatureStrip: true,
                                   value: model.binding(\.temp))
                         .id(adaptingWhite) // rebuild the track when the adapting white changes
@@ -367,7 +367,7 @@ struct LightControls: View {
                 }
                 ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
-            ChannelSlider(label: "Dimming", range: model.minDimming...100, value: model.binding(\.dimming))
+            ChannelSlider(label: "Brightness", range: model.minDimming...100, value: model.binding(\.dimming))
             ControlsFadeRow(model: model)
     }
 }
@@ -403,7 +403,7 @@ struct Panel<Accessory: View, Content: View>: View {
 }
 
 struct ChannelSlider: View {
-    static let labelWidth: CGFloat = 76
+    static let labelWidth: CGFloat = 86
 
     let label: String
     var tint: Color? = nil

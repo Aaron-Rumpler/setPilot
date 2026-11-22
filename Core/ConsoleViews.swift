@@ -117,7 +117,7 @@ struct ConsoleComposer: View {
         HStack(spacing: 14) {
             if !rawMode {
                 Toggle("Params", isOn: $sendParams)
-                    .help("Send a params object (turn off to leave the key out of the request altogether)")
+                    .help("Send a params object (switch off to leave the key out of the request altogether)")
             }
             if rawMode || sendParams { parseStatus }
             Spacer()

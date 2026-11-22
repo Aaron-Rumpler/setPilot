@@ -146,7 +146,7 @@ struct SetPilotShortcuts: AppShortcutsProvider {
             intent: PowerIntent(),
             phrases: [
                 "Switch the light \(\.$action) with \(.applicationName)",
-                "Turn the light \(\.$action) with \(.applicationName)",
+                "Switch it \(\.$action) with \(.applicationName)",
             ],
             shortTitle: "Power",
             systemImageName: "lightbulb"

@@ -50,12 +50,12 @@
             </property>
         </class-extension>
 
-        <command name="turn on" code="sPltTnOn" description="Switches the bulb on.">
+        <command name="switch on" code="sPltTnOn" description="Switches the bulb on.">
             <cocoa class="SetPilotTurnOnCommand"/>
             <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
             <result type="light state"/>
         </command>
-        <command name="turn off" code="sPltTnOf" description="Switches the bulb off.">
+        <command name="switch off" code="sPltTnOf" description="Switches the bulb off.">
             <cocoa class="SetPilotTurnOffCommand"/>
             <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
             <result type="light state"/>

@@ -287,7 +287,7 @@ struct ShortcutsHelpView: View {
             }
             Section("Siri phrases") {
                 Text("“Apply a preset in setPilot”")
-                Text("“Turn the light on with setPilot”")
+                Text("“Switch the light on with setPilot”")
                 Text("“Make it brighter with setPilot”")
             }
         }

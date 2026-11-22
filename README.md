@@ -82,7 +82,7 @@ trademark of Signify.
   `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App
   Groups and a development team, signed with a development certificate rather than "Sign to Run
   Locally" (set `DEVELOPMENT_TEAM` in `Account.xcconfig`; see below).
-- **AppleScript and JavaScript for Automation** (Mac): `tell application "setPilot" to turn on`,
+- **AppleScript and JavaScript for Automation** (Mac): `tell application "setPilot" to switch on`,
   `apply preset "Evening" fade 2000`, `change brightness by -10`, `set light temperature 2700
   brightness 40 power true`, `switch bulb "Lounge"`; the `power` and `brightness` properties can be
   read and set, and `light state`, `preset names`, `custom scene names`, `scene names` and `bulb
@@ -384,7 +384,7 @@ collected or tracked) and a String Catalog, ready for translation.
   LED lit they act more like proportions), and dimming is applied separately.
 - Scene `speed` only takes effect when sent on its own (a firmware bug), so the app sends it as a
   separate `setPilot`.
-- Setting R, G, B, C and W all to 0 makes the bulb return an error rather than turn off; use the
+- Setting R, G, B, C and W all to 0 makes the bulb return an error rather than switch off; use the
   power switch.
 
 ## Protocol

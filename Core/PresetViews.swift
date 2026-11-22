@@ -134,8 +134,8 @@ struct PresetGrid: View {
         Divider()
         // By ID, not the index the menu was built with: the presets can change while it's open
         // (iCloud, or the watch).
-        Button("Move Earlier") { model.movePreset(preset.id, by: -1) }.disabled(i == 0)
-        Button("Move Later") { model.movePreset(preset.id, by: 1) }.disabled(i >= lib.presets.count - 1)
+        Button("Move Left") { model.movePreset(preset.id, by: -1) }.disabled(i == 0)
+        Button("Move Right") { model.movePreset(preset.id, by: 1) }.disabled(i >= lib.presets.count - 1)
         Divider()
         Button("Delete…", role: .destructive) {
             promptIsRename[preset.id] = false

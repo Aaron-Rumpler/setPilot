@@ -41,7 +41,7 @@ struct ControlsView: View {
                         .accessibilityLabel("Brighter")
                     }
                     .listRowBackground(Color.clear)
-                    ValueRow(label: "Dimming", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
+                    ValueRow(label: "Brightness", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }
                 Section {
                     Picker("Mode", selection: Binding(get: { v.mode.choice }, set: { choice in
@@ -85,17 +85,17 @@ struct ControlsView: View {
                      tint: ColourTemperature.color(kelvin: 2700))
         case .temp, .custom:
             let scales = s.scales ?? []
-            Picker("Scale", selection: Binding(get: { v.mode == .custom ? s.activeScale : nil }, set: { id in
+            Picker("CCT Scale", selection: Binding(get: { v.mode == .custom ? s.activeScale : nil }, set: { id in
                 link.send(.temperatureScale(id))
             })) {
                 Text("Bulb's own").tag(UUID?.none)
                 ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
             }
             if v.mode == .custom, s.customMin < s.customMax {
-                ValueRow(label: "Kelvin", value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
+                ValueRow(label: "Temperature", value: binding(\.customKelvin, .colour), range: s.customMin...s.customMax,
                          unit: " K", tint: ColourTemperature.color(kelvin: v.customKelvin))
             } else {
-                ValueRow(label: "Kelvin", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax, unit: " K",
+                ValueRow(label: "Temperature", value: binding(\.temp, .colour), range: s.tempMin...s.tempMax, unit: " K",
                          tint: ColourTemperature.color(kelvin: v.temp))
             }
         case .scene:
@@ -202,7 +202,7 @@ struct WatchComposeView: View {
                         ValueRow(label: "Warm white", value: $w, range: 0...255, tint: ColourTemperature.color(kelvin: 2700))
                     case .temperature:
                         let range = kelvinRange(s)
-                        Picker("Scale", selection: Binding(get: { scale(s)?.id }, set: { id in
+                        Picker("CCT Scale", selection: Binding(get: { scale(s)?.id }, set: { id in
                             scaleID = id
                             let r = kelvinRange(s)
                             kelvin = min(max(kelvin, r.lowerBound), r.upperBound)
@@ -210,7 +210,7 @@ struct WatchComposeView: View {
                             Text("Bulb's own").tag(UUID?.none)
                             ForEach(s.scales ?? []) { Text($0.name).tag(Optional($0.id)) }
                         }
-                        ValueRow(label: "Kelvin", value: $kelvin, range: range, unit: " K",
+                        ValueRow(label: "Temperature", value: $kelvin, range: range, unit: " K",
                                  tint: ColourTemperature.color(kelvin: kelvin))
                     case .scenes:
                         Picker("Scene", selection: $scene) {
@@ -225,7 +225,7 @@ struct WatchComposeView: View {
             Section {
                 Toggle("Change Brightness", isOn: $includeDimming)
                 if includeDimming {
-                    ValueRow(label: "Dimming", value: $dimming, range: (s?.minDimming ?? 10)...100, unit: "%")
+                    ValueRow(label: "Brightness", value: $dimming, range: (s?.minDimming ?? 10)...100, unit: "%")
                 }
             }
             Section {
