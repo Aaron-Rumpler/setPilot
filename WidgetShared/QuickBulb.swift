@@ -9,6 +9,7 @@ enum QuickBulb {
             throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
         }
         var isOn = SharedStore.snapshot?.isOn
+        var level = SharedStore.snapshot?.dimming
         // Read it, rather than trust the app's last state (it may have been switched since, from
         // the WiZ app say, while this app was suspended) or guess at a toggle: a dimDelta with the
         // wrong "state" switches the bulb.
@@ -18,7 +19,9 @@ enum QuickBulb {
         }
         if needsPower {
             let reply = try await send(host, "getPilot", [:])
-            isOn = (reply["result"] as? [String: Any])?["state"] as? Bool
+            let result = reply["result"] as? [String: Any]
+            isOn = result?["state"] as? Bool
+            if let d = (result?["dimming"] as? NSNumber)?.doubleValue { level = d }
             guard isOn != nil else { throw WidgetError(localizedStringResource: "Couldn't read whether the bulb is on.") }
         }
         switch command {
@@ -45,12 +48,15 @@ enum QuickBulb {
             _ = try await send(host, "setPilot", params)
             remember { $0.isOn = on }
         case .dimDelta(let delta):
-            var params: [String: Any] = ["dimDelta": delta]
-            // As the app: the controls' fade, and the bulb kept off if it's off.
+            // The new level, worked out from the one just read, not dimDelta: a retry would add the
+            // step again. As the app: the controls' fade, and the bulb kept off if it's off.
+            let floor = SharedStore.snapshot?.minDimming ?? 10
+            let target = min(max((level ?? 100) + Double(delta), floor), 100)
+            var params: [String: Any] = ["dimming": Int(target)]
             if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
             if isOn == false { params["state"] = false }
             _ = try await send(host, "setPilot", params)
-            remember { $0.dimming = min(max($0.dimming + Double(delta), $0.minDimming), 100) }
+            remember { $0.dimming = target }
         }
     }
 

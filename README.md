@@ -125,7 +125,8 @@ trademark of Signify.
 
 The iPhone app has the same controls, presets and custom scenes (its own, kept on the iPhone), plus
 Shortcuts actions: apply a preset, switch on or off, set the brightness, and make it brighter or
-dimmer (`dimDelta`, relative to wherever the bulb is). Through the Shortcuts app those reach Siri,
+dimmer (a step from wherever the bulb is: read first, then sent as a level, so a resend can't
+step twice). Through the Shortcuts app those reach Siri,
 the Action button, and Control Center and the Lock Screen (a Shortcuts control). It has the console
 too (Bulb & Settings › Console).
 

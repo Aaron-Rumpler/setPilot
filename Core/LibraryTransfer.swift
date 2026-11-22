@@ -99,6 +99,11 @@ struct LibraryTransferSection: View {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
             let file = try JSONDecoder().decode(LibraryFile.self, from: Data(contentsOf: url))
+            // A later format may mean something else by the same keys: don't guess.
+            guard file.setPilotLibrary <= 1 else {
+                result = "That library file is from a newer version of setPilot."
+                return
+            }
             result = model.library.merge(file)
         } catch is DecodingError {
             result = "That isn't a setPilot library file."

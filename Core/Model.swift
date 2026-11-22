@@ -1061,6 +1061,11 @@ final class Model {
     /// False if nothing could be sent (the status, and `refusal`, say why).
     @discardableResult
     func send(_ change: LightChange) -> Bool {
+        guard !change.isEmpty else {
+            status = "Nothing to send"
+            refusal = status
+            return false
+        }
         var p: [String: Any] = [:]
         var speed: Int?
         if let colour = change.colour {
@@ -1207,15 +1212,16 @@ final class Model {
     /// from elsewhere aren't overwritten.
     func adjustDimming(by delta: Int) {
         guard delta != 0 else { refusal = nil; return } // nothing to do: no earlier reason applies
-        var p: [String: Any] = ["dimDelta": delta]
+        dimming = min(max(dimming + Double(delta), minDimming), 100)
+        // The new level, not dimDelta: a retry (its reply lost or late) would add the step again.
+        var p: [String: Any] = ["dimming": Int(dimming)]
         if let fade = fadeForControls { p["trans"] = fade }
         if isOn == false { p["state"] = false }
-        dimming = min(max(dimming + Double(delta), minDimming), 100)
         if let data = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) {
             lastSent = String(decoding: data, as: UTF8.self)
         }
         lastMethod = "setPilot"
-        lastPilot = [:] // the result depends on the bulb's level; just read it back
+        lastPilot = ["dimming": Int(dimming)]
         lastState = isOn
         sendSeq += 1
         pending = true
