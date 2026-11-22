@@ -15,6 +15,9 @@ final class CLIServer {
     /// Starts listening, if this build has an App Group container to listen in.
     func start(model: Model) {
         guard listener < 0, let path = ScriptSocket.path else { return }
+        // Another copy of the app (a Debug build beside the installed one) already answering:
+        // leave it be, rather than take its socket away.
+        if Self.answering(path) { return }
         unlink(path) // left by an earlier run
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return }
@@ -36,9 +39,16 @@ final class CLIServer {
         let thread = Thread {
             while true {
                 let client = accept(fd, nil, nil)
-                guard client >= 0 else { continue }
+                guard client >= 0 else {
+                    // Out of descriptors, say: not a busy loop.
+                    if errno != EINTR && errno != ECONNABORTED { Thread.sleep(forTimeInterval: 0.2) }
+                    continue
+                }
                 var on: Int32 = 1
                 setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+                // A tool that connects and never sends its request doesn't hold a thread for ever.
+                var wait = timeval(tv_sec: 10, tv_usec: 0)
+                setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
                 Thread { Self.serve(client, model: model) }.start()
             }
         }
@@ -47,12 +57,14 @@ final class CLIServer {
 
     /// One connection: read its request line, answer it (or keep writing, for watch).
     nonisolated private static func serve(_ fd: Int32, model: Model) {
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { close(fd) }
+        // read(2), not FileHandle: its availableData raises (crashing the app) on a read error.
         var buffer = Data()
+        var chunk = [UInt8](repeating: 0, count: 4096)
         while buffer.firstIndex(of: 0x0A) == nil {
-            let chunk = handle.availableData
-            if chunk.isEmpty { return }
-            buffer.append(chunk)
+            let n = read(fd, &chunk, chunk.count)
+            if n <= 0 { return }
+            buffer.append(contentsOf: chunk[0..<n])
             if buffer.count > 64_000 { return } // not a request
         }
         let line = buffer.prefix { $0 != 0x0A }
@@ -95,7 +107,16 @@ final class CLIServer {
         }
         var last: LightState?
         while true {
-            changed.wait()
+            // Every second without a change, check the tool's still there (it reads nothing, so
+            // anything readable, or the end, means it's gone).
+            guard changed.wait(timeout: .now() + 1) == .success else {
+                var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                if poll(&p, 1, 0) > 0 {
+                    box.stopped = true
+                    return
+                }
+                continue
+            }
             Thread.sleep(forTimeInterval: 0.2) // let a burst settle
             while changed.wait(timeout: .now()) == .success {} // and take it as one
             let state = DispatchQueue.main.sync { MainActor.assumeIsolated { Scripting.state(of: model) } }
@@ -106,6 +127,24 @@ final class CLIServer {
                 return
             }
         }
+    }
+
+    /// Whether something's listening at `path` already.
+    nonisolated private static func answering(_ path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8)
+        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return false }
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            buffer.copyBytes(from: bytes)
+            buffer[bytes.count] = 0
+        }
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        } == 0
     }
 
     /// False once the other end has gone.

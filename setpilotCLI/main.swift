@@ -41,7 +41,11 @@ func takeFlag(_ name: String) -> Bool {
     return true
 }
 func takeOption(_ name: String) -> String? {
-    guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+    guard let i = args.firstIndex(of: name) else { return nil }
+    guard i + 1 < args.count else {
+        FileHandle.standardError.write(Data("setpilot: \(name) needs a value\n".utf8))
+        exit(2)
+    }
     let value = args[i + 1]
     args.removeSubrange(i...(i + 1))
     return value
@@ -124,8 +128,26 @@ default:
 
 // MARK: Talking to the app
 
+/// The setPilot.app this tool is inside (Contents/Helpers/setpilot), following a symlink to it.
+let enclosingApp: URL? = {
+    // The executable's own path (argv[0] is just "setpilot" when it's found on the PATH).
+    guard let me = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
+    let app = me.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    return app.pathExtension == "app" ? app : nil
+}()
+
+/// The App Group: the enclosing app's (so a team set only on the app target still works), else
+/// this tool's own.
+let appGroup: String? = {
+    if let app = enclosingApp, let bundle = Bundle(url: app),
+       let id = bundle.object(forInfoDictionaryKey: "SetPilotAppGroup") as? String, ScriptSocket.isTeamGroup(id) {
+        return id
+    }
+    return ScriptSocket.appGroup
+}()
+
 func connect() -> Int32? {
-    guard let path = ScriptSocket.path else { return nil }
+    guard let path = ScriptSocket.path(for: appGroup) else { return nil }
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { return nil }
     var on: Int32 = 1
@@ -149,15 +171,24 @@ func connect() -> Int32? {
 
 /// The app's socket, launching the app (in the background, without a window) if it isn't running.
 func connectToApp() -> Int32 {
-    guard ScriptSocket.appGroup != nil else {
+    guard appGroup != nil else {
         fail(ScriptError(code: .appUnavailable, message: "This build has no App Group (it needs a development team), so the app can't be reached."))
     }
     if let fd = connect() { return fd }
+    // The app this tool is inside (through a symlink on the PATH too), else the one Launch
+    // Services knows; in the background, without a window.
     let open = Process()
     open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    open.arguments = ["-g", "-j", "-b", "nz.aaronrumpler.setPilot"]
+    if let app = enclosingApp {
+        open.arguments = ["-g", "-j", app.path]
+    } else {
+        open.arguments = ["-g", "-j", "-b", "nz.aaronrumpler.setPilot"]
+    }
     try? open.run()
     open.waitUntilExit()
+    guard open.terminationStatus == 0 else {
+        fail(ScriptError(code: .appUnavailable, message: "Couldn't open the setPilot app (is it installed?)."))
+    }
     for _ in 0..<50 {
         usleep(100_000)
         if let fd = connect() { return fd }
@@ -166,17 +197,25 @@ func connectToApp() -> Int32 {
 }
 
 let fd = connectToApp()
-let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-let request = ScriptRequest(command: command, watch: watching ? true : nil)
-handle.write(Data((encode(request) + "\n").utf8))
+if !watching {
+    // A hung app doesn't hang the tool: longer than a bulb's retries (about 11 s) plus the read-back.
+    var wait = timeval(tv_sec: 30, tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
+}
+let request = Array((encode(ScriptRequest(command: command, watch: watching ? true : nil)) + "\n").utf8)
+// write(2) and read(2), not FileHandle: its methods raise (an abort, not an exit code) on an error.
+guard request.withUnsafeBytes({ Darwin.write(fd, $0.baseAddress, $0.count) }) == request.count else {
+    fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection."))
+}
 
 /// Lines from the app, as they come.
 func lines(_ each: (Data) -> Bool) {
     var buffer = Data()
+    var chunk = [UInt8](repeating: 0, count: 4096)
     while true {
-        let chunk = handle.availableData
-        if chunk.isEmpty { return } // the app closed it
-        buffer.append(chunk)
+        let n = read(fd, &chunk, chunk.count)
+        if n <= 0 { return } // the app closed it (or didn't answer in time)
+        buffer.append(contentsOf: chunk[0..<n])
         while let nl = buffer.firstIndex(of: 0x0A) {
             let line = buffer[buffer.startIndex..<nl]
             buffer.removeSubrange(buffer.startIndex...nl)
@@ -230,12 +269,12 @@ if watching {
     fail(ScriptError(code: .appUnavailable, message: "The setPilot app stopped."))
 }
 
-var result: ScriptResult?
+var answer: ScriptResult?
 lines { data in
-    result = try? decoder.decode(ScriptResult.self, from: data)
+    answer = try? decoder.decode(ScriptResult.self, from: data)
     return false
 }
-guard let result else { fail(ScriptError(code: .appUnavailable, message: "No answer from the setPilot app.")) }
+guard let result = answer else { fail(ScriptError(code: .appUnavailable, message: "No answer from the setPilot app.")) }
 if let error = result.error { fail(error) }
 if json {
     if let items = result.items { print(encode(items)) } else if let state = result.state { print(encode(state)) }

@@ -73,7 +73,8 @@ trademark of Signify.
   app (launching it in the background if needed), with an exit code for each kind of failure (see
   `setpilot --help`). It's inside the app: link it onto your PATH, e.g.
   `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App
-  Groups and a development team (see below).
+  Groups and a development team, signed with a development certificate rather than "Sign to Run
+  Locally" (set `DEVELOPMENT_TEAM` in `Account.xcconfig`; see below).
 - **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
   for a room's only light, optionally with the home's name first) and give them the home's signing

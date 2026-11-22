@@ -109,14 +109,22 @@ enum ScriptSocket {
     /// The App Group (Team ID prefixed, so no provisioning profile is needed on the Mac), from the
     /// Info.plist key the build fills in. Nil without a team (an ad-hoc build): no shared container then.
     static var appGroup: String? {
-        guard let id = Bundle.main.object(forInfoDictionaryKey: "SetPilotAppGroup") as? String else { return nil }
-        let team = id.prefix { $0 != "." }
-        guard team.count == 10, team.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }) else { return nil }
+        guard let id = Bundle.main.object(forInfoDictionaryKey: "SetPilotAppGroup") as? String, isTeamGroup(id) else { return nil }
         return id
     }
 
-    static var path: String? {
-        guard let group = appGroup,
+    /// Starts with a Team ID (10 upper-case letters and digits), as $(TeamIdentifierPrefix) gives.
+    static func isTeamGroup(_ id: String) -> Bool {
+        let team = id.prefix { $0 != "." }
+        return team.count == 10 && team.allSatisfy { $0.isASCII && ($0.isUppercase || $0.isNumber) }
+    }
+
+    static var path: String? { path(for: appGroup) }
+
+    /// In the group's container. (A Unix socket's path has to fit in 104 bytes: a very long user
+    /// name could make it too long, and then the tool can't connect.)
+    static func path(for group: String?) -> String? {
+        guard let group,
               let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return nil }
         return dir.appendingPathComponent("cli.sock").path
     }

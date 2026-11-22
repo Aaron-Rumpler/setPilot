@@ -11,6 +11,11 @@ WIZ_APP_GROUPS = YES
 // (the watch gets them from the iPhone). Needs a paid developer account.
 WIZ_ICLOUD = NO
 
+// Your development team's ID, for every target at once (Xcode's Signing & Capabilities sets it per
+// target). The Mac command-line tool needs it, with a development certificate rather than "Sign to
+// Run Locally": its App Group is named after the team.
+// DEVELOPMENT_TEAM = ABCDE12345
+
 // Derived from the two above; no need to edit. Without App Groups, the widget extensions are
 // copied next to the apps rather than into them, so they aren't installed.
 WIZ_WIDGETS_EMBED_YES = $(CONTENTS_FOLDER_PATH)/PlugIns

@@ -61,6 +61,14 @@ jobs:
               CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= WIZ_ICLOUD=NO build
           fi
           codesign --verify --deep --strict --verbose=2 build/Release/setPilot.app
+      - name: Notarise the app
+        if: steps.signing.outputs.signed == 'yes' && env.NOTARY_APPLE_ID != ''
+        run: |
+          # The app itself too, stapled, so it opens offline once copied out of the disk image.
+          ditto -c -k --keepParent build/Release/setPilot.app "$RUNNER_TEMP/setPilot.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/setPilot.zip" --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" --team-id "$TEAM" --wait
+          xcrun stapler staple build/Release/setPilot.app
       - name: Disk image
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -70,7 +78,7 @@ jobs:
           ln -s /Applications dmg/Applications
           hdiutil create -volname setPilot -srcfolder dmg -ov -format UDZO "setPilot-$version.dmg"
           echo "DMG=setPilot-$version.dmg" >> "$GITHUB_ENV"
-      - name: Notarise
+      - name: Notarise the disk image
         if: steps.signing.outputs.signed == 'yes' && env.NOTARY_APPLE_ID != ''
         run: |
           codesign --sign "Developer ID Application" --timestamp "$DMG"
