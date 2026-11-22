@@ -484,6 +484,11 @@ final class Model {
         bulbSigns = false
         module = nil
         firmware = nil
+        // Device info read in full (or being read) is read again from the new connection: the old
+        // one's replies, and its retries' giving up, won't come.
+        let rereadInfo = info.count > 4 || !infoReading.isEmpty
+        configTask?.cancel()
+        infoReading = []
         info = [:]
         infoErrors = [:]
         live = false
@@ -494,6 +499,7 @@ final class Model {
         bulb.send("getModelConfig", retry: true)
         bulb.send("getSystemConfig", retry: true)
         bulb.send("getUserConfig", retry: true)
+        if rereadInfo { readConfig() }
         addressDetail = nil
         // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
         // for live updates. Lookups block, so off the main thread.

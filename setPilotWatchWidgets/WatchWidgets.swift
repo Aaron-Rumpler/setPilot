@@ -36,7 +36,12 @@ func statusText(_ s: LightSnapshot?) -> String {
     case .none: return "No bulb"
     case .connecting: return "Connecting"
     case .unreachable: return "Not answering"
-    case .connected: return s.isOn == true ? "On · \(Int(s.dimming))%" : "Off"
+    case .connected:
+        switch s.isOn {
+        case true?: return "On · \(Int(s.dimming))%"
+        case false?: return "Off"
+        case nil: return "Reading…" // answering, but its state isn't known yet (or was refused)
+        }
     }
 }
 
