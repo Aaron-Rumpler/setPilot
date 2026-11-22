@@ -10,13 +10,13 @@
             <property name="bulb name" code="sPbn" type="text" description="The bulb's name in setPilot."><cocoa key="bulbName"/></property>
             <property name="link" code="sPlk" type="text" description="connected, connecting, unreachable or none."><cocoa key="link"/></property>
             <property name="power" code="sPpw" type="boolean" description="Whether it's on (missing while it isn't known)."><cocoa key="power"/></property>
-            <property name="brightness" code="sPbr" type="integer" description="Dimming, 10–100 (or the bulb's own minimum)."><cocoa key="brightness"/></property>
+            <property name="brightness" code="sPbr" type="integer" description="The brightness (dimming), 10–100 (or the bulb's own minimum)."><cocoa key="brightness"/></property>
             <property name="mode" code="sPmd" type="text" description="rgbcw, temperature or scene."><cocoa key="mode"/></property>
             <property name="temperature" code="sPtp" type="integer" description="Kelvin, in temperature mode."><cocoa key="temperature"/></property>
             <property name="scale" code="sPsc" type="text" description="The CCT scale temperature is on (missing for the bulb's own)."><cocoa key="scale"/></property>
             <property name="scene" code="sPsn" type="text" description="The scene's name, in scene mode."><cocoa key="scene"/></property>
             <property name="speed" code="sPsp" type="integer" description="The scene's speed."><cocoa key="speed"/></property>
-            <property name="rgbcw" code="sPrc" description="Red, green, blue, cold white and warm white (0–255), in rgbcw mode.">
+            <property name="rgbcw" code="sPrc" description="Red, green, blue, cool white and warm white (0–255), in RGBCW mode.">
                 <type type="integer" list="yes"/>
                 <cocoa key="rgbcw"/>
             </property>
@@ -26,7 +26,7 @@
             <property name="power" code="sPpw" type="boolean" access="rw" description="Whether the bulb is on. Setting it switches it.">
                 <cocoa key="scriptPower"/>
             </property>
-            <property name="brightness" code="sPbr" type="integer" access="rw" description="The bulb's dimming. Setting it changes it.">
+            <property name="brightness" code="sPbr" type="integer" access="rw" description="The bulb's brightness (dimming), in percent. Setting it changes it.">
                 <cocoa key="scriptBrightness"/>
             </property>
             <property name="light state" code="sPls" type="light state" access="r" description="Everything about how the bulb is.">
@@ -77,9 +77,9 @@
             <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
             <result type="light state"/>
         </command>
-        <command name="set light" code="sPltStLt" description="Changes several things at once, in one message: a colour of one kind, a brightness, the power.">
+        <command name="set light" code="sPltStLt" description="Changes several things at once, in one change: a colour of one kind, the brightness and the power.">
             <cocoa class="SetPilotSetLightCommand"/>
-            <parameter name="rgb" code="sPrg" optional="yes" description="Red, green and blue (and optionally cold and warm white), 0–255.">
+            <parameter name="rgb" code="sPrg" optional="yes" description="Red, green and blue (and optionally cool and warm white), 0–255.">
                 <type type="integer" list="yes"/>
                 <cocoa key="rgb"/>
             </parameter>
@@ -88,7 +88,7 @@
             <parameter name="scene" code="sPsn" type="text" optional="yes" description="A built-in scene's name or number."><cocoa key="scene"/></parameter>
             <parameter name="custom scene" code="sPcs" type="text" optional="yes" description="One of your custom scenes, by name."><cocoa key="customScene"/></parameter>
             <parameter name="speed" code="sPsp" type="integer" optional="yes" description="A scene's speed."><cocoa key="speed"/></parameter>
-            <parameter name="brightness" code="sPbr" type="integer" optional="yes" description="Dimming, in percent."><cocoa key="brightness"/></parameter>
+            <parameter name="brightness" code="sPbr" type="integer" optional="yes" description="The brightness (dimming), in percent."><cocoa key="brightness"/></parameter>
             <parameter name="power" code="sPpw" type="boolean" optional="yes" description="true switches the bulb on, false off; left out, it stays as it is."><cocoa key="power"/></parameter>
             <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
             <result type="light state"/>

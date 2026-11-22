@@ -274,8 +274,8 @@ struct CustomSceneEditor: View {
                 if let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) { scene.wrappedValue.startStep = i }
             }
             .disabled(scene.wrappedValue.startStep == i)
-            Button("Move Up") { move(scene, id, by: -1) }.disabled(i == 0)
-            Button("Move Down") { move(scene, id, by: 1) }
+            Button("Move Earlier") { move(scene, id, by: -1) }.disabled(i == 0)
+            Button("Move Later") { move(scene, id, by: 1) }
                 .disabled(i >= scene.wrappedValue.steps.count - 1)
             Button("Delete", role: .destructive) {
                 guard scene.wrappedValue.steps.count > 1,

@@ -124,7 +124,7 @@ struct BulbEntry: TimelineEntry {
 func statusText(_ s: LightSnapshot?) -> String {
     guard let s else { return "Open setPilot" }
     switch s.link {
-    case .none: return "No bulb"
+    case .none: return "No bulb chosen"
     case .connecting: return "Connecting…"
     case .unreachable: return "Not answering"
     case .connected:

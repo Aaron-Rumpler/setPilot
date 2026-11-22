@@ -71,7 +71,7 @@ struct WidgetError: Error, CustomLocalizedStringResourceConvertible {
 }
 
 struct ApplyPresetWidgetIntent: WidgetActionIntent {
-    static let title: LocalizedStringResource = "Apply setPilot Preset"
+    static let title: LocalizedStringResource = "Apply Preset"
     static let isDiscoverable = false
 
     @Parameter(title: "Preset")
@@ -89,7 +89,7 @@ struct ApplyPresetWidgetIntent: WidgetActionIntent {
 }
 
 struct PowerToggleIntent: SetValueIntent, WidgetActionIntent {
-    static let title: LocalizedStringResource = "Switch the Bulb"
+    static let title: LocalizedStringResource = "Switch the Bulb On or Off"
     static let isDiscoverable = false
 
     @Parameter(title: "On")
@@ -105,7 +105,7 @@ struct PowerToggleIntent: SetValueIntent, WidgetActionIntent {
 }
 
 struct DimStepIntent: WidgetActionIntent {
-    static let title: LocalizedStringResource = "Brighter or Dimmer"
+    static let title: LocalizedStringResource = "Make Brighter or Dimmer"
     static let isDiscoverable = false
 
     @Parameter(title: "Step")

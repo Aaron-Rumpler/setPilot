@@ -20,7 +20,7 @@ struct ControlsView: View {
             ErrorRow(link: link)
             if let s, s.canControl, let v = values {
                 if !link.reachable {
-                    Text("iPhone not reachable: this is the last state it sent.")
+                    Text("Can't reach your iPhone: this is the last state it sent.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.clear)
@@ -57,7 +57,7 @@ struct ControlsView: View {
                     ControlsFadePicker(link: link, s: s)
                 }
                 Section {
-                    Button { link.send(.sync) } label: { Label("Read from Bulb", systemImage: "arrow.clockwise") }
+                    Button { link.send(.sync) } label: { Label("Sync", systemImage: "arrow.clockwise") }
                 }
                 LastCommandSection(s: s)
             } else {
@@ -188,9 +188,9 @@ struct WatchComposeView: View {
         List {
             ErrorRow(link: link)
             Section {
-                Toggle("Colour", isOn: $includeColour)
+                Toggle("Change Colour", isOn: $includeColour)
                 if includeColour, let s {
-                    Picker("Kind", selection: $kind) {
+                    Picker("Mode", selection: $kind) {
                         ForEach(ModeChoice.allCases) { Text($0.rawValue).tag($0) }
                     }
                     switch kind {
@@ -217,13 +217,13 @@ struct WatchComposeView: View {
                             ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
                             ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
                         }
-                        Toggle("Speed", isOn: $includeSpeed)
+                        Toggle("Change Speed", isOn: $includeSpeed)
                         if includeSpeed { ValueRow(label: "Speed", value: $speed, range: 10...200) }
                     }
                 }
             }
             Section {
-                Toggle("Brightness", isOn: $includeDimming)
+                Toggle("Change Brightness", isOn: $includeDimming)
                 if includeDimming {
                     ValueRow(label: "Dimming", value: $dimming, range: (s?.minDimming ?? 10)...100, unit: "%")
                 }

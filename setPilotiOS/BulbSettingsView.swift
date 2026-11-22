@@ -158,7 +158,7 @@ struct BulbSettingsView: View {
             } header: {
                 Text("Fade")
             } footer: {
-                Text("The fade (setPilot's trans) that the controls' Fade and Compose offer as the default. Turning off always uses the bulb's own fade-out.")
+                Text("The fade (setPilot's trans) that the controls' Fade and Compose offer as the default. Switching the bulb off always uses its own fade-out.")
             }
 
             CloudSyncSection()

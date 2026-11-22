@@ -18,7 +18,7 @@ struct LightSnippetIntent: SnippetIntent {
 
 /// The snippet's buttons: quiet (no dialog of their own), for the snippet to show what happened.
 struct SnippetPowerIntent: AppIntent {
-    static let title: LocalizedStringResource = "Switch On or Off"
+    static let title: LocalizedStringResource = "Switch the Bulb On or Off"
     static let isDiscoverable = false
     init() {}
 
@@ -30,7 +30,7 @@ struct SnippetPowerIntent: AppIntent {
 }
 
 struct SnippetBrightnessIntent: AppIntent {
-    static let title: LocalizedStringResource = "Brighter or Dimmer"
+    static let title: LocalizedStringResource = "Make Brighter or Dimmer"
     static let isDiscoverable = false
     @Parameter(title: "Step") var step: Int
     init() {}

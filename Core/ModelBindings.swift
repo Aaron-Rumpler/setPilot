@@ -31,10 +31,10 @@ extension Model {
 
     var linkText: String {
         switch link {
-        case .none: "Not connected"
+        case .none: "No bulb chosen"
         case .connecting: "Connecting…"
         case .connected: "Connected" + (rssi.map { " · \($0 < 0 ? "\u{2212}" : "")\(abs($0)) dBm" } ?? "")
-        case .unreachable: "No response"
+        case .unreachable: "Not answering"
         }
     }
 }

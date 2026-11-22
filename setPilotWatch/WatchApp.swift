@@ -190,13 +190,13 @@ struct PowerRow: View {
     }
 
     private var statusText: String {
-        if !link.reachable { return "iPhone not reachable" }
+        if !link.reachable { return "Can't reach your iPhone" }
         if link.busy { return "Sending…" }
         guard let s = link.snapshot else { return "Waiting for your iPhone" }
         switch s.link {
         case .none: return "No bulb chosen on iPhone"
         case .connecting: return "Connecting…"
-        case .unreachable: return "Bulb not answering. Open setPilot on your iPhone to check."
+        case .unreachable: return "The bulb isn't answering. Open setPilot on your iPhone to check."
         case .connected:
             switch s.isOn {
             case true?: return "On · \(Int(s.dimming))%"
@@ -281,8 +281,8 @@ struct BulbsView: View {
 
     private func connectionText(_ s: LightSnapshot) -> String {
         switch s.link {
-        case .none: "No bulb"
-        case .connecting: "Connecting"
+        case .none: "No bulb chosen"
+        case .connecting: "Connecting…"
         case .connected: "Connected"
         case .unreachable: "Not answering"
         }
@@ -375,9 +375,9 @@ struct PresetEditView: View {
                 }
                 .disabled(link.snapshot?.canControl != true)
                 let i = link.presets.firstIndex { $0.id == presetID } ?? 0
-                Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Up", systemImage: "arrow.up") }
+                Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Earlier", systemImage: "arrow.up") }
                     .disabled(i == 0)
-                Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Down", systemImage: "arrow.down") }
+                Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Later", systemImage: "arrow.down") }
                     .disabled(i >= link.presets.count - 1)
                 Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
             } else {

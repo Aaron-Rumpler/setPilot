@@ -38,7 +38,7 @@ extension LightChange {
     /// Something worth saying about this change before sending it, if anything.
     func note(isOn: Bool?) -> String? {
         if power == false, fade != nil {
-            return "The bulb may ignore the fade when turning off and use its own fade-out. To fade out slowly, fade the brightness down instead."
+            return "The bulb may ignore the fade when switching off and use its own fade-out. To fade out slowly, fade the brightness down instead."
         }
         if isOn == false && power == nil && (colour != nil || dimming != nil) {
             return "The bulb is off and stays off; the change shows when it's switched on."

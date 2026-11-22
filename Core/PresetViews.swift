@@ -185,10 +185,10 @@ struct PresetTile: View {
     }
 }
 
-/// "Save Current…": asks for a name, then saves the light as it is now.
+/// "Save Current Light…": asks for a name, then saves the light as it is now.
 struct SavePresetButton: View {
     let model: Model
-    var title = "Save Current…"
+    var title = "Save Current Light…"
     @State private var asking = false
     @State private var name = ""
 

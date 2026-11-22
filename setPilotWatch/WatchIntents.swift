@@ -266,7 +266,7 @@ struct WatchSetColourIntent: AppIntent {
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the colour to \(\.$r) \(\.$g) \(\.$b)") { \.$c; \.$w; \.$switchOn; \.$fade }
+        Summary("Set the colour to \(\.$r), \(\.$g), \(\.$b)") { \.$c; \.$w; \.$switchOn; \.$fade }
     }
 
     init() {}
@@ -280,7 +280,7 @@ struct WatchSetColourIntent: AppIntent {
 
 struct WatchSetTemperatureIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Colour Temperature"
-    static let description = IntentDescription("Sets a white by kelvin, on the bulb's own scale or one of your CCT scales.")
+    static let description = IntentDescription("Sets the bulb to a colour temperature, on its own scale or one of your CCT scales.")
 
     @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
     @Parameter(title: "CCT Scale", description: "Empty for the bulb's own.") var scale: WatchScaleEntity?
@@ -347,15 +347,15 @@ enum WatchLightPower: String, AppEnum {
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Power"
     static let caseDisplayRepresentations: [WatchLightPower: DisplayRepresentation] = [
-        .leave: "as it is", .on: "on", .off: "off",
+        .leave: "leave as it is", .on: "on", .off: "off",
     ]
 }
 
 struct WatchSetLightIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Light"
-    static let description = IntentDescription("Changes several things at once, in one change: a temperature, scene or custom scene, the brightness and the power.")
+    static let description = IntentDescription("Changes any of the temperature (or scene, or custom scene), brightness and power at once, in one change, with an optional fade.")
 
-    @Parameter(title: "Temperature (K)") var kelvin: Int?
+    @Parameter(title: "Kelvin") var kelvin: Int?
     @Parameter(title: "CCT Scale", description: "With a temperature: empty for the bulb's own.") var scale: WatchScaleEntity?
     @Parameter(title: "Scene") var scene: WatchSceneEntity?
     @Parameter(title: "Custom Scene") var customScene: WatchCustomSceneEntity?
@@ -400,7 +400,7 @@ struct WatchSwitchBulbIntent: AppIntent {
 
 struct WatchGetLightStateIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Light State"
-    static let description = IntentDescription("Whether the bulb is on, its colour or scene, and its brightness.")
+    static let description = IntentDescription("The bulb's power, colour or scene and brightness, read from the bulb.")
 
     init() {}
 
@@ -415,7 +415,7 @@ struct WatchShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: WatchApplyPresetIntent(),
-            phrases: ["Apply \(\.$preset) in \(.applicationName)", "Apply a preset in \(.applicationName)"],
+            phrases: ["Apply \(\.$preset) in \(.applicationName)", "Set the light to \(\.$preset) with \(.applicationName)", "Apply a preset in \(.applicationName)"],
             shortTitle: "Apply Preset",
             systemImageName: "square.grid.2x2"
         )
@@ -427,7 +427,7 @@ struct WatchShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: WatchAdjustBrightnessIntent(),
-            phrases: ["Make the light \(\.$direction) with \(.applicationName)"],
+            phrases: ["Make the light \(\.$direction) with \(.applicationName)", "Make it \(\.$direction) with \(.applicationName)"],
             shortTitle: "Brighter or Dimmer",
             systemImageName: "sun.max"
         )
@@ -439,7 +439,7 @@ struct WatchShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: WatchGetLightStateIntent(),
-            phrases: ["What's the light doing in \(.applicationName)"],
+            phrases: ["What's the light doing in \(.applicationName)", "Get the light state from \(.applicationName)"],
             shortTitle: "Light State",
             systemImageName: "lightbulb.circle"
         )

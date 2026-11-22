@@ -106,7 +106,7 @@ struct HomeImportView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Import from WiZ")
+        .navigationTitle("Import from the WiZ App")
         .onChange(of: naming) { replan() }
         #if os(macOS)
         .toolbar {

@@ -82,7 +82,7 @@ final class PhoneRelay: NSObject {
     /// time out on the watch or land late, long after they were meant. They're answered "not
     /// answering" at once instead (a connect keeps being tried meanwhile).
     private var notAnsweringSince: Date?
-    private static let notAnswering = "Your bulb isn't answering. It may be off at the wall or out of Wi-Fi range."
+    private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
 
     /// The bulb can take a command now, waiting (up to `timeout`) only if it hasn't just been
     /// found not answering.

@@ -246,7 +246,7 @@ enum Scripting {
     /// The bulb chosen and controllable, or why not.
     private static func ready(_ model: Model) async throws {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
-            throw ScriptError(code: .noBulb, message: "No bulb chosen in setPilot.")
+            throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
         }
         guard await model.waitUntilControllable(timeout: 5) else {
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.

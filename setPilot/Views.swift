@@ -275,7 +275,7 @@ struct LightControls: View {
             NSApp.activate()
         }
         .buttonStyle(.link)
-        .help("Edit this bulb's custom CCT scales")
+        .help("Edit this bulb's CCT scales")
     }
 
     var body: some View {

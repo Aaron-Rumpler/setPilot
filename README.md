@@ -170,7 +170,7 @@ trademark of Signify.
 - **Fade time** (Settings; off by default, so no `trans` is sent): the `trans`, entered in ms, s,
   min or h (up to a day; whether bulbs take fades that long is still to be tried), that the
   controls' Fade and Compose offer as the default; the bulb's own fades (from
-  `getUserConfig`) are shown alongside. Turning off always uses the bulb's fade-out.
+  `getUserConfig`) are shown alongside. Switching the bulb off always uses its own fade-out.
 
 ## iPhone and Apple Watch
 
@@ -180,7 +180,7 @@ reach Siri, the Action button, and Control Center and the Lock Screen (a Shortcu
 Brighter and dimmer step from wherever the bulb is: read first, then sent as a level, so a resend
 can't step twice. The watch has Shortcuts actions of its own, going through the iPhone: apply a
 preset, switch on or off, brighter or dimmer, and the light's state, for Siri on the watch, its
-Action button and the Smart Stack. It has the console
+Action button and the Smart Stack. The iPhone app has the console
 too (Bulb & Settings › Console).
 
 The iPhone app doesn't search the network: broadcasting needs Apple's multicast entitlement (paid
@@ -233,7 +233,7 @@ The Watch app's main screen is power and the presets (tap to apply). Below them:
 - Changes from the Crown go to the bulb as you turn: the first at once, then the latest each time
   the iPhone answers the one before, so nothing queues up behind you.
 - **Presets**: tap to apply; swipe one, then Edit, to rename it, update it to the current light,
-  move it, or delete it.
+  move it earlier or later, or delete it.
 - **Custom Scenes** to play, with speed and brightness for the one playing; **Save Current Light**
   as a preset; and **Bulb** to switch between the iPhone's bulbs (swipe one to name it), with the
   bulb's details and its device info.

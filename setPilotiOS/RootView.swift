@@ -177,7 +177,7 @@ struct RootView: View {
             HStack {
                 Text("Presets")
                 Spacer()
-                SavePresetButton(model: model, title: "Save Current")
+                SavePresetButton(model: model, title: "Save Current Light")
                     .font(.subheadline)
                     .textCase(nil)
             }
