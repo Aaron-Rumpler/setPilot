@@ -123,6 +123,8 @@ struct PresetsWidget: Widget {
 struct PresetsWidgetView: View {
     let entry: BulbEntry
     @Environment(\.widgetFamily) private var family
+    /// Full colour, or tinted and clear (iOS 18 and 26, macOS 26), where colours are taken away.
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     private var count: Int {
         switch family {
@@ -202,8 +204,7 @@ struct PresetsWidgetView: View {
 
     private func tile(_ preset: Preset) -> some View {
         VStack(spacing: 2) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill((SharedStore.swatch(preset.colour)?.color ?? .gray).gradient)
+            swatch(preset)
                 .overlay {
                     if preset.colour.isScene {
                         Image(systemName: "sparkles").font(.caption2.weight(.bold)).foregroundStyle(.white)
@@ -212,6 +213,23 @@ struct PresetsWidgetView: View {
             Text(preset.name)
                 .font(.caption2)
                 .lineLimit(1)
+        }
+    }
+}
+
+extension PresetsWidgetView {
+    /// The preset's colour; without colour (tinted, clear), the tint, as light as the colour is,
+    /// so presets can still be told apart.
+    @ViewBuilder fileprivate func swatch(_ preset: Preset) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let rgb = SharedStore.swatch(preset.colour)
+        if renderingMode == .fullColor {
+            shape.fill((rgb?.color ?? .gray).gradient)
+        } else {
+            let lightness = rgb.map { 0.2126 * $0.r + 0.7152 * $0.g + 0.0722 * $0.b } ?? 0.3
+            shape.fill(Color.primary.opacity(0.25 + 0.6 * lightness))
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.5), lineWidth: 1))
+                .widgetAccentable()
         }
     }
 }
