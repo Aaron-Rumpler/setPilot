@@ -126,6 +126,11 @@ struct PresetGrid: View {
         Button(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites") {
             model.setFavourite(preset.id, !preset.isFavourite)
         }
+        let shared = SharedItem.preset(preset, from: lib)
+        ShareLink(item: shared, preview: SharePreview(preset.name))
+        if let link = shared.link {
+            Button("Copy Link") { Pasteboard.copy(link.absoluteString) }
+        }
         Divider()
         // By ID, not the index the menu was built with: the presets can change while it's open
         // (iCloud, or the watch).

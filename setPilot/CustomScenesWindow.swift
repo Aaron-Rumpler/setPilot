@@ -29,6 +29,8 @@ struct CustomScenesWindow: View {
                             }
                             .disabled(!model.canControl)
                             Button("Duplicate") { selection = lib.duplicate(scene).id }
+                            ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
+                            if let link = SharedItem.scene(scene).link { Button("Copy Link") { Pasteboard.copy(link.absoluteString) } }
                             Divider()
                             Button("Delete…", role: .destructive) { deleting = scene }
                         }

@@ -28,7 +28,7 @@ struct SetPilotApp: App {
     }
 
     var body: some Scene {
-        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard().accountSwitchPrompt() }
+        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard().accountSwitchPrompt().incomingItemsPrompt(model) }
             .windowResizability(.contentSize)
             // setpilot:// links go to the app delegate, not to opening this window.
             .handlesExternalEvents(matching: [])

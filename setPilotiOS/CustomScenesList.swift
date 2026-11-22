@@ -30,6 +30,10 @@ struct CustomScenesList: View {
                         Button { confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
                         Button { lib.duplicate(scene) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                        ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
+                        if let link = SharedItem.scene(scene).link {
+                            Button { Pasteboard.copy(link.absoluteString) } label: { Label("Copy Link", systemImage: "link") }
+                        }
                         Button(role: .destructive) { deleting = scene } label: { Label("Delete", systemImage: "trash") }
                     }
             }

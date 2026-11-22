@@ -42,5 +42,40 @@
 	<true/>
 	<key>OSAScriptingDefinition</key>
 	<string>setPilot.sdef</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>nz.aaronrumpler.setpilot.item</string>
+			<key>UTTypeDescription</key>
+			<string>setPilot Preset or Scene</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>setpilot</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>setPilot Preset or Scene</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>nz.aaronrumpler.setpilot.item</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

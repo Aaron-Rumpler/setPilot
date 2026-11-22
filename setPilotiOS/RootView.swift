@@ -52,6 +52,7 @@ struct RootView: View {
         .providesUndo(to: model) // shake to undo a light change
         .flashingGuard()
         .accountSwitchPrompt()
+        .incomingItemsPrompt(model)
         // Continued from another device (Handoff), or opened from Spotlight: go there.
         .onContinueHandoff { HandoffRouter.shared.open($0, info: $1) }
         .onChange(of: HandoffRouter.shared.request, initial: true) { _, route in

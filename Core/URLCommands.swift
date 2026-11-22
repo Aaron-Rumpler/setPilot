@@ -11,6 +11,10 @@ extension URLCommands {
     /// Runs a setpilot:// link, then opens its callback (if it has one).
     @MainActor
     static func handle(_ url: URL, model: Model) async {
+        // A preset or scene shared with you (ItemSharing.swift), or a shared file opened here:
+        // added once you confirm.
+        if url.isFileURL { IncomingItems.shared.take(file: url); return }
+        if url.host() == "import" { IncomingItems.shared.take(link: url); return }
         let result: ScriptResult
         switch command(from: url) {
         case .success(let command):
