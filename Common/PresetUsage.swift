@@ -5,10 +5,11 @@ import Foundation
 /// actions (your most used presets). Recorded on the iPhone and Mac (Model), synced between them
 /// through iCloud (CloudSync), and passed from the iPhone to the watch with the presets.
 ///
-/// Habits vary, so this learns a spread rather than fixed times: each use adds a bump of about an
-/// hour either side at its time of day, recent days counting more (a use a fortnight old counts
-/// half). A bedtime anywhere between 11 pm and 5 am becomes a broad stretch of middling relevance
-/// across those hours, strongest where it's most often.
+/// Habits vary, so this learns a spread rather than fixed times: each use adds a bump at its time
+/// of day, at least about two hours either side and wider when the uses are spread out and few (so
+/// off at 11 pm, midnight and 3 am also covers the hours between), recent days counting more (a use
+/// a month old counts half). A bedtime anywhere between 11 pm and 5 am becomes a broad stretch of
+/// middling relevance across those hours, strongest where it's most often.
 enum PresetUsage {
     struct Use: Codable, Hashable, Sendable {
         /// A preset's ID, or `powerOn` / `powerOff`.
@@ -45,9 +46,10 @@ enum PresetUsage {
     private static let days = 60.0
     private static let limit = 1000
     /// How much a use counts after this many days: half.
-    private static let halfLife = 14.0
-    /// The spread of each use around its time of day, in minutes.
-    private static let spread = 60.0
+    private static let halfLife = 30.0
+    /// The narrowest and widest spread of each use around its time of day, in minutes.
+    private static let minSpread = 120.0
+    private static let maxSpread = 300.0
 
     static func load(_ defaults: UserDefaults) -> [Use] {
         guard let d = defaults.data(forKey: key) else { return [] }
@@ -90,6 +92,7 @@ enum PresetUsage {
         let days = Set(mine.map { calendar.startOfDay(for: $0.at) })
         guard days.count >= 3 else { return 0 }
         let t = minuteOfDay(time, calendar)
+        let spread = Self.spread(mine.map { minuteOfDay($0.at, calendar) })
         var total = 0.0
         for use in mine {
             var d = abs(minuteOfDay(use.at, calendar) - t)
@@ -97,6 +100,20 @@ enum PresetUsage {
             total += weight(use, now: now) * exp(-(d * d) / (2 * spread * spread))
         }
         return total
+    }
+
+    /// How wide each use's bump is: from how spread out the times are (round the clock) and how
+    /// many there are, so a few scattered uses fill the gaps between them, and many tight ones stay
+    /// sharp (a kernel density's rule-of-thumb bandwidth).
+    private static func spread(_ minutes: [Double]) -> Double {
+        guard minutes.count > 1 else { return minSpread }
+        let angles = minutes.map { $0 / 1440 * 2 * Double.pi }
+        let c = angles.map(cos).reduce(0, +) / Double(angles.count)
+        let s = angles.map(sin).reduce(0, +) / Double(angles.count)
+        let r = min(max((c * c + s * s).squareRoot(), 1e-9), 1)
+        let sd = (-2 * log(r)).squareRoot() * 1440 / (2 * Double.pi) // circular standard deviation, minutes
+        let rule = 1.06 * sd * pow(Double(angles.count), -0.2)
+        return min(max(rule, minSpread), maxSpread)
     }
 
     /// The presets used most (recent uses counting more), most first.
