@@ -32,12 +32,7 @@ struct PresetsView: View {
                 if let mismatch = link.snapshot?.mismatch {
                     MismatchText(text: mismatch)
                 }
-                if let error = link.error {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .listRowBackground(Color.clear)
-                }
+                ErrorRow(link: link)
                 Section("Presets") {
                     if link.presets.isEmpty {
                         Text("Save presets here or in setPilot on your iPhone. Swipe one to edit it.")
@@ -114,6 +109,20 @@ struct PresetsView: View {
     }
 }
 
+/// Why the last action didn't work, on whichever screen it was done from.
+struct ErrorRow: View {
+    let link: PhoneLink
+
+    var body: some View {
+        if let error = link.error {
+            Text(error)
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .listRowBackground(Color.clear)
+        }
+    }
+}
+
 struct MismatchText: View {
     let text: String
 
@@ -180,6 +189,7 @@ struct CustomScenesView: View {
     var body: some View {
         let s = link.snapshot
         List {
+            ErrorRow(link: link)
             ForEach(link.scenes) { scene in
                 Button { link.send(.playCustom(scene.id, switchOn: true)) } label: {
                     HStack(spacing: 10) {
@@ -238,6 +248,7 @@ struct BulbsView: View {
         let s = link.snapshot
         let bulbs = s?.bulbs ?? []
         List {
+            ErrorRow(link: link)
             ForEach(bulbs) { bulb in
                 Button { link.send(.chooseBulb(address: bulb.address, mac: bulb.mac)) } label: {
                     HStack {
@@ -300,6 +311,7 @@ struct PresetEditView: View {
     var body: some View {
         let preset = link.presets.first { $0.id == presetID }
         List {
+            ErrorRow(link: link)
             if let preset {
                 Button { link.send(.applyPreset(preset.id)) } label: { Label("Apply", systemImage: "play.fill") }
                 TextField("Name", text: $name)
@@ -350,6 +362,7 @@ struct BulbNameView: View {
 
     var body: some View {
         List {
+            ErrorRow(link: link)
             TextField("Name", text: $name)
                 .onSubmit(save)
             Button("Save", action: save)

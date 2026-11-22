@@ -1172,7 +1172,7 @@ final class Model {
     /// Relative brightness (`dimDelta`): the bulb adds it to its own level, so concurrent changes
     /// from elsewhere aren't overwritten.
     func adjustDimming(by delta: Int) {
-        guard delta != 0 else { return }
+        guard delta != 0 else { refusal = nil; return } // nothing to do: no earlier reason applies
         var p: [String: Any] = ["dimDelta": delta]
         if let fade = fadeForControls { p["trans"] = fade }
         if isOn == false { p["state"] = false }
