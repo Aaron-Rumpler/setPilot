@@ -9,8 +9,8 @@ struct SetPilotWidgets: WidgetBundle {
         StatusWidget()
         PowerControl()
         PresetControl()
-        BrightnessControl(up: true)
-        BrightnessControl(up: false)
+        BrighterControl()
+        DimmerControl()
     }
 }
 
@@ -301,8 +301,24 @@ struct PresetControl: ControlWidget {
     }
 }
 
-struct BrightnessControl: ControlWidget {
-    let up: Bool
+struct BrighterControl: ControlWidget {
+    // (Two types, not one with a flag: a control is made with init().)
+    private let up = true
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: up ? "brighter" : "dimmer") {
+            ControlWidgetButton(action: DimStepIntent(step: up ? 10 : -10)) {
+                Label(up ? "Brighter" : "Dimmer", systemImage: up ? "sun.max.fill" : "sun.min")
+            }
+        }
+        .displayName(up ? "Brighter" : "Dimmer")
+        .description(up ? "Makes the setPilot bulb brighter by 10%." : "Makes the setPilot bulb dimmer by 10%.")
+    }
+}
+
+struct DimmerControl: ControlWidget {
+    // (Two types, not one with a flag: a control is made with init().)
+    private let up = false
 
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: up ? "brighter" : "dimmer") {
