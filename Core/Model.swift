@@ -1149,7 +1149,8 @@ final class Model {
         case .temp: .temp(Int(temp))
         case .custom: activeScale.map { .customCCT(scale: $0.id, kelvin: Int(customKelvin)) }
         case .scene:
-            if sceneId == Scenes.inlineCustom, let id = customSceneId { .custom(id, speed: Int(speed)) }
+            // Not a custom scene that's been deleted meanwhile: that can't be sent (or saved).
+            if sceneId == Scenes.inlineCustom, let id = customSceneId, library.customScene(id) != nil { .custom(id, speed: Int(speed)) }
             else if Scenes.isKnown(sceneId) { .scene(id: sceneId, speed: Int(speed)) }
             else { nil }
         }

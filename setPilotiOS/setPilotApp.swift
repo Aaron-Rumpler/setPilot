@@ -18,6 +18,8 @@ struct SetPilotMobileApp: App {
                 throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
             }
             guard await model.waitUntilControllable(timeout: 5) else {
+                // Answering but refusing to say how it is (a wrong signing key, say): that reason.
+                if model.link == .connected, !model.status.isEmpty { throw WidgetError(localizedStringResource: "\(model.status)") }
                 throw WidgetError(localizedStringResource: "The bulb isn't answering.")
             }
             switch command {

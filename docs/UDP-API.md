@@ -74,6 +74,7 @@ It reports what was last set, so it can't show how the bulb remaps a colour inte
 | `dimDelta` | a relative change in brightness, added to the current level |
 | `state` | `false` keeps or switches the bulb off; `true` switches it on |
 | `trans` | fade time for this change, in ms |
+| `ratio` | the split between the two heads of a dual-head fitting (per pywizlight; untested here) |
 
 A colour, a temperature and a scene are alternatives: send one of them.
 

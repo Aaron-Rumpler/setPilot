@@ -27,7 +27,11 @@ struct WizIntentError: Error, CustomLocalizedStringResourceConvertible {
 private func controllableModel() async throws -> Model {
     let model = Shared.model
     guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { throw WizIntentError.noBulb }
-    guard await model.waitUntilControllable(timeout: 5) else { throw WizIntentError.unreachable }
+    guard await model.waitUntilControllable(timeout: 5) else {
+        // Answering but refusing to say how it is (a wrong signing key, say): that, not "isn't answering".
+        if model.link == .connected, !model.status.isEmpty { throw WizIntentError(localizedStringResource: "\(model.status)") }
+        throw WizIntentError.unreachable
+    }
     return model
 }
 
