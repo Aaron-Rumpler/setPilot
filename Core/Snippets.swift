@@ -2,7 +2,47 @@ import AppIntents
 import SwiftUI
 
 /// What Siri, Spotlight and Shortcuts show after Get Light State, power and brightness changes:
-/// the light, with buttons to switch it and make it brighter or dimmer there and then.
+/// the light, with buttons to switch it and make it brighter or dimmer there and then. A snippet
+/// intent, so the system shows it afresh after each button (iOS and macOS 26).
+struct LightSnippetIntent: SnippetIntent {
+    static let title: LocalizedStringResource = "Light"
+    static let isDiscoverable = false
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        .result(view: LightSnippet(state: Scripting.state(of: Shared.model)))
+    }
+}
+
+/// The snippet's buttons: quiet (no dialog of their own), for the snippet to show what happened.
+struct SnippetPowerIntent: AppIntent {
+    static let title: LocalizedStringResource = "Switch On or Off"
+    static let isDiscoverable = false
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        _ = try await script(.power(nil))
+        return .result()
+    }
+}
+
+struct SnippetBrightnessIntent: AppIntent {
+    static let title: LocalizedStringResource = "Brighter or Dimmer"
+    static let isDiscoverable = false
+    @Parameter(title: "Step") var step: Int
+    init() {}
+    init(step: Int) { self.step = step }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        _ = try await script(.adjustBrightness(step))
+        return .result()
+    }
+}
+
 struct LightSnippet: View {
     let state: LightState
 
@@ -23,11 +63,11 @@ struct LightSnippet: View {
                 Text(LightStateEntity(state).summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer(minLength: 8)
-            Button(intent: AdjustBrightnessIntent(direction: .dimmer, step: 10)) { Image(systemName: "sun.min") }
+            Button(intent: SnippetBrightnessIntent(step: -10)) { Image(systemName: "sun.min") }
                 .accessibilityLabel("Dimmer")
-            Button(intent: AdjustBrightnessIntent(direction: .brighter, step: 10)) { Image(systemName: "sun.max.fill") }
+            Button(intent: SnippetBrightnessIntent(step: 10)) { Image(systemName: "sun.max.fill") }
                 .accessibilityLabel("Brighter")
-            Button(intent: PowerIntent(action: .toggle)) { Image(systemName: "power") }
+            Button(intent: SnippetPowerIntent()) { Image(systemName: "power") }
                 .accessibilityLabel(state.on == true ? "Switch off" : "Switch on")
         }
         .buttonStyle(.bordered)

@@ -65,14 +65,14 @@ struct PowerIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let on: Bool? = switch action {
         case .on: true
         case .off: false
         case .toggle: nil
         }
         let state = try await script(.power(on), fade: fade)
-        return .result(dialog: state.on == false ? "Switched off." : "Switched on.", view: LightSnippet(state: state))
+        return .result(dialog: state.on == false ? "Switched off." : "Switched on.", snippetIntent: LightSnippetIntent())
     }
 }
 
@@ -122,11 +122,11 @@ struct AdjustBrightnessIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
         let state = try await script(.adjustBrightness(direction == .brighter ? step : -step), fade: fade)
         return .result(dialog: state.on == false
                        ? "Brightness \(state.dimming)%, for when the bulb's switched on (it's off)."
-                       : "Brightness \(state.dimming)%.", view: LightSnippet(state: state))
+                       : "Brightness \(state.dimming)%.", snippetIntent: LightSnippetIntent())
     }
 }
 
