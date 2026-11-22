@@ -5,8 +5,11 @@ final class URLCommandTests: XCTestCase {
         try? URLCommands.command(from: URL(string: s)!).get()
     }
 
+    /// Sorted keys: an encoder's key order isn't fixed from one run to the next.
     private func encoded(_ c: ScriptCommand?) -> String? {
-        c.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return c.flatMap { try? encoder.encode($0) }.map { String(decoding: $0, as: UTF8.self) }
     }
 
     func testActions() {
@@ -45,9 +48,11 @@ final class URLCommandTests: XCTestCase {
 final class ScriptProtocolTests: XCTestCase {
     func testRequestsRoundTrip() throws {
         let request = ScriptRequest(command: .temperature(3000, scale: "Warm", power: true), watch: nil)
-        let data = try JSONEncoder().encode(request)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let data = try encoder.encode(request)
         let back = try JSONDecoder().decode(ScriptRequest.self, from: data)
-        XCTAssertEqual(try JSONEncoder().encode(back), data)
+        XCTAssertEqual(try encoder.encode(back), data)
     }
 
     func testExitCodesAreDistinct() {
