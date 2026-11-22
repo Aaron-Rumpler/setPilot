@@ -142,6 +142,10 @@ private struct LightShowScreen: View {
                 #endif
             }
             .help("How early each cue is sent, to make up for the bulb taking a moment to change: dial it in until a hard cut on screen and the bulb change together. Below zero if the picture or sound is the late one")
+            #if os(iOS)
+            Text("How early each cue is sent: dial it in until a hard cut on screen and the bulb change together.")
+                .font(.caption).foregroundStyle(.secondary)
+            #endif
             #if os(macOS)
             HStack(spacing: 16) {
                 options
@@ -209,12 +213,19 @@ private struct LightShowScreen: View {
         .font(.callout)
     }
 
+    /// The Mac has the whole text as a tooltip; iPhone has none, so it wraps there.
+    #if os(iOS)
+    static let statusLines = 4
+    #else
+    static let statusLines = 1
+    #endif
+
     /// One line: what's wrong, if anything; otherwise what's loaded.
     @ViewBuilder private var status: some View {
         if let error = player.error {
-            Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(1)
+            Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(Self.statusLines)
         } else if let note = player.restoreNote {
-            Label(note, systemImage: "info.circle").foregroundStyle(.secondary).lineLimit(1).help(note)
+            Label(note, systemImage: "info.circle").foregroundStyle(.secondary).lineLimit(Self.statusLines).help(note)
         } else if player.sendsToBulb && model.link != .connected {
             // Ahead of a show's warnings: nothing reaches the bulb until it's fixed. (Connected
             // with its state still to be read is fine: cues go anyway.)
@@ -222,7 +233,7 @@ private struct LightShowScreen: View {
         } else if let show = player.show, let warning = show.warnings.first {
             // The summary too (on iPhone it's the only place the title shows).
             Label("\(summary(show)) · \(warning)", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary).lineLimit(1).help(warning)
+                .foregroundStyle(.secondary).lineLimit(Self.statusLines).help(warning)
         } else if let show = player.show {
             Text(verbatim: summary(show)).foregroundStyle(.secondary).lineLimit(1)
         } else if player.mediaName != nil {

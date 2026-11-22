@@ -81,8 +81,14 @@ struct LightShow {
         let close = zip(cues, cues.dropFirst()).filter { $1.time - $0.time < 0.08 }.count
         if close > 0 { out.append("\(close) cue\(close == 1 ? " comes" : "s come") less than 80 ms after the one before: the bulb may drop some.") }
         let channels = ["r", "g", "b", "c", "w"]
-        let dark = cues.filter { cue in
-            channels.allSatisfy { cue.pilot[$0] != nil } && channels.allSatisfy { (cue.pilot[$0] as? NSNumber)?.intValue == 0 }
+        // By the light each cue leaves (channels it leaves out are kept), so {"w": 0} after a cue
+        // with only w on counts too.
+        var dark: [Cue] = []
+        var light: [String: Any] = [:]
+        for cue in cues {
+            light = state(after: CollectionOfOne(cue), from: light)
+            let touchesChannels = channels.contains { cue.pilot[$0] != nil }
+            if touchesChannels, channels.allSatisfy({ (light[$0] as? NSNumber)?.intValue == 0 }) { dark.append(cue) }
         }
         if let first = dark.first {
             out.append("\(dark.count) cue\(dark.count == 1 ? " sets" : "s set") every channel to 0 (first at \(LightShowPlayer.format(first.time))), which the bulb refuses.")
@@ -92,10 +98,11 @@ struct LightShow {
 
     /// The state the show is in after these cues: a colour replaces the previous colour (and its
     /// scene speed), everything else accumulates. Fades are dropped, to jump straight there.
-    static func state(after cues: some Sequence<Cue>) -> [String: Any] {
+    /// `start`: the state before them (for working through cues one at a time).
+    static func state(after cues: some Sequence<Cue>, from start: [String: Any] = [:]) -> [String: Any] {
         let channels: Set<String> = ["r", "g", "b", "c", "w"]
         let otherColour: Set<String> = ["temp", "sceneId", "elm", "speed"]
-        var state: [String: Any] = [:]
+        var state = start
         for cue in cues {
             if cue.pilot["temp"] != nil || cue.pilot["sceneId"] != nil {
                 // A temperature or scene replaces the colour altogether.
@@ -274,6 +281,7 @@ final class LightShowPlayer {
 
     func play() {
         guard player.currentItem != nil else { return }
+        if saved == nil { restoreNote = nil } // a new run (not resuming): the last one's note is done
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
         player.play()
     }
@@ -593,7 +601,7 @@ extension Model {
     @discardableResult
     func restore(_ saved: SavedLight) -> String? {
         guard saved.mac == chosenMAC else { return nil } // another bulb chosen since: not this one's
-        guard canControl else { return "The bulb wasn't answering when the show ended, so the light wasn't put back" }
+        guard canControl else { return "The bulb wasn't answering when the show stopped, so the light wasn't put back" }
         // The show left it on. Off before: one setPilot with "state": false (the colour kept for
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
         // (Not known when the show started: as it is now.)

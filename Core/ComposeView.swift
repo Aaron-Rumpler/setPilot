@@ -97,6 +97,10 @@ extension Model {
         if mode == .custom, let id = activeScale?.id {
             d.scaleID = id
             d.kelvin = Int(customKelvin)
+        } else if mode.choice != .temperature, let id = scaleForTemperature {
+            // Not on Temperature now: start from what choosing it would give (its CCT scale).
+            d.scaleID = id
+            d.kelvin = Int(customKelvin)
         } else {
             d.scaleID = nil
             d.kelvin = Int(temp)

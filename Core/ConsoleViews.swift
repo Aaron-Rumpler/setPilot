@@ -463,9 +463,18 @@ struct ConsoleLog: View {
         } ?? entry.text
         if let request = entry.request {
             method = request.method
-            sendParams = request.params != nil
-            let p = request.params ?? [:]
-            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+            let other = Net.json(Data(entry.text.utf8))?["params"]
+            if let p = request.params {
+                sendParams = true
+                params = p.isEmpty ? "{}" : JSONText.pretty(p)
+            } else if let other {
+                // Not an object: kept as sent, for the check to flag (as leaving Raw mode does).
+                sendParams = true
+                params = JSONText.pretty(other)
+            } else {
+                sendParams = false
+                params = "{}"
+            }
         } else {
             rawMode = true
         }

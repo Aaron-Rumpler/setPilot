@@ -219,14 +219,16 @@ struct PresetView: View {
 struct PowerWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "power", provider: StatusProvider()) { entry in
-            let on = entry.snapshot?.isOn == true
+            let isOn = entry.snapshot?.isOn
+            let on = isOn == true
             ZStack {
                 AccessoryWidgetBackground()
-                Image(systemName: on ? "lightbulb.fill" : "lightbulb.slash").font(.title3)
+                // Unknown: neutral, as the status complication shows it.
+                Image(systemName: on ? "lightbulb.fill" : isOn == false ? "lightbulb.slash" : "lightbulb").font(.title3)
             }
             .containerBackground(.fill.tertiary, for: .widget)
             .widgetURL(URL(string: "setpilot://power/toggle"))
-            .accessibilityLabel(on ? "Switch the bulb off" : "Switch the bulb on")
+            .accessibilityLabel(isOn == nil ? "Switch the bulb on or off" : on ? "Switch the bulb off" : "Switch the bulb on")
         }
         .configurationDisplayName("Power")
         .description("Switches the bulb on or off when tapped.")

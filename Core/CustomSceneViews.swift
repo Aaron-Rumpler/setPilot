@@ -247,7 +247,9 @@ struct CustomSceneEditor: View {
         let i = index
         return Menu {
             Button("Duplicate") {
-                guard let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) else { return }
+                // Checked again here: the steps can change while the menu is open.
+                guard scene.wrappedValue.steps.count < CustomScene.maxSteps,
+                      let i = scene.wrappedValue.steps.firstIndex(where: { $0.id == id }) else { return }
                 var copy = scene.wrappedValue.steps[i]
                 copy.id = UUID()
                 scene.wrappedValue.steps.insert(copy, at: i + 1)

@@ -527,6 +527,8 @@ final class Model {
     private func connectionLost() {
         link = .unreachable
         live = false
+        // A change that never got its answer didn't take as far as we know (Shortcuts say so).
+        if pending, !pilotAnswered, refusal == nil { refusal = "Lost the connection to the bulb before it answered." }
         pending = false
         verifyingSeq = nil
         guard let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
@@ -1497,6 +1499,10 @@ final class Model {
             // letting that read's status replace the error below.
             if method == "setPilot" {
                 pilotSwitches = false // the read that follows says how it is
+                // A scene's speed still to follow would be answered "ok", hiding this refusal.
+                delayedSpeed?.cancel()
+                delayedSpeed = nil
+                lastPilot["speed"] = nil
                 quietReads += 1
                 if !readOut { bulb.send("getPilot", retry: true) }
             } else if method == "getPilot" {
@@ -1610,7 +1616,12 @@ final class Model {
     private func applyPilot(_ p: [String: Any]) {
         func num(_ k: String) -> Double? { (p[k] as? NSNumber)?.doubleValue }
         if let m = p["mac"] as? String { mac = m }
-        if let s = p["state"] as? Bool { isOn = s }
+        if let s = p["state"] as? Bool {
+            isOn = s
+            // On (switched on elsewhere, say, into a scene of its own): a speed owed from while
+            // it was off is out of date.
+            if s { speedOwed = false }
+        }
         if let v = num("rssi") { rssi = Int(v) }
         if let d = num("dimming") { dimming = d }
         let scene = p["schdPsetId"] != nil ? Scenes.rhythm : Int(num("sceneId") ?? 0)

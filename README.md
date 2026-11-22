@@ -136,7 +136,7 @@ Enter the bulb's IP address or DNS name; a DNS name keeps working if the address
 The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to switch between.
 
 **Widgets** (iPhone): a Presets widget for the Home Screen (tap a preset; power, and brighter/dimmer
-on the larger sizes), a Lock Screen bulb status, and Control Center controls for power and for a
+on the larger sizes), a Lock Screen bulb status (with a power toggle on the rectangular size), and Control Center controls for power and for a
 preset of your choice. Their actions run in the app in the background on its connection to the
 bulb (if the system runs them in the widget extension instead, it sends the request itself).
 

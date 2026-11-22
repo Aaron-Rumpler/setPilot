@@ -199,6 +199,7 @@ struct CCTScaleEditor: View {
     private func pointMenu(_ scale: Binding<CCTScale>, _ point: CCTScale.Point) -> some View {
         Menu {
             Button("Duplicate") {
+                guard scale.wrappedValue.points.count < 32 else { return } // may have changed meanwhile
                 var copy = point
                 copy.id = UUID()
                 scale.wrappedValue.points.append(copy)

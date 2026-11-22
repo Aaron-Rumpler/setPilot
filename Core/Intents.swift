@@ -105,7 +105,9 @@ struct SetBrightnessIntent: AppIntent {
         let model = try await controllableModel()
         model.setDimming(Double(level))
         if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: "Brightness \(Int(model.dimming))%.")
+        return .result(dialog: model.isOn == false
+                       ? "Brightness \(Int(model.dimming))%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(Int(model.dimming))%.")
     }
 }
 
@@ -137,7 +139,9 @@ struct AdjustBrightnessIntent: AppIntent {
         let model = try await controllableModel()
         model.adjustDimming(by: direction == .brighter ? step : -step)
         if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: "Brightness \(Int(model.dimming))%.")
+        return .result(dialog: model.isOn == false
+                       ? "Brightness \(Int(model.dimming))%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(Int(model.dimming))%.")
     }
 }
 
