@@ -107,6 +107,8 @@ enum WatchCommand: Codable, Sendable {
     case deletePreset(UUID)
     /// Moves a preset up (-1) or down (1).
     case movePreset(UUID, by: Int)
+    /// Stars a preset, or not.
+    case favourite(UUID, Bool)
     case controlsFade(FadeChoice, ms: Int)
     case renameBulb(mac: String, name: String)
     /// Reads the device info; the reply carries it.

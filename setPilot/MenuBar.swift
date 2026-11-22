@@ -31,7 +31,7 @@ struct MenuBarPanel: View {
 
             if model.canControl {
                 if !model.library.presets.isEmpty {
-                    PresetGrid(model: model, columns: 4)
+                    PresetGrid(model: model, columns: 4, featuredOnly: true)
                     Divider()
                 }
                 LightControls(model: model, compact: true)

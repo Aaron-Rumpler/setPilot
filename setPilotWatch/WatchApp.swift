@@ -37,6 +37,8 @@ struct PresetsView: View {
     let link: PhoneLink
     /// The preset whose edit screen is open (swipe a preset, then Edit).
     @State private var editing: Preset?
+    /// Every preset, not just the favourites.
+    @State private var showAll = false
 
     var body: some View {
         NavigationStack {
@@ -52,7 +54,7 @@ struct PresetsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(link.presets) { preset in
+                    ForEach(showAll ? link.presets : link.presets.featured) { preset in
                         Button { link.send(.applyPreset(preset.id)) } label: {
                             HStack(spacing: 10) {
                                 Swatch(rgb: swatch(preset.colour), isScene: preset.colour.isScene)
@@ -70,6 +72,11 @@ struct PresetsView: View {
                             Button { editing = preset } label: { Label("Edit", systemImage: "pencil") }
                                 .tint(.blue)
                         }
+                    }
+                    // With favourites starred, those come first; the rest are a tap away.
+                    if link.presets.contains(where: \.isFavourite) {
+                        Button(showAll ? "Favourites Only" : "All Presets") { showAll.toggle() }
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Section {
@@ -361,6 +368,10 @@ struct PresetEditView: View {
                     }
                 Button { confirmingUpdate = true } label: {
                     Label("Update to Current Light", systemImage: "arrow.triangle.2.circlepath")
+                }
+                Button { link.send(.favourite(preset.id, !preset.isFavourite)) } label: {
+                    Label(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites",
+                          systemImage: preset.isFavourite ? "star.slash" : "star")
                 }
                 .disabled(link.snapshot?.canControl != true)
                 let i = link.presets.firstIndex { $0.id == presetID } ?? 0

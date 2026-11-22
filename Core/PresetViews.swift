@@ -7,6 +7,8 @@ struct PresetGrid: View {
     let model: Model
     /// Fixed columns, or nil for as many as fit.
     var columns: Int? = nil
+    /// Only the favourites (if any are starred): the menu bar panel.
+    var featuredOnly = false
     @State private var renaming: Preset?
     @State private var newName = ""
     @State private var deleting: Preset?
@@ -29,13 +31,13 @@ struct PresetGrid: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 LazyVGrid(columns: gridColumns, spacing: 8) {
-                    ForEach(lib.presets) { preset in
+                    ForEach(featuredOnly ? lib.presets.featured : lib.presets) { preset in
                         Button {
                             let flashes = lib.customSceneOf(preset.colour)?.flashes ?? false
                             confirmFlashing(preset.name, flashes: flashes) { model.apply(preset) }
                         } label: {
                             PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
-                                       isScene: preset.colour.isScene)
+                                       isScene: preset.colour.isScene, isFavourite: preset.isFavourite)
                         }
                         .buttonStyle(.plain)
                         #if os(iOS)
@@ -121,6 +123,9 @@ struct PresetGrid: View {
         }
         Button("Update to Current Light") { model.updatePreset(preset.id) }
         .disabled(model.currentColour == nil || !model.canControl)
+        Button(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites") {
+            model.setFavourite(preset.id, !preset.isFavourite)
+        }
         Divider()
         // By ID, not the index the menu was built with: the presets can change while it's open
         // (iCloud, or the watch).
@@ -139,6 +144,7 @@ struct PresetTile: View {
     let name: String
     let swatch: RGB?
     var isScene = false
+    var isFavourite = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -153,6 +159,16 @@ struct PresetTile: View {
                     }
                 }
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.separator))
+                .overlay(alignment: .topTrailing) {
+                    if isFavourite {
+                        Image(systemName: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.white)
+                            .shadow(radius: 1)
+                            .padding(3)
+                            .accessibilityLabel("Favourite")
+                    }
+                }
                 .frame(height: 34)
             Text(name)
                 .font(.caption)

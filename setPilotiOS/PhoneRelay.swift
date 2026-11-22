@@ -131,6 +131,9 @@ final class PhoneRelay: NSObject {
         case let .movePreset(id, offset):
             model.movePreset(id, by: offset)
             return .now(model.snapshot)
+        case let .favourite(id, on):
+            model.setFavourite(id, on)
+            return .now(model.snapshot)
         case let .controlsFade(choice, ms):
             model.controlsFade = choice
             // The time only with Custom: another choice mustn't send back an old one.
@@ -176,7 +179,7 @@ final class PhoneRelay: NSObject {
             model.readConfig()
             // The reads go out 60 ms apart; give the replies time to come in.
             pause = .milliseconds(2500)
-        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .controlsFade, .renameBulb, .script,
+        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .favourite, .controlsFade, .renameBulb, .script,
              .power, .togglePower, .applyPreset, .dimDelta, .playCustom:
             break // the runner's (above), or answered without waiting
         }
@@ -346,7 +349,7 @@ extension PhoneRelay: WCSessionDelegate {
         let command = message.command
         // The presets changed: the watch's copy for when the iPhone is out of reach.
         switch command {
-        case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset: updateContext()
+        case .savePreset, .deletePreset, .renamePreset, .updatePreset, .movePreset, .favourite: updateContext()
         default: break
         }
         var response: [String: Any] = [:]

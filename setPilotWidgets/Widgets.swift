@@ -56,7 +56,7 @@ struct BulbProvider: TimelineProvider {
     }
 
     private var current: BulbEntry {
-        BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: SharedStore.presets)
+        BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: SharedStore.presets.featured)
     }
 }
 
@@ -87,9 +87,10 @@ struct PresetsProvider: AppIntentTimelineProvider {
 
     private func entry(_ configuration: PresetsWidgetConfiguration) -> BulbEntry {
         let all = SharedStore.presets
+        // None chosen: the favourites (or all, with none starred).
         var seen = Set<UUID>() // a preset chosen twice shows once
         let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }.filter { seen.insert($0.id).inserted }
-        return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all : chosen)
+        return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all.featured : chosen)
     }
 }
 

@@ -208,6 +208,19 @@ struct Preset: Codable, Hashable, Identifiable, Sendable {
     var name: String
     var colour: LightColour
     var dimming: Int
+    /// Starred: the presets the watch's main screen, the quick actions, the Dock and menu bar,
+    /// and the Presets widget (with none chosen) show. Optional so older files still read.
+    var favourite: Bool? = nil
+
+    var isFavourite: Bool { favourite == true }
+}
+
+extension Array where Element == Preset {
+    /// The favourites, in order, or all of them when none are starred.
+    var featured: [Preset] {
+        let starred = filter(\.isFavourite)
+        return starred.isEmpty ? self : starred
+    }
 }
 
 /// One of setPilot's own scenes: 1–12 keyframes the bulb steps through, holding and fading as

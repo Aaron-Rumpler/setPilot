@@ -1571,6 +1571,11 @@ final class Model {
         }
     }
 
+    func setFavourite(_ id: UUID, _ on: Bool) {
+        guard let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
+        library.presets[i].favourite = on ? true : nil
+    }
+
     func renamePreset(_ id: UUID, to name: String) {
         let n = name.trimmingCharacters(in: .whitespaces)
         guard !n.isEmpty, let i = library.presets.firstIndex(where: { $0.id == id }) else { return }

@@ -11,9 +11,11 @@ enum QuickActions {
     static func update(_ library: Library) {
         var items = [UIApplicationShortcutItem(type: power, localizedTitle: "Power", localizedSubtitle: "On or off",
                                                icon: UIApplicationShortcutIcon(systemImageName: "power"))]
-        // The three used most (recent uses counting more), then the first presets to make up three.
+        // Favourites first, then the ones used most (recent uses counting more), then the first
+        // presets, to make up three.
         let ranked = PresetUsage.mostUsed(PresetUsage.load(.standard)).compactMap { id in library.presets.first { $0.id == id } }
-        var chosen = Array(ranked.prefix(3))
+        var chosen = Array(library.presets.filter(\.isFavourite).prefix(3))
+        for p in ranked where chosen.count < 3 && !chosen.contains(where: { $0.id == p.id }) { chosen.append(p) }
         for p in library.presets where chosen.count < 3 && !chosen.contains(where: { $0.id == p.id }) { chosen.append(p) }
         for p in chosen {
             items.append(UIApplicationShortcutItem(type: preset, localizedTitle: p.name, localizedSubtitle: "Preset",

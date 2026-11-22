@@ -194,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         power.target = self
         power.isEnabled = model.canControl
         menu.addItem(power)
-        let presets = model.library.presets
+        let presets = model.library.presets.featured
         if !presets.isEmpty { menu.addItem(.separator()) }
         for (i, preset) in presets.prefix(20).enumerated() {
             let item = NSMenuItem(title: preset.name, action: #selector(dockPreset(_:)), keyEquivalent: "")
