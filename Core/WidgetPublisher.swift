@@ -55,6 +55,7 @@ final class WidgetPublisher {
     private var trailingReload: Task<Void, Never>?
     private var publishedFloor: Double?
     private var publishedAddress: String?
+    private var publishedKey: String?
 
     private func publishState(_ s: LightSnapshot) {
         // The presets' ready-made requests clamp to the bulb's minimum dimming: again once it's
@@ -66,7 +67,11 @@ final class WidgetPublisher {
         }
         SharedStore.save(s, SharedStore.snapshotKey)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
-        SharedStore.defaults.set(model?.signingKey(for: model?.chosenMAC), forKey: SharedStore.signingKeyKey)
+        let key = model?.signingKey(for: model?.chosenMAC)
+        if key != publishedKey { // the Keychain only when it changes
+            publishedKey = key
+            SigningKeyStore.set(key, for: SigningKeyStore.current)
+        }
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
         trailingReload?.cancel()
         if key != widgetKey {

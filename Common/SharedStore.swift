@@ -34,7 +34,7 @@ enum SharedStore {
     static let presetsKey = "shared.presets"
     static let presetParamsKey = "shared.presetParams"
     static let addressKey = "shared.address"
-    /// The chosen bulb's signing key, if it has one.
+    /// Where builds before the Keychain kept the chosen bulb's signing key (removed at launch).
     static let signingKeyKey = "shared.signingKey"
     static let customScenesKey = "shared.customScenes"
     /// The controls' fade (trans, ms), if any, for widget actions that send themselves.

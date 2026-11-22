@@ -517,12 +517,28 @@ final class Model {
 
     static let signingKeysKey = "signingKeys"
 
+    /// From the Keychain; builds before kept them in the user defaults, which are moved over once.
+    private static func loadSigningKeys() -> [String: String] {
+        var keys = SigningKeyStore.all()
+        if let old = UserDefaults.standard.dictionary(forKey: signingKeysKey) as? [String: String] {
+            for (mac, key) in old where keys[mac] == nil {
+                SigningKeyStore.set(key, for: mac)
+                keys[mac] = key
+            }
+            UserDefaults.standard.removeObject(forKey: signingKeysKey)
+        }
+        SharedStore.defaults.removeObject(forKey: SharedStore.signingKeyKey) // the widgets' old copy
+        return keys
+    }
+
     /// Signing keys for bulbs whose firmware wants signed requests, keyed by lower-case MAC: the
     /// home's udp_signing_key, as 32 hex digits. Synced through iCloud, in records' encrypted fields
     /// (CloudLibrary), in builds with it.
-    var signingKeys: [String: String] = UserDefaults.standard.dictionary(forKey: Model.signingKeysKey) as? [String: String] ?? [:] {
+    var signingKeys: [String: String] = Model.loadSigningKeys() {
         didSet {
-            UserDefaults.standard.set(signingKeys, forKey: Self.signingKeysKey)
+            // In the Keychain: each one that changed or went.
+            for (mac, key) in signingKeys where oldValue[mac] != key { SigningKeyStore.set(key, for: mac) }
+            for mac in oldValue.keys where signingKeys[mac] == nil { SigningKeyStore.set(nil, for: mac) }
             if !fromCloud { CloudLibrary.shared.localChanged(.signingKey) }
             refreshSigning()
         }
@@ -557,7 +573,7 @@ final class Model {
         let key = signingKey(for: chosenMAC)
         bulb.signingKey = key
         // For the widget extension's own requests (WidgetPublisher keeps it up to date too).
-        SharedStore.defaults.set(key, forKey: SharedStore.signingKeyKey)
+        SigningKeyStore.set(key, for: SigningKeyStore.current)
     }
 
     /// The chosen bulb's name, if it has one.

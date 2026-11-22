@@ -146,7 +146,8 @@ trademark of Signify.
 - **Signed requests**, for newer firmware that refuses unsigned changes: set a bulb's signing key
   (the home's `udp_signing_key`, from the WiZ app's export for local integration) with the key
   button in the Device panel on the Mac, or Signing in Settings on iPhone, and every request
-  to it is signed as pywizlight signs them. Keys are kept on each device.
+  to it is signed as pywizlight signs them. Keys are kept in the Keychain (and synced through
+  iCloud, in builds with it).
 - **Light Show** (Window › Light Show, ⌥⌘L, or Light Show… on the Last Command panel; on iPhone,
   Light Show on the main screen): plays an audio or video file and sends the bulb the states in a
   light show file (`.lights.json`: setPilot params at times in the media) as it plays. A **Bulb

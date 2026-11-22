@@ -70,7 +70,7 @@ enum QuickBulb {
 
     /// Up to three tries, a second each.
     static func send(_ host: String, _ method: String, _ params: [String: Any]) async throws -> [String: Any] {
-        let key = SharedStore.defaults.string(forKey: SharedStore.signingKeyKey)
+        let key = SigningKeyStore.get(SigningKeyStore.current)
         for _ in 0..<3 {
             // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
             guard let data = RequestSigning.message(method, params: params, key: key) else {
