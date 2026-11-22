@@ -351,31 +351,76 @@ enum WatchLightPower: String, AppEnum {
     ]
 }
 
+enum WatchLightColourKind: String, AppEnum {
+    case leave, colour, temperature, scene, customScene
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Colour"
+    static let caseDisplayRepresentations: [WatchLightColourKind: DisplayRepresentation] = [
+        .leave: "leave as it is", .colour: "a colour", .temperature: "a temperature",
+        .scene: "a scene", .customScene: "a custom scene",
+    ]
+}
+
+/// As the iPhone's Set Light: any of a colour (or temperature, or scene), the brightness and the
+/// power, in one change.
 struct WatchSetLightIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Light"
-    static let description = IntentDescription("Changes any of the temperature (or scene, or custom scene), brightness and power at once, in one change, with an optional fade.")
+    static let description = IntentDescription("Changes any of the colour (or temperature, or scene), brightness and power at once, in one change, with an optional fade.")
 
-    @Parameter(title: "Temperature") var kelvin: Int?
-    @Parameter(title: "CCT Scale", description: "With a temperature: empty for the bulb's own.") var scale: WatchScaleEntity?
+    @Parameter(title: "Colour", default: .leave) var kind: WatchLightColourKind
+    @Parameter(title: "Red", default: 255, inclusiveRange: (0, 255)) var r: Int
+    @Parameter(title: "Green", default: 0, inclusiveRange: (0, 255)) var g: Int
+    @Parameter(title: "Blue", default: 0, inclusiveRange: (0, 255)) var b: Int
+    @Parameter(title: "Cool White", default: 0, inclusiveRange: (0, 255)) var c: Int
+    @Parameter(title: "Warm White", default: 0, inclusiveRange: (0, 255)) var w: Int
+    @Parameter(title: "Temperature", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "CCT Scale", description: "Empty: as Temperature was last used.") var scale: WatchScaleEntity?
     @Parameter(title: "Scene") var scene: WatchSceneEntity?
     @Parameter(title: "Custom Scene") var customScene: WatchCustomSceneEntity?
-    @Parameter(title: "Speed", inclusiveRange: (10, 200)) var speed: Int?
-    @Parameter(title: "Brightness", inclusiveRange: (1, 100)) var brightness: Int?
+    @Parameter(title: "Speed", description: "10–200, for a scene; empty leaves it.") var speed: Int?
+    @Parameter(title: "Brightness", description: "1–100; empty leaves it.") var brightness: Int?
     @Parameter(title: "Power", default: .leave) var power: WatchLightPower
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the light") { \.$kelvin; \.$scale; \.$scene; \.$customScene; \.$speed; \.$brightness; \.$power; \.$fade }
+        Switch(\.$kind) {
+            Case(.colour) {
+                Summary("Set the light to \(\.$r), \(\.$g), \(\.$b), \(\.$c), \(\.$w)") { \.$brightness; \.$power; \.$fade }
+            }
+            Case(.temperature) {
+                Summary("Set the light to \(\.$kelvin) K") { \.$scale; \.$brightness; \.$power; \.$fade }
+            }
+            Case(.scene) {
+                Summary("Set the light to \(\.$scene)") { \.$speed; \.$brightness; \.$power; \.$fade }
+            }
+            Case(.customScene) {
+                Summary("Set the light to \(\.$customScene)") { \.$speed; \.$brightness; \.$power; \.$fade }
+            }
+            DefaultCase {
+                Summary("Set the light: \(\.$kind)") { \.$brightness; \.$power; \.$fade }
+            }
+        }
     }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let change = ScriptChange(temp: kelvin, scale: kelvin == nil ? nil : (scale?.id.uuidString ?? "bulb"),
-                                  scene: scene.map { String($0.id) }, customScene: customScene?.id.uuidString,
-                                  speed: speed, brightness: brightness,
+        var change = ScriptChange(speed: kind == .scene || kind == .customScene ? speed : nil, brightness: brightness,
                                   power: power == .leave ? nil : power == .on)
+        switch kind {
+        case .leave: break
+        case .colour: change.rgbcw = [r, g, b, c, w]
+        case .temperature:
+            change.temp = kelvin
+            change.scale = scale?.id.uuidString
+        case .scene:
+            guard let scene else { throw WatchIntentError(localizedStringResource: "Choose a scene.") }
+            change.scene = String(scene.id)
+        case .customScene:
+            guard let customScene else { throw WatchIntentError(localizedStringResource: "Choose a custom scene.") }
+            change.customScene = customScene.id.uuidString
+        }
         let s = try await relay(.set(change), fade: fade)
         return .result(dialog: "\(summary(s))")
     }
