@@ -64,11 +64,13 @@ enum PresetUsage {
     /// Adds uses from another device. Returns whether anything was new.
     @discardableResult
     static func merge(_ uses: [Use], into defaults: UserDefaults) -> Bool {
+        let before = defaults.data(forKey: key)
         let had = load(defaults)
         let all = Set(had + uses)
         guard all.count != had.count else { return false }
         save(Array(all), in: defaults)
-        return true
+        // Only too old to keep (dropped again as it's saved): nothing new.
+        return defaults.data(forKey: key) != before
     }
 
     private static func save(_ uses: [Use], in defaults: UserDefaults) {

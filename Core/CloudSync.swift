@@ -1,13 +1,14 @@
 import Foundation
 
 /// iCloud sync of settings (how fades work, the adapting white, snapping, the light show's
-/// options) through iCloud key-value storage, between the Mac and iPhone apps. The library and
-/// bulb names sync item by item through CloudKit instead (CloudLibrary). Only in builds with
-/// `WIZ_ICLOUD` set (Account.xcconfig), since it needs a paid developer account; otherwise
-/// everything here does nothing.
+/// options, the log's and console's, when presets are used) through iCloud key-value storage,
+/// between the Mac and iPhone apps. The library, bulb names, Your Bulbs and signing keys sync
+/// item by item through CloudKit instead (CloudLibrary). Only in builds with `WIZ_ICLOUD` set
+/// (Account.xcconfig), since it needs a paid developer account; otherwise everything here does
+/// nothing.
 ///
-/// Settings that belong to the device stay on it: the chosen bulb, signing keys, the light show's
-/// delay (it depends on the device's audio), the log and console settings, open at login.
+/// Settings that belong to the device stay on it: the chosen bulb, the light show's delay (it
+/// depends on the device's audio), open at login.
 @MainActor
 final class CloudSync {
     static let shared = CloudSync()
@@ -165,7 +166,7 @@ struct CloudSyncSection: View {
             Text("Sync")
         } footer: {
             Text(CloudSync.isEnabled
-                 ? "Presets, custom scenes, CCT scales, bulb names and settings sync between your Mac and iPhone through iCloud, item by item: changes to different presets on each both survive. Signing keys, the chosen bulb and the light show delay stay on each device."
+                 ? "Presets, custom scenes, CCT scales, your bulbs with their names and signing keys, and settings sync between your Mac and iPhone through iCloud, item by item: changes to different presets on each both survive. The chosen bulb and the light show delay stay on each device."
                  : "iCloud needs a paid Apple developer account. To build with it, set WIZ_ICLOUD\u{00A0}=\u{00A0}YES in Account.xcconfig.") // no-break spaces keep the setting in one piece
                 .font(.callout)
                 .foregroundStyle(.secondary)

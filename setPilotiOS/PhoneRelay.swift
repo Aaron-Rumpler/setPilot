@@ -63,10 +63,10 @@ final class PhoneRelay: NSObject {
 
     /// The watch's light commands as the shared runner's, so they're done only once the bulb has
     /// read them back, and fail with the same reasons as Shortcuts, links and the CLI. The rest
-    /// (presets' editing, live slider changes, Compose, device info) have no runner command.
+    /// (the state, presets' editing, live slider changes, Compose, device info) have no runner
+    /// command: the state is answered with what's known, not an error, when the bulb's away.
     private static func scripted(_ command: WatchCommand) -> (ScriptCommand, Int?)? {
         switch command {
-        case .state: (.get, nil)
         case .power(let on): (.power(on), nil)
         case .togglePower: (.power(nil), nil)
         case .applyPreset(let id): (.preset(id.uuidString), nil)
@@ -110,12 +110,27 @@ final class PhoneRelay: NSObject {
     private func run(_ command: WatchCommand) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
         if let (scripted, fade) = Self.scripted(command) {
-            return .scripted(await Scripting.run(scripted, fade: fade, on: model))
+            // Just found not answering: said at once, not after waiting again (a burst of taps).
+            if !model.canControl, let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10 {
+                _ = model.ensureLive()
+                return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                              error: ScriptError(code: .notAnswering, message: Self.notAnswering)))
+            }
+            let result = await Scripting.run(scripted, fade: fade, on: model)
+            if result.error?.code == .notAnswering, !model.canControl {
+                notAnsweringSince = .now
+            } else if result.error == nil {
+                notAnsweringSince = nil
+            }
+            return .scripted(result)
         }
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
         }
         switch command {
+        case .state:
+            _ = await bulbReady(model, timeout: 3)
+            return .now(model.snapshot)
         case .savePreset(let name):
             // The light as it is: not saved from a state that may be out of date.
             guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot, Self.notAnswering) }

@@ -143,7 +143,7 @@ final class Library {
         customScenes.map { CustomSceneSummary(id: $0.id, name: $0.name, swatch: $0.swatch) }
     }
 
-    private func unique(_ base: String, in names: [String]) -> String {
+    func unique(_ base: String, in names: [String]) -> String {
         let taken = Set(names)
         if !taken.contains(base) { return base }
         var i = 2

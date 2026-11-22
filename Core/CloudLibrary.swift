@@ -125,6 +125,7 @@ final class CloudLibrary {
         } else {
             requeueUnsent()
         }
+        Task { await findHousehold() }
         #endif
     }
 
@@ -197,6 +198,7 @@ final class CloudLibrary {
     /// Fetches and sends now (Settings' Sync Now).
     func syncNow() async {
         #if WIZ_ICLOUD
+        await findHousehold()
         guard let engine else { return }
         status = "Syncing…"
         do {
@@ -297,6 +299,18 @@ final class CloudLibrary {
         guard zone.ownerName != CKCurrentUserDefaultName else { return } // our own share
         if !addMine { clearLibraryHere() }
         switchLibrary(to: SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName))
+    }
+
+    /// A household this account joined on another of its devices: an invitation is accepted for
+    /// the whole account, but only the device that accepted it switches there. The others find
+    /// the household's zone in the shared database, and join it with what they have.
+    private func findHousehold() async {
+        guard saved.shared == nil, engine != nil,
+              let zones = try? await container.sharedCloudDatabase.allRecordZones(),
+              let zone = zones.first(where: { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName })
+        else { return }
+        guard saved.shared == nil else { return } // joined meanwhile
+        switchLibrary(to: SharedZone(zoneName: zone.zoneID.zoneName, ownerName: zone.zoneID.ownerName))
     }
 
     /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).

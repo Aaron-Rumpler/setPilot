@@ -20,23 +20,29 @@ extension Library {
         var newIDs: [UUID: UUID] = [:]
         let sceneIDs = Set(customScenes.map(\.id))
         let scaleIDs = Set(cctScales.values.flatMap { $0.map(\.id) })
+        // Names here and in the file, and the copies' as they're given, so no two end up the same.
+        var sceneNames = customScenes.map(\.name) + file.customScenes.map(\.name)
         for i in file.customScenes.indices where sceneIDs.contains(file.customScenes[i].id) {
             let new = UUID()
             newIDs[file.customScenes[i].id] = new
             file.customScenes[i].id = new
-            file.customScenes[i].name = uniqueSceneName(file.customScenes[i].name)
+            file.customScenes[i].name = unique(file.customScenes[i].name, in: sceneNames)
+            sceneNames.append(file.customScenes[i].name)
         }
         for (mac, list) in file.cctScales {
             var copied = list
+            var names = scales(for: mac).map(\.name) + list.map(\.name)
             for i in copied.indices where scaleIDs.contains(copied[i].id) {
                 let new = UUID()
                 newIDs[copied[i].id] = new
                 copied[i].id = new
-                copied[i].name += " 2"
+                copied[i].name = unique(copied[i].name, in: names)
+                names.append(copied[i].name)
             }
             file.cctScales[mac] = copied
         }
         let presetIDs = Set(presets.map(\.id))
+        var presetNames = presets.map(\.name) + file.presets.map(\.name)
         for i in file.presets.indices {
             switch file.presets[i].colour {
             case let .custom(id, speed): if let n = newIDs[id] { file.presets[i].colour = .custom(n, speed: speed) }
@@ -45,7 +51,8 @@ extension Library {
             }
             if presetIDs.contains(file.presets[i].id) {
                 file.presets[i].id = UUID()
-                file.presets[i].name = uniquePresetName(file.presets[i].name)
+                file.presets[i].name = unique(file.presets[i].name, in: presetNames)
+                presetNames.append(file.presets[i].name)
             }
         }
         return file
@@ -71,6 +78,10 @@ extension Library {
     func merge(_ file: LibraryFile, clash: Clash = .replace) -> String {
         var file = file
         if clash == .keepBoth { file = copiesOfClashes(file) }
+        // A shared preset carries no favourite (it's the sender's): one replacing yours keeps yours.
+        for i in file.presets.indices where file.presets[i].favourite == nil {
+            file.presets[i].favourite = presets.first { $0.id == file.presets[i].id }?.favourite
+        }
         func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] {
             var out = mine
             for item in theirs {
