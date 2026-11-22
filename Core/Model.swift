@@ -1073,7 +1073,10 @@ final class Model {
     @discardableResult
     func apply(_ preset: Preset) -> Bool {
         let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
-        if sent { PresetUsage.record(preset.id, in: .standard) } // for the watch's Smart Stack
+        if sent {
+            PresetUsage.record(preset.id, in: .standard) // for the watch's Smart Stack
+            SiriDonation.applied(preset) // and Siri Suggestions
+        }
         return sent
     }
 

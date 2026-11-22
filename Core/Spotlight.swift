@@ -56,3 +56,13 @@ enum SpotlightIndex {
         }
     }
 }
+
+/// Tells Siri when presets are applied, so Siri Suggestions, the Lock Screen and the Smart Stack
+/// can offer them at the times you use them.
+@MainActor
+enum SiriDonation {
+    static func applied(_ preset: Preset) {
+        let intent = ApplyPresetIntent(preset: PresetEntity(preset))
+        Task { _ = try? await IntentDonationManager.shared.donate(intent: intent) }
+    }
+}

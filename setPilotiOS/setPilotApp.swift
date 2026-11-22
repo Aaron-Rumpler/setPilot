@@ -12,6 +12,7 @@ struct SetPilotMobileApp: App {
         Shared.model.library.onChange = {
             PhoneRelay.shared.libraryChanged()
             SpotlightIndex.update(Shared.model.library)
+            QuickActions.update(Shared.model.library)
         }
         SpotlightIndex.update(Shared.model.library)
         Shared.model.startIfSaved()
@@ -62,9 +63,18 @@ struct SetPilotMobileApp: App {
 final class PhoneAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        MainActor.assumeIsolated { QuickActions.update(Shared.model.library) }
         #if WIZ_ICLOUD
         application.registerForRemoteNotifications() // iCloud tells the sync engine about changes this way
         #endif
         return true
+    }
+
+    /// The scene's delegate takes the Home Screen quick actions (QuickActions.swift).
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = PhoneSceneDelegate.self
+        return config
     }
 }

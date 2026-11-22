@@ -168,6 +168,7 @@ struct PowerRow: View {
             }
         }
         .disabled(s?.canControl != true || !link.reachable)
+        .handGestureShortcut(.primaryAction) // double tap (Series 9 and Ultra 2 on) switches it
     }
 
     private var statusText: String {

@@ -185,6 +185,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateCancel
     }
 
+    /// Right-click on the Dock icon (there while a window is open): power and the presets.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let model = Shared.model
+        let menu = NSMenu()
+        menu.autoenablesItems = false // the items say for themselves whether they can be used
+        let power = NSMenuItem(title: model.isOn == true ? "Switch Off" : "Switch On", action: #selector(dockPower), keyEquivalent: "")
+        power.target = self
+        power.isEnabled = model.canControl
+        menu.addItem(power)
+        let presets = model.library.presets
+        if !presets.isEmpty { menu.addItem(.separator()) }
+        for (i, preset) in presets.prefix(20).enumerated() {
+            let item = NSMenuItem(title: preset.name, action: #selector(dockPreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = i
+            item.representedObject = preset.id.uuidString
+            item.isEnabled = model.link == .connected
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func dockPower() {
+        let model = Shared.model
+        model.power(model.isOn != true)
+    }
+
+    @objc private func dockPreset(_ item: NSMenuItem) {
+        let model = Shared.model
+        guard let id = (item.representedObject as? String).flatMap(UUID.init(uuidString:)),
+              let preset = model.library.presets.first(where: { $0.id == id }) else { return }
+        _ = model.apply(preset)
+    }
+
     /// Keep running in the menu bar when the window is closed.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
