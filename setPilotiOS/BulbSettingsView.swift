@@ -179,7 +179,7 @@ struct BulbSettingsView: View {
                 LabeledContent("Version", value: BuildInfo.summary).textSelection(.enabled)
             }
         }
-        .navigationTitle("Bulb & Settings")
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             // Not on coming back from a screen pushed from here: that would undo what's typed.

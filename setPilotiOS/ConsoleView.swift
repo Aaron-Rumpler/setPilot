@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Bulb & Settings › Console: send any method and see the reply, or the log of everything sent
+/// Settings › Console: send any method and see the reply, or the log of everything sent
 /// and received.
 struct ConsoleView: View {
     let model: Model

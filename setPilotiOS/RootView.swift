@@ -74,7 +74,7 @@ struct RootView: View {
             NavigationLink(value: Pane.route(.customScenes)) { Label("Custom Scenes", systemImage: "sparkles") }
             NavigationLink(value: Pane.route(.lightShow)) { Label("Light Show", systemImage: "play.rectangle") }
             NavigationLink(value: Pane.route(.cctScales)) { Label("CCT Scales", systemImage: "thermometer.medium") }
-            NavigationLink(value: Pane.settings) { Label("Bulb & Settings", systemImage: "gearshape") }
+            NavigationLink(value: Pane.settings) { Label("Settings", systemImage: "gearshape") }
         }
     }
 
@@ -129,6 +129,43 @@ struct RootView: View {
 
     // MARK: Bulb
 
+    /// Which bulb: your bulbs to switch to, or add another (in Settings), as the Mac's picker.
+    private var bulbMenu: some View {
+        Menu {
+            ForEach(model.namedBulbs) { bulb in
+                Button {
+                    if bulb.address.isEmpty {
+                        openSettings() // from the WiZ import, its address still to enter
+                    } else {
+                        model.choose(bulb.address, mac: bulb.mac)
+                    }
+                } label: {
+                    if bulb.address == address {
+                        Label(bulb.name ?? bulb.address, systemImage: "checkmark")
+                    } else {
+                        Text(bulb.name ?? bulb.address)
+                    }
+                }
+            }
+            Divider()
+            Button { openSettings() } label: { Label("Add Bulb…", systemImage: "plus") }
+        } label: {
+            HStack {
+                Label(model.currentName ?? address, systemImage: "lightbulb")
+                    .font(.headline)
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Bulb: \(model.currentName ?? address)")
+        .accessibilityHint("Switch to another of your bulbs, or add one")
+    }
+
+    private func openSettings() {
+        if sizeClass == .regular { pane = .settings } else { path.append(Pane.settings) }
+    }
+
     @ViewBuilder private var bulbSection: some View {
         Section {
             LocalNetworkHelp(model: model)
@@ -143,6 +180,7 @@ struct RootView: View {
                     }
                 }
             } else {
+                bulbMenu
                 HStack(spacing: 10) {
                     Circle().fill(model.linkColour).frame(width: 9, height: 9)
                         .accessibilityHidden(true) // the text beside it says the same

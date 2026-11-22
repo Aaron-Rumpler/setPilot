@@ -49,7 +49,7 @@ trademark of Signify.
 - Reads `getModelConfig` to set the minimum dimming level and the Kelvin range; the Device panel
   shows the MAC address, module and firmware, the raw replies to every read the bulb answers over
   UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included), in a popover from the ⓘ
-  button (Bulb & Settings › Device Info on iPhone): each a collapsible section with a copy button,
+  button (Settings › Device Info on iPhone): each a collapsible section with a copy button,
   errors flagged, and Expand All and Copy All.
 - **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer,
   set a colour, colour temperature (on a CCT scale or the bulb's own), scene or custom scene, switch
@@ -92,7 +92,7 @@ trademark of Signify.
   with power, brighter and dimmer buttons. Presets and custom scenes can be found by name in
   Spotlight: tapping a preset applies it, and a custom scene plays. Applying presets tells Siri when
   you use them, for Siri Suggestions and the Smart Stack.
-- **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
+- **Import from the WiZ app** (Settings on the Mac, Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
   for a room's only light, optionally with the home's name first) and give them the home's signing
   key. A list shows what would change before anything does, and names can be changed there first;
@@ -144,7 +144,7 @@ trademark of Signify.
   `setPilot` of its own just after (the firmware ignores speed alongside anything else).
 - **Signed requests**, for newer firmware that refuses unsigned changes: set a bulb's signing key
   (the home's `udp_signing_key`, from the WiZ app's export for local integration) with the key
-  button in the Device panel on the Mac, or Signing in Bulb & Settings on iPhone, and every request
+  button in the Device panel on the Mac, or Signing in Settings on iPhone, and every request
   to it is signed as pywizlight signs them. Keys are kept on each device.
 - **Light Show** (Window › Light Show, ⌥⌘L, or Light Show… on the Last Command panel; on iPhone,
   Light Show on the main screen): plays an audio or video file and sends the bulb the states in a
@@ -159,7 +159,7 @@ trademark of Signify.
   and Redo buttons by the Light controls put the light back as it was before the last change, and
   forward again (a drag or a burst of changes counts as one; up to 20 back; choosing another bulb
   starts afresh).
-- **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
+- **Export and import** (Settings on the Mac, Settings on iPhone): presets, custom scenes
   and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
   what's there and updates items exported from there before.
 - **Custom CCT** (a Scale under Temperature): kelvin through a colour-temperature scale of your
@@ -187,13 +187,13 @@ Brighter and dimmer step from wherever the bulb is: read first, then sent as a l
 can't step twice. The watch has Shortcuts actions of its own, going through the iPhone: apply a
 preset, switch on or off, brighter or dimmer, and the light's state, for Siri on the watch, its
 Action button and the Smart Stack. The iPhone app has the console
-too (Bulb & Settings › Console).
+too (Settings › Console).
 
 The iPhone app doesn't search the network: broadcasting needs Apple's multicast entitlement (paid
 accounts only), and probing every address on a network isn't acceptable on networks you don't own.
 Enter the bulb's IP address or DNS name; a DNS name keeps working if the address changes.
 
-The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to switch between.
+The iPhone remembers the bulbs you've used (Settings › Your Bulbs) to switch between.
 
 **Widgets and controls** (iPhone and Mac):
 - **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. Edit Widget picks
