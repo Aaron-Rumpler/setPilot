@@ -100,7 +100,18 @@
 		5A1C0DE0000000000000A006 /* setPilotWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = setPilotWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A1C0DE0000000000000A008 /* setpilot */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = setpilot; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1C0DE0000000000000A009 /* setPilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = setPilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5A1C0DE0000000000000B101 /* Exceptions for "Common" folder in "setPilotTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppIcon.icon,
+			);
+			target = 5A1C0DE0000000000000E007 /* setPilotTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5A1C0DE0000000000000B001 /* setPilot */ = {
@@ -115,6 +126,9 @@
 		};
 		5A1C0DE0000000000000B003 /* Common */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A1C0DE0000000000000B101 /* Exceptions for "Common" folder in "setPilotTests" target */,
+			);
 			path = Common;
 			sourceTree = "<group>";
 		};
@@ -151,6 +165,11 @@
 		5A1C0DE0000000000000B00A /* Scripting */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Scripting;
+			sourceTree = "<group>";
+		};
+		5A1C0DE0000000000000B00B /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -198,6 +217,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A1C0DE0000000000000C062 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -214,6 +240,7 @@
 				5A1C0DE0000000000000B003 /* Common */,
 				5A1C0DE0000000000000B00A /* Scripting */,
 				5A1C0DE0000000000000B009 /* setpilotCLI */,
+				5A1C0DE0000000000000B00B /* Tests */,
 				5A1C0DE0000000000000A003 /* Info.plist */,
 				5A1C0DE0000000000000A002 /* Account.xcconfig */,
 				5A1C0DE0000000000000D002 /* Products */,
@@ -229,6 +256,7 @@
 				5A1C0DE0000000000000A006 /* setPilotWidgets.appex */,
 				5A1C0DE0000000000000A007 /* setPilotWatchWidgets.appex */,
 				5A1C0DE0000000000000A008 /* setpilot */,
+				5A1C0DE0000000000000A009 /* setPilotTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -390,6 +418,30 @@
 			productReference = 5A1C0DE0000000000000A008 /* setpilot */;
 			productType = "com.apple.product-type.tool";
 		};
+		5A1C0DE0000000000000E007 /* setPilotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1C0DE0000000000000F008 /* Build configuration list for PBXNativeTarget "setPilotTests" */;
+			buildPhases = (
+				5A1C0DE0000000000000C061 /* Sources */,
+				5A1C0DE0000000000000C062 /* Frameworks */,
+				5A1C0DE0000000000000C063 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1C0DE0000000000000B00B /* Tests */,
+				5A1C0DE0000000000000B003 /* Common */,
+				5A1C0DE0000000000000B00A /* Scripting */,
+			);
+			name = setPilotTests;
+			packageProductDependencies = (
+			);
+			productName = setPilotTests;
+			productReference = 5A1C0DE0000000000000A009 /* setPilotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -418,6 +470,9 @@
 					5A1C0DE0000000000000E006 = {
 						CreatedOnToolsVersion = 26.0;
 					};
+					5A1C0DE0000000000000E007 = {
+						CreatedOnToolsVersion = 26.0;
+					};
 				};
 			};
 			buildConfigurationList = 5A1C0DE0000000000000F001 /* Build configuration list for PBXProject "setPilot" */;
@@ -440,6 +495,7 @@
 				5A1C0DE0000000000000E004 /* setPilot Widgets */,
 				5A1C0DE0000000000000E005 /* setPilot Watch Widgets */,
 				5A1C0DE0000000000000E006 /* setpilot CLI */,
+				5A1C0DE0000000000000E007 /* setPilotTests */,
 			);
 		};
 /* End PBXProject section */
@@ -474,6 +530,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1C0DE0000000000000C043 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C063 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -582,6 +645,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A1C0DE0000000000000C051 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1C0DE0000000000000C061 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -977,6 +1047,36 @@
 			};
 			name = Release;
 		};
+		5A1C0DE00000000000008001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5A1C0DE00000000000008002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nz.aaronrumpler.setPilot.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1039,6 +1139,15 @@
 			buildConfigurations = (
 				5A1C0DE00000000000007001 /* Debug */,
 				5A1C0DE00000000000007002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1C0DE0000000000000F008 /* Build configuration list for PBXNativeTarget "setPilotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1C0DE00000000000008001 /* Debug */,
+				5A1C0DE00000000000008002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

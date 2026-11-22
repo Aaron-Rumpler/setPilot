@@ -30,6 +30,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SetPilotCommit" build/Release/setPilot.app/Contents/Info.plist
           # The command-line tool, inside the app.
           test -x build/Release/setPilot.app/Contents/Helpers/setpilot
+      - name: Tests
+        run: |
+          xcodebuild -project setPilot.xcodeproj -target setPilotTests -configuration Release \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build
+          xcrun xctest build/Release/setPilotTests.xctest
       - name: Build for iPhone (with the watch app)
         run: |
           xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \
