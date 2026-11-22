@@ -178,19 +178,7 @@ func connect() -> Int32? {
     guard fd >= 0 else { return nil }
     var on: Int32 = 1
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-    var address = sockaddr_un()
-    address.sun_family = sa_family_t(AF_UNIX)
-    let bytes = Array(path.utf8)
-    guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { close(fd); return nil }
-    withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-        buffer.copyBytes(from: bytes)
-        buffer[bytes.count] = 0
-    }
-    let ok = withUnsafePointer(to: &address) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-        }
-    }
+    let ok = ScriptSocket.withAddress(path) { Darwin.connect(fd, $0, $1) }
     guard ok == 0 else { close(fd); return nil }
     return fd
 }

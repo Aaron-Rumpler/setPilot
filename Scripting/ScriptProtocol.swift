@@ -150,11 +150,37 @@ enum ScriptSocket {
 
     static var path: String? { path(for: appGroup) }
 
-    /// In the group's container. (A Unix socket's path has to fit in 104 bytes: a very long user
-    /// name could make it too long, and then the tool can't connect.)
+    /// In the group's container.
     static func path(for group: String?) -> String? {
         guard let group,
               let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return nil }
         return dir.appendingPathComponent("cli.sock").path
+    }
+
+    /// Calls `body` (bind or connect) with an address for the socket at `path`. A Unix socket's
+    /// address holds its path in a fixed 104-byte field (`sun_path` in Darwin's `sockaddr_un`,
+    /// NUL included), and the group container's path, under the home folder, can be longer than
+    /// that with a long user name. Then the address holds just the file's name, relative to the
+    /// container, made the working directory for the moment it takes.
+    static func withAddress(_ path: String, _ body: (UnsafePointer<sockaddr>, socklen_t) -> Int32) -> Int32 {
+        var address = sockaddr_un()
+        let capacity = MemoryLayout.size(ofValue: address.sun_path)
+        var bytes = Array(path.utf8)
+        var restore: String?
+        if bytes.count >= capacity {
+            let url = URL(fileURLWithPath: path)
+            restore = FileManager.default.currentDirectoryPath
+            guard FileManager.default.changeCurrentDirectoryPath(url.deletingLastPathComponent().path) else { return -1 }
+            bytes = Array(url.lastPathComponent.utf8)
+        }
+        defer { if let restore { FileManager.default.changeCurrentDirectoryPath(restore) } }
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            buffer.copyBytes(from: bytes)
+            buffer[bytes.count] = 0
+        }
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { body($0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
     }
 }

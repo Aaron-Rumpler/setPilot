@@ -21,17 +21,7 @@ final class CLIServer {
         unlink(path) // left by an earlier run
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { close(fd); return }
-        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-            buffer.copyBytes(from: bytes)
-            buffer[bytes.count] = 0
-        }
-        let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
+        let bound = ScriptSocket.withAddress(path) { bind(fd, $0, $1) }
         guard bound == 0, listen(fd, 8) == 0 else { close(fd); return }
         chmod(path, 0o600)
         listener = fd
@@ -134,17 +124,7 @@ final class CLIServer {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return false }
-        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-            buffer.copyBytes(from: bytes)
-            buffer[bytes.count] = 0
-        }
-        return withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        } == 0
+        return ScriptSocket.withAddress(path) { Darwin.connect(fd, $0, $1) } == 0
     }
 
     /// False once the other end has gone.
