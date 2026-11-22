@@ -38,5 +38,9 @@
 			<string>Any</string>
 		</dict>
 	</dict>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>setPilot.sdef</string>
 </dict>
 </plist>

@@ -284,7 +284,7 @@ enum Scripting {
         return starts.count == 1 ? starts[0] : nil
     }
 
-    private static func items(_ kind: ScriptList, _ model: Model) -> [ScriptItem] {
+    static func items(_ kind: ScriptList, _ model: Model) -> [ScriptItem] {
         switch kind {
         case .presets: model.library.presets.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .scenes: Scenes.all.filter { !(256...265).contains($0.id) }.map { ScriptItem(name: $0.name, id: String($0.id)) }

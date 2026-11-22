@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<!-- setPilot's AppleScript (and JavaScript for Automation) dictionary. The commands go through the
+     same runner as Shortcuts, setpilot:// links and the command-line tool (Core/Commands.swift). -->
+<dictionary title="setPilot Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+    <xi:include href="file:///System/Library/ScriptingDefinitions/CocoaStandard.sdef" xpointer="xpointer(/dictionary/suite)"/>
+
+    <suite name="setPilot Suite" code="sPlt" description="Control your WiZ bulb.">
+        <record-type name="light state" code="sPls" description="How the bulb is.">
+            <property name="bulb name" code="sPbn" type="text" description="The bulb's name in setPilot."><cocoa key="bulbName"/></property>
+            <property name="link" code="sPlk" type="text" description="connected, connecting, unreachable or none."><cocoa key="link"/></property>
+            <property name="power" code="sPpw" type="boolean" description="Whether it's on (missing while it isn't known)."><cocoa key="power"/></property>
+            <property name="brightness" code="sPbr" type="integer" description="Dimming, 10–100 (or the bulb's own minimum)."><cocoa key="brightness"/></property>
+            <property name="mode" code="sPmd" type="text" description="rgbcw, temperature or scene."><cocoa key="mode"/></property>
+            <property name="temperature" code="sPtp" type="integer" description="Kelvin, in temperature mode."><cocoa key="temperature"/></property>
+            <property name="scale" code="sPsc" type="text" description="The CCT scale temperature is on (missing for the bulb's own)."><cocoa key="scale"/></property>
+            <property name="scene" code="sPsn" type="text" description="The scene's name, in scene mode."><cocoa key="scene"/></property>
+            <property name="speed" code="sPsp" type="integer" description="The scene's speed."><cocoa key="speed"/></property>
+            <property name="rgbcw" code="sPrg" description="Red, green, blue, cold white and warm white (0–255), in rgbcw mode.">
+                <type type="integer" list="yes"/>
+                <cocoa key="rgbcw"/>
+            </property>
+        </record-type>
+
+        <class-extension extends="application" description="setPilot's light.">
+            <property name="power" code="sPpw" type="boolean" access="rw" description="Whether the bulb is on. Setting it switches it.">
+                <cocoa key="scriptPower"/>
+            </property>
+            <property name="brightness" code="sPbr" type="integer" access="rw" description="The bulb's dimming. Setting it changes it.">
+                <cocoa key="scriptBrightness"/>
+            </property>
+            <property name="light state" code="sPls" type="light state" access="r" description="Everything about how the bulb is.">
+                <cocoa key="scriptLightState"/>
+            </property>
+            <property name="preset names" code="sPpn" access="r" description="Your presets.">
+                <type type="text" list="yes"/>
+                <cocoa key="scriptPresetNames"/>
+            </property>
+            <property name="custom scene names" code="sPcn" access="r" description="Your custom scenes.">
+                <type type="text" list="yes"/>
+                <cocoa key="scriptCustomSceneNames"/>
+            </property>
+            <property name="scene names" code="sPsN" access="r" description="The bulb's built-in scenes.">
+                <type type="text" list="yes"/>
+                <cocoa key="scriptSceneNames"/>
+            </property>
+            <property name="bulb names" code="sPbN" access="r" description="Your bulbs.">
+                <type type="text" list="yes"/>
+                <cocoa key="scriptBulbNames"/>
+            </property>
+        </class-extension>
+
+        <command name="turn on" code="sPltTnOn" description="Switches the bulb on.">
+            <cocoa class="SetPilotTurnOnCommand"/>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="turn off" code="sPltTnOf" description="Switches the bulb off.">
+            <cocoa class="SetPilotTurnOffCommand"/>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="toggle power" code="sPltTgPw" description="Switches the bulb the other way.">
+            <cocoa class="SetPilotTogglePowerCommand"/>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="apply preset" code="sPltApPr" description="Applies one of your presets (switching the bulb on).">
+            <cocoa class="SetPilotApplyPresetCommand"/>
+            <direct-parameter type="text" description="The preset's name (or ID)."/>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="change brightness" code="sPltChBr" description="Makes the bulb brighter (positive) or dimmer (negative) by a step.">
+            <cocoa class="SetPilotChangeBrightnessCommand"/>
+            <parameter name="by" code="sPby" type="integer" description="The step, in percent."><cocoa key="by"/></parameter>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="set light" code="sPltStLt" description="Changes several things at once, in one message: a colour of one kind, a brightness, the power.">
+            <cocoa class="SetPilotSetLightCommand"/>
+            <parameter name="rgb" code="sPrg" optional="yes" description="Red, green and blue (and optionally cold and warm white), 0–255.">
+                <type type="integer" list="yes"/>
+                <cocoa key="rgb"/>
+            </parameter>
+            <parameter name="temperature" code="sPtp" type="integer" optional="yes" description="Kelvin."><cocoa key="temperature"/></parameter>
+            <parameter name="scale" code="sPsc" type="text" optional="yes" description="With temperature: a CCT scale's name, or &quot;bulb&quot; for the bulb's own."><cocoa key="scale"/></parameter>
+            <parameter name="scene" code="sPsn" type="text" optional="yes" description="A built-in scene's name or number."><cocoa key="scene"/></parameter>
+            <parameter name="custom scene" code="sPcs" type="text" optional="yes" description="One of your custom scenes, by name."><cocoa key="customScene"/></parameter>
+            <parameter name="speed" code="sPsp" type="integer" optional="yes" description="A scene's speed."><cocoa key="speed"/></parameter>
+            <parameter name="brightness" code="sPbr" type="integer" optional="yes" description="Dimming, in percent."><cocoa key="brightness"/></parameter>
+            <parameter name="power" code="sPpw" type="boolean" optional="yes" description="true switches the bulb on, false off; left out, it stays as it is."><cocoa key="power"/></parameter>
+            <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
+            <result type="light state"/>
+        </command>
+        <command name="switch bulb" code="sPltSwBl" description="Makes another of your bulbs the one setPilot controls.">
+            <cocoa class="SetPilotSwitchBulbCommand"/>
+            <direct-parameter type="text" description="The bulb's name, MAC or address."/>
+            <result type="light state"/>
+        </command>
+    </suite>
+</dictionary>
