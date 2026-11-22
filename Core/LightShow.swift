@@ -29,7 +29,9 @@ struct LightShow {
 
     static func parse(_ data: Data) -> Result<LightShow, ParseError> {
         guard let obj = Net.json(data) else { return .failure(ParseError(message: "Not a JSON object.")) }
-        guard (obj["setPilotLightShow"] as? NSNumber)?.intValue == 1 else {
+        // Exactly 1: not true (an NSNumber too, told apart as in `seconds`), and not 1.5.
+        guard let format = obj["setPilotLightShow"] as? NSNumber, CFGetTypeID(format) != CFBooleanGetTypeID(),
+              format.doubleValue == 1 else {
             return .failure(ParseError(message: "Not a setPilot light show (no \"setPilotLightShow\": 1)."))
         }
         guard let list = obj["cues"] as? [Any] else { return .failure(ParseError(message: "No \"cues\" list.")) }

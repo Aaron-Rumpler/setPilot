@@ -180,7 +180,9 @@ struct CCTScaleEditor: View {
         guard let scale = lib.scales(for: mac).first(where: { $0.id == scaleID }) else { return nil }
         return Binding(
             get: { lib.scales(for: mac).first { $0.id == scaleID } ?? scale },
-            set: { lib.updateScale($0, for: mac) }
+            // Not once it's gone (a field committing as the editor closes after a delete would put
+            // it back: updateScale adds a scale it doesn't find).
+            set: { new in if lib.scales(for: mac).contains(where: { $0.id == scaleID }) { lib.updateScale(new, for: mac) } }
         )
     }
 
