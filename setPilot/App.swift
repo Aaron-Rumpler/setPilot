@@ -131,6 +131,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// setpilot:// links (Core/URLCommands.swift).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        Task { @MainActor in
+            for url in urls { await URLCommands.handle(url, model: Shared.model) }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard launchedAtLogin else { return }
         // Launched at login: just the menu bar item, no window. Close it now, before it's drawn if

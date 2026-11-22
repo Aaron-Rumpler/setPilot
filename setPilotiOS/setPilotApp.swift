@@ -44,6 +44,8 @@ struct SetPilotMobileApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
+                // setpilot:// links (Core/URLCommands.swift).
+                .onOpenURL { url in Task { await URLCommands.handle(url, model: model) } }
         }
         .onChange(of: phase) { _, new in
             if new == .active { model.resume() }

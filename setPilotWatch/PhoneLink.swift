@@ -61,7 +61,7 @@ final class PhoneLink: NSObject {
 
     private func transmitLive(_ values: LightValues, fields: Set<PilotField>) {
         liveInFlight += 1
-        transmit(.set(values, fields: Array(fields)), quiet: false) { [weak self] in
+        transmit(.set(values, fields: Array(fields)), quiet: false) { [weak self] _ in
             guard let self else { return }
             self.liveInFlight -= 1
             guard self.liveInFlight == 0 else { return } // the latest is still on its way
