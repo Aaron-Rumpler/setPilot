@@ -90,7 +90,7 @@ trademark of Signify.
   command-line tool's exit code. The dictionary is in Script Editor's Library.
 - **Siri, Spotlight and suggestions**: Get Light State, power and brightness actions show the light
   with power, brighter and dimmer buttons. Presets and custom scenes can be found by name in
-  Spotlight (iOS 18, macOS 15; a custom scene opens its editor). Applying presets tells Siri when
+  Spotlight (on the Mac, macOS 15 on; a custom scene opens its editor). Applying presets tells Siri when
   you use them, for Siri Suggestions and the Smart Stack.
 - **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
@@ -196,7 +196,7 @@ The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to s
 - **Lock Screen** (iPhone): a bulb status, with a power toggle on the rectangular size.
 - **Control Center:** controls for power, a preset of your choice, brighter and dimmer. On iPhone
   they also work from the Action button; on the Mac, from the menu bar.
-- **Tinted and clear** Home Screen styles (iOS 18 and 26, macOS 26): preset tiles keep their
+- **Tinted and clear** Home Screen styles (and macOS 26's tinted desktop widgets): preset tiles keep their
   lightness in the tint.
 - **Light show Live Activity** (iPhone): the show's title, current cue and its colour, progress, and
   play/pause and stop, on the Lock Screen and in the Dynamic Island, and small in the watch's Smart

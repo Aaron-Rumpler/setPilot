@@ -27,8 +27,10 @@ enum Scripting {
             return ScriptResult(state: state(of: model), error: bad("The fade is 0–\(Fade.maximum) ms (a day)."))
         }
         do {
+            Log.scripting.info("\(String(describing: command), privacy: .public)")
             return try await perform(command, fade, model)
         } catch let error as ScriptError {
+            Log.scripting.error("\(error.code.rawValue, privacy: .public): \(error.message, privacy: .public)")
             return ScriptResult(state: state(of: model), error: error)
         } catch {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: error.localizedDescription))

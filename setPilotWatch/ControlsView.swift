@@ -241,7 +241,7 @@ struct WatchComposeView: View {
                     ForEach(FadeChoice.options(setting: s?.fade), id: \.self) { Text($0.title(setting: s?.fade)).tag($0) }
                 }
                 if fadeChoice == .custom {
-                    ValueRow(label: "Fade time", value: $fade, range: 0...60_000, unit: " ms")
+                    ValueRow(label: "Fade time", value: $fade, range: 0...Double(Fade.maximum), unit: " ms")
                 }
             }
             Section {
@@ -377,7 +377,7 @@ struct ControlsFadePicker: View {
                     if !link.reachable { ms = nil }
                     link.send(.controlsFade(.custom, ms: Int(new)))
                 }
-            }), range: 0...60_000, unit: " ms")
+            }), range: 0...Double(Fade.maximum), unit: " ms")
         }
     }
 }

@@ -94,7 +94,7 @@ private struct HandoffWindowOpener: ViewModifier {
     @Environment(\.openWindow) private var openWindow
 
     func body(content: Content) -> some View {
-        content.onChange(of: HandoffRouter.shared.request) { _, route in
+        content.onChange(of: HandoffRouter.shared.request, initial: true) { _, route in
             guard let route else { return }
             HandoffRouter.shared.request = nil
             switch route {

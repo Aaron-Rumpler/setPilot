@@ -298,6 +298,7 @@ final class Model {
         NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reloadSyncedSettings() }
         }
+        Log.app.info("setPilot \(BuildInfo.summary, privacy: .public) started")
         CloudSync.shared.start()
         CloudLibrary.shared.start(model: self)
         CloudDocuments.shared.start()
@@ -339,6 +340,11 @@ final class Model {
         if undoHistory.count > 20 { undoHistory.removeFirst() }
         undoManager?.registerUndo(withTarget: self) { model in MainActor.assumeIsolated { model.undoNow() } }
         undoManager?.setActionName(Self.undoActionName)
+    }
+
+    private func clearUndo() {
+        undoHistory = []
+        undoManager?.removeAllActions(withTarget: self) // so Edit › Undo doesn't offer what's gone
     }
 
     /// The Undo button: through the undo manager when the change is the last thing on it, so the
@@ -495,13 +501,13 @@ final class Model {
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
-        undoHistory = [] // undoing is for this bulb's changes
         retriedAt = nil // chosen by hand: worth another try if it doesn't answer
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
            mac == nil || mac?.lowercased() == chosenMAC { return }
         // The same bulb again (to retry it, say): by its MAC, or its address if no MAC is given.
         let sameBulb = mac.map { $0.lowercased() == chosenMAC } ?? (a == UserDefaults.standard.string(forKey: Self.addressKey))
+        if !sameBulb { clearUndo() } // undoing is for this bulb's changes
         UserDefaults.standard.set(a, forKey: Self.addressKey)
         // The saved address again without a MAC (typed in to retry it) keeps its identity: what
         // finds it if it's moved, refuses another device at the address, and signs.
@@ -763,6 +769,7 @@ final class Model {
             discoveryNote = Self.localNetworkHelp
             return []
         }
+        localNetworkDenied = false // it got through
         discoveryNote = result.bulbs.isEmpty ? "No bulbs found" : nil
         for bulb in result.bulbs where !discovered.contains(where: { $0.mac == bulb.mac }) { addDiscovered(bulb) }
         return discovered
@@ -1130,7 +1137,9 @@ final class Model {
     func apply(_ preset: Preset) -> Bool {
         let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
         if sent {
+            #if os(iOS)
             PresetUsage.record(preset.id, in: .standard) // for the watch's Smart Stack
+            #endif
             SiriDonation.applied(preset) // and Siri Suggestions
         }
         return sent
@@ -1574,7 +1583,6 @@ final class Model {
             // Back after not answering, as for a result below: what it showed may be out of date.
             if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
             link = .connected
-        localNetworkDenied = false
             localNetworkDenied = false
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.

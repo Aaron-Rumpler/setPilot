@@ -127,7 +127,7 @@ struct ConsoleComposer: View {
             }
             Toggle("Retry", isOn: $retry)
                 .disabled(rawMode && currentMethod.isEmpty)
-                .help("Send again until the bulb answers (up to 6 times, as for the app's own one-off commands); needs a method to recognise the reply")
+                .help("Send again until the bulb answers (up to 5 times over about 4 s, as for the app's own one-off commands); needs a method to recognise the reply")
             Menu("Format") {
                 Button("Indented") { format(compact: false) }
                 Button("Compact") { format(compact: true) }

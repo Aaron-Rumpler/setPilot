@@ -22,7 +22,7 @@ enum Diagnostics {
         out.append("== Messages (newest \(min(model.log.count, 500)))")
         out.append(contentsOf: model.log.suffix(500).map(\.line))
         out.append("")
-        out.append("== setPilot's log (the last day)")
+        out.append("== setPilot's log (since it was last launched)")
         out.append(contentsOf: await Task.detached { Self.systemLog() }.value)
         out.append("")
         out.append("== Crash and hang reports")
@@ -49,7 +49,7 @@ enum Diagnostics {
 
     nonisolated private static func systemLog() -> [String] {
         guard let store = try? OSLogStore(scope: .currentProcessIdentifier) else { return ["Couldn't read it"] }
-        let since = store.position(date: Date.now.addingTimeInterval(-86_400))
+        let since = store.position(date: Date.now.addingTimeInterval(-86_400)) // the store holds this run only
         let predicate = NSPredicate(format: "subsystem == %@", Log.subsystem)
         guard let entries = try? store.getEntries(at: since, matching: predicate) else { return ["Couldn't read it"] }
         let lines = entries.compactMap { $0 as? OSLogEntryLog }.map {

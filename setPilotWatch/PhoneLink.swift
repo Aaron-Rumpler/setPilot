@@ -245,7 +245,10 @@ final class PhoneLink: NSObject {
             SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
             reloadWidgets()
         }
-        if let d = context[WatchKey.presetUsage] as? Data, let uses = try? decoder.decode([PresetUsage.Use].self, from: d) {
+        // Only when it's changed: the context comes with every state change too, and reloads have a budget.
+        if let d = context[WatchKey.presetUsage] as? Data, d != defaults.data(forKey: WatchKey.presetUsage),
+           let uses = try? decoder.decode([PresetUsage.Use].self, from: d) {
+            defaults.set(d, forKey: WatchKey.presetUsage)
             PresetUsage.merge(uses, into: SharedStore.defaults)
             reloadWidgets() // the preset complications' relevance in the Smart Stack
         }

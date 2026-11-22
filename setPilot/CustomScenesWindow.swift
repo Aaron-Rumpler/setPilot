@@ -77,8 +77,8 @@ struct CustomScenesWindow: View {
         // Handoff from another device (setPilot/App.swift opens this window).
         .onChange(of: HandoffRouter.shared.sceneToSelect, initial: true) { _, id in
             guard let id else { return }
-            selection = id
             HandoffRouter.shared.sceneToSelect = nil
+            if lib.customScene(id) != nil { selection = id } // not synced here yet: leave it
         }
     }
 }

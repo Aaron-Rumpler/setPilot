@@ -101,13 +101,22 @@ struct BulbEntry: TimelineEntry {
         let now = Date.now
         let usual = PresetUsage.usualTimes(PresetUsage.load(SharedStore.defaults), preset: presetID, after: now)
         var entries = [BulbEntry(date: now, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0))]
+        // Windows that overlap (usual times half an hour apart) as one, scored by the more usual.
+        var windows: [(start: Date, end: Date, days: Int)] = []
         for (start, days) in usual {
             let end = start.addingTimeInterval(45 * 60)
+            if let last = windows.last, start <= last.end {
+                windows[windows.count - 1] = (last.start, max(last.end, end), max(last.days, days))
+            } else {
+                windows.append((start, end, days))
+            }
+        }
+        for (start, end, days) in windows {
             if start <= now {
                 entries[0].relevance = TimelineEntryRelevance(score: Float(days), duration: end.timeIntervalSince(now))
             } else {
                 entries.append(BulbEntry(date: start, snapshot: snapshot, preset: preset,
-                                         relevance: TimelineEntryRelevance(score: Float(days), duration: 45 * 60)))
+                                         relevance: TimelineEntryRelevance(score: Float(days), duration: end.timeIntervalSince(start))))
             }
             entries.append(BulbEntry(date: end, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0)))
         }

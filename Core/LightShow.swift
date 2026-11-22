@@ -224,12 +224,13 @@ final class LightShowPlayer {
     @ObservationIgnored private var plainSeek: (to: Double, at: Date)?
     /// The delay the cues were last sent with, to tell a change of it from a jump in the media.
     @ObservationIgnored private var sentDelay: Double?
+    @ObservationIgnored private var settingsObserver: NSObjectProtocol?
 
     init(model: Model) {
         self.model = model
         startTicking()
         // These two sync through iCloud (CloudSync).
-        NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
+        settingsObserver = NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let defaults = UserDefaults.standard
@@ -284,6 +285,9 @@ final class LightShowPlayer {
 
     func openShow(_ url: URL) {
         restoreNote = nil // about the last show
+        #if os(iOS)
+        LightShowLiveActivity.shared.end() // it names the show: the next play starts one for this
+        #endif
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
@@ -609,6 +613,8 @@ final class LightShowPlayer {
     /// The window or screen has gone: stop, and let go of the files. (The ticker ends by itself
     /// once nothing holds the player.)
     func close() {
+        if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+        settingsObserver = nil
         stop()
         player.replaceCurrentItem(with: nil)
         seekGeneration += 1

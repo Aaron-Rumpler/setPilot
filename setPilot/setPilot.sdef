@@ -16,7 +16,7 @@
             <property name="scale" code="sPsc" type="text" description="The CCT scale temperature is on (missing for the bulb's own)."><cocoa key="scale"/></property>
             <property name="scene" code="sPsn" type="text" description="The scene's name, in scene mode."><cocoa key="scene"/></property>
             <property name="speed" code="sPsp" type="integer" description="The scene's speed."><cocoa key="speed"/></property>
-            <property name="rgbcw" code="sPrg" description="Red, green, blue, cold white and warm white (0–255), in rgbcw mode.">
+            <property name="rgbcw" code="sPrc" description="Red, green, blue, cold white and warm white (0–255), in rgbcw mode.">
                 <type type="integer" list="yes"/>
                 <cocoa key="rgbcw"/>
             </property>

@@ -58,8 +58,9 @@ struct CCTScalesWindow: View {
         // Handoff from another device (setPilot/App.swift opens this window).
         .onChange(of: HandoffRouter.shared.scaleToSelect, initial: true) { _, id in
             guard let id else { return }
-            selection = id
             HandoffRouter.shared.scaleToSelect = nil
+            // Only this bulb's scales are listed: another bulb's (or one not synced yet) isn't here.
+            if model.library.scales(for: model.chosenMAC).contains(where: { $0.id == id }) { selection = id }
         }
         .navigationTitle(model.currentName.map { "CCT Scales — \($0)" } ?? "CCT Scales")
         .onDeleteCommand { deleting = scales.first { $0.id == selection } }

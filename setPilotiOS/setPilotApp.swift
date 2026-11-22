@@ -15,6 +15,7 @@ struct SetPilotMobileApp: App {
             QuickActions.update(Shared.model.library)
         }
         SpotlightIndex.update(Shared.model.library)
+        LightShowLiveActivity.endLeftovers()
         Shared.model.startIfSaved()
         // Widgets and Control Center controls run their actions here, on the app's connection.
         WidgetPerformer.handler = { command in

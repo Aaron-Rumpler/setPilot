@@ -111,12 +111,27 @@ extension AppDelegate {
 
     @objc var scriptPower: Bool {
         get { Shared.model.isOn ?? false }
-        set { Task { _ = await Scripting.run(.power(newValue), on: Shared.model) } }
+        set { runForScript(.power(newValue)) }
     }
 
     @objc var scriptBrightness: Int {
         get { Int(Shared.model.dimming) }
-        set { Task { _ = await Scripting.run(.brightness(newValue), on: Shared.model) } }
+        set { runForScript(.brightness(newValue)) }
+    }
+
+    /// A property set by a script: the script waits for the change, and gets its failure as an
+    /// error, as for the commands.
+    private func runForScript(_ command: ScriptCommand) {
+        let scriptCommand = NSScriptCommand.current()
+        scriptCommand?.suspendExecution()
+        Task { @MainActor in
+            let result = await Scripting.run(command, on: Shared.model)
+            if let error = result.error {
+                scriptCommand?.scriptErrorNumber = 1000 + Int(error.exitCode)
+                scriptCommand?.scriptErrorString = error.message
+            }
+            scriptCommand?.resumeExecution(withResult: nil)
+        }
     }
 
     @objc var scriptLightState: NSDictionary { LightStateRecord.dictionary(Scripting.state(of: Shared.model)) }

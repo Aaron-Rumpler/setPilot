@@ -22,7 +22,8 @@ struct RootView: View {
                 // Two columns: the controls stay in view beside scenes, the light show, scales
                 // and settings.
                 NavigationSplitView {
-                    List(selection: $pane) { controls }
+                    // Choosing another screen starts it afresh (not on the last one's path).
+                    List(selection: Binding(get: { pane }, set: { pane = $0; detailPath = NavigationPath() })) { controls }
                         .navigationTitle(model.currentName ?? "setPilot")
                         .refreshable { await model.refresh() }
                         .handoff(.controls)
@@ -74,6 +75,12 @@ struct RootView: View {
     }
 
     private func go(_ route: HandoffRoute) {
+        // A scene or scale that isn't here (not synced yet, or a scale of another bulb): its list.
+        var route = route
+        if case .customScene(let id) = route, model.library.customScene(id) == nil { route = .customScenes }
+        if case .cctScale(let id) = route, !model.library.scales(for: model.chosenMAC).contains(where: { $0.id == id }) {
+            route = .cctScales
+        }
         if sizeClass == .regular {
             var p = NavigationPath()
             switch route {

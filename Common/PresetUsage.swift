@@ -1,8 +1,8 @@
 import Foundation
 
 /// When presets have been applied, for the watch's Smart Stack: a preset you apply at about the
-/// same time of day on several days is put forward around then. Recorded on the iPhone and Mac
-/// (Model.apply) and on the watch; the iPhone passes its record to the watch with the presets.
+/// same time of day on several days is put forward around then. Recorded on the iPhone
+/// (Model.apply), which applies the watch's presets too, and passed to the watch with the presets.
 enum PresetUsage {
     struct Use: Codable, Hashable, Sendable {
         var id: UUID

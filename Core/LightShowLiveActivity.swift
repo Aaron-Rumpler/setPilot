@@ -12,11 +12,19 @@ final class LightShowLiveActivity {
     private var lastUpdate = Date.distantPast
     private var pendingUpdate: Task<Void, Never>?
 
+    /// One left from before (the app was quit or crashed during a show): end it.
+    static func endLeftovers() {
+        Task {
+            for activity in Activity<LightShowAttributes>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
     func changed(_ player: LightShowPlayer) {
         if activity == nil {
             guard player.isPlaying, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
             let attributes = LightShowAttributes(title: player.mediaName ?? "Light Show", show: player.show?.title ?? player.showName)
-            activity = try? Activity.request(attributes: attributes, content: ActivityContent(state: state(player), staleDate: nil))
+            let s = state(player)
+            activity = try? Activity.request(attributes: attributes, content: ActivityContent(state: s, staleDate: Self.stale(s)))
             lastUpdate = .now
             LightShowControl.handler = { [weak player] action in
                 switch action {
@@ -33,7 +41,8 @@ final class LightShowLiveActivity {
             if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
             guard !Task.isCancelled, let self, let player, let activity = self.activity else { return }
             self.lastUpdate = .now
-            await activity.update(ActivityContent(state: self.state(player), staleDate: nil))
+            let s = self.state(player)
+            await activity.update(ActivityContent(state: s, staleDate: Self.stale(s)))
         }
     }
 
@@ -43,6 +52,12 @@ final class LightShowLiveActivity {
         guard let activity else { return }
         self.activity = nil
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+
+    /// Out of date once the media would have ended (or a while after pausing), so one the app
+    /// couldn't end (it was killed) doesn't claim to be playing for hours.
+    private static func stale(_ s: LightShowAttributes.ContentState) -> Date {
+        s.playing && s.duration > 0 ? s.start.addingTimeInterval(s.duration + 60) : .now.addingTimeInterval(15 * 60)
     }
 
     private func state(_ player: LightShowPlayer) -> LightShowAttributes.ContentState {

@@ -142,8 +142,6 @@ struct LightChange: Codable, Hashable, Sendable {
     var fade: Int? = nil
 }
 
-/// How a composed change fades: the fade time setting (only offered when one is set), none
-/// (no `trans`: the bulb's own fade), or a value just for this change.
 /// Fast-flashing light, which can affect people with photosensitive epilepsy: setPilot warns when a
 /// custom scene or light show changes the light more than 3 times a second (Settings can turn the
 /// warning off).
@@ -172,6 +170,8 @@ enum Fade {
     static let maximum = 86_400_000
 }
 
+/// How a composed change fades: the fade time setting (only offered when one is set), none
+/// (no `trans`: the bulb's own fade), or a value just for this change.
 enum FadeChoice: String, Codable, Hashable, Sendable {
     case setting, none, custom
 
