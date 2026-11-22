@@ -356,7 +356,7 @@ enum WatchLightColourKind: String, AppEnum {
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Colour"
     static let caseDisplayRepresentations: [WatchLightColourKind: DisplayRepresentation] = [
-        .leave: "leave as it is", .colour: "a colour", .temperature: "a temperature",
+        .leave: "leave as it is", .colour: "a colour (RGBCW)", .temperature: "a colour temperature",
         .scene: "a scene", .customScene: "a custom scene",
     ]
 }
