@@ -102,7 +102,8 @@ struct CCTScaleQuery: EntityQuery {
 struct LightStateEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Light State"
     static let defaultQuery = LightStateQuery()
-    var id = "current"
+    /// Each result its own (two Get Light States in one shortcut are different values).
+    var id = UUID().uuidString
 
     @Property(title: "Bulb") var bulb: String
     @Property(title: "On") var on: Bool

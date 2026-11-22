@@ -7,7 +7,20 @@ import Foundation
 
 @MainActor
 enum Scripting {
+    /// One at a time, in the order they came: each change's outcome (its answer, its read-back) is
+    /// only its own if no other change goes out meanwhile.
     static func run(_ command: ScriptCommand, on model: Model) async -> ScriptResult {
+        let previous = queue
+        let task = Task { @MainActor () -> ScriptResult in
+            _ = await previous?.value
+            return await runNow(command, on: model)
+        }
+        queue = Task { @MainActor in _ = await task.value }
+        return await task.value
+    }
+    private static var queue: Task<Void, Never>?
+
+    private static func runNow(_ command: ScriptCommand, on model: Model) async -> ScriptResult {
         do {
             return try await perform(command, model)
         } catch let error as ScriptError {
@@ -73,6 +86,7 @@ enum Scripting {
             break
         }
         try await ready(model)
+        model.mismatch = nil // an earlier change's: this one's own read-back says
         switch command {
         case .power(let on):
             model.power(on ?? !(model.isOn ?? false))
@@ -107,6 +121,9 @@ enum Scripting {
             var v = model.values
             v.speed = Double(speed)
             model.apply(v, fields: [.speed])
+            // Off, it's kept for when the bulb's switched on (a speed alone would switch it on):
+            // nothing to wait for.
+            if model.isOn == false { return ScriptResult(state: state(of: model)) }
         case .preset(let query):
             guard let preset = find(query, in: model.library.presets, name: { $0.name }, id: { $0.id.uuidString }) else {
                 throw ScriptError(code: .notFound, message: "No preset called “\(query)”.")
@@ -131,14 +148,18 @@ enum Scripting {
     private static func temperature(_ kelvin: Int, _ scaleQuery: String?, _ model: Model) throws -> LightColour {
         let scales = model.library.scales(for: model.chosenMAC).filter { $0.range != nil }
         let scale: CCTScale?
-        switch scaleQuery?.lowercased() {
-        case "bulb", "own", "bulb's own": scale = nil
-        case nil: scale = model.scaleForTemperature.flatMap { id in scales.first { $0.id == id } }
-        default:
-            guard let found = find(scaleQuery!, in: scales, name: { $0.name }, id: { $0.id.uuidString }) else {
-                throw ScriptError(code: .notFound, message: "No CCT scale called “\(scaleQuery!)” for this bulb.")
+        if let q = scaleQuery {
+            // A scale of that name (or ID) first, so one called "Bulb" can be chosen; then the
+            // bulb's own.
+            if let found = find(q, in: scales, name: { $0.name }, id: { $0.id.uuidString }) {
+                scale = found
+            } else if ["bulb", "own", "bulb's own"].contains(q.lowercased()) {
+                scale = nil
+            } else {
+                throw ScriptError(code: .notFound, message: "That CCT scale isn't one of this bulb's (with two or more points).")
             }
-            scale = found
+        } else {
+            scale = model.scaleForTemperature.flatMap { id in scales.first { $0.id == id } }
         }
         if let scale, let range = scale.range {
             return .customCCT(scale: scale.id, kelvin: min(max(kelvin, range.lowerBound), range.upperBound))
@@ -162,9 +183,14 @@ enum Scripting {
     /// Taken, read back and as asked: or the bulb's refusal, no answer, or what it didn't apply.
     private static func answered(_ model: Model) async throws {
         if let problem = await model.outcome() {
-            throw ScriptError(code: model.pending ? .notAnswering : .refused, message: problem)
+            // No answer (still waiting, every retry gone unanswered, the connection lost) or a refusal.
+            let unanswered = model.pending || problem == "The bulb didn't answer."
+                || problem.contains("no reply") || problem.hasPrefix("Lost the connection")
+            throw ScriptError(code: unanswered ? .notAnswering : .refused, message: problem)
         }
         await model.waitUntilSettled()
+        // Answered, but not read back (yet): not known to be done.
+        if model.pending { throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.") }
         if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }
     }
 
@@ -174,7 +200,11 @@ enum Scripting {
     static func find<T>(_ query: String, in list: [T], name: (T) -> String?, id: (T) -> String,
                         also: (T) -> [String] = { _ in [] }) -> T? {
         let q = query.trimmingCharacters(in: .whitespaces)
-        func norm(_ s: String) -> String { s.lowercased().filter { !":-. ".contains($0) } }
+        // A MAC in any notation (aa:bb:…, AA-BB-…); anything else (an address) exactly, ignoring case.
+        func norm(_ s: String) -> String {
+            let hex = s.lowercased().filter { !":-. ".contains($0) }
+            return hex.count == 12 && hex.allSatisfy(\.isHexDigit) ? hex : s.lowercased()
+        }
         if let hit = list.first(where: { id($0).caseInsensitiveCompare(q) == .orderedSame || also($0).contains { norm($0) == norm(q) } }) {
             return hit
         }

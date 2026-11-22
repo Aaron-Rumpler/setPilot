@@ -4,15 +4,16 @@ import Foundation
 /// JSON file): the home's signing key, its rooms, and its devices by MAC. Only what setPilot uses
 /// is read; IDs are used only to put devices in rooms, and none are kept.
 struct WiZHomeExport: Decodable, Sendable {
+    // Everything optional: one odd entry (a remote, a group) mustn't make the whole export unreadable.
     struct Room: Decodable, Sendable {
-        var room_id: Int
-        var name: String
+        var room_id: Int?
+        var name: String?
     }
     struct Device: Decodable, Sendable {
         var type: String?
         var room_id: Int?
         var name: String?
-        var mac_address: String
+        var mac_address: String?
     }
     var name: String?
     var udp_signing_key: String?
@@ -73,6 +74,8 @@ struct HomeImportItem: Identifiable, Equatable, Sendable {
     var currentName: String?
     /// One of the bulbs used with setPilot.
     var known: Bool
+    /// It has a signing key already, not the home's: importing the key replaces it.
+    var otherKey = false
     var include = true
 }
 
@@ -83,23 +86,26 @@ struct HomeImportPlan: Equatable, Sendable {
     var key: String?
 
     /// Lights only (the export has plugs and the like too), named per `naming`.
-    init(_ export: WiZHomeExport, naming: HomeImportNaming, currentNames: [String: String], knownMACs: Set<String>) {
+    init(_ export: WiZHomeExport, naming: HomeImportNaming, currentNames: [String: String], knownMACs: Set<String>,
+         currentKeys: [String: String] = [:]) {
         homeName = export.name
         key = export.udp_signing_key.flatMap(RequestSigning.normalised)
-        let rooms = Dictionary(export.rooms?.map { ($0.room_id, $0.name) } ?? [], uniquingKeysWith: { a, _ in a })
+        let rooms = Dictionary((export.rooms ?? []).compactMap { r in r.room_id.flatMap { id in r.name.map { (id, $0) } } },
+                               uniquingKeysWith: { a, _ in a })
         let lights = export.devices.filter { ($0.type ?? "light") == "light" }
         var perRoom: [Int: Int] = [:]
         for d in lights { if let r = d.room_id { perRoom[r, default: 0] += 1 } }
         var seen = Set<String>()
         items = lights.compactMap { d in
-            let mac = d.mac_address.lowercased().filter { $0.isHexDigit }
+            let mac = (d.mac_address ?? "").lowercased().filter { $0.isHexDigit }
             guard mac.count == 12, seen.insert(mac).inserted else { return nil }
             let room = d.room_id.flatMap { rooms[$0] }
             let alone = d.room_id.map { perRoom[$0] == 1 } ?? false
             return HomeImportItem(mac: mac,
                                   newName: naming.name(home: export.name, room: room, device: d.name, aloneInRoom: alone),
                                   currentName: currentNames[mac],
-                                  known: knownMACs.contains(mac))
+                                  known: knownMACs.contains(mac),
+                                  otherKey: currentKeys[mac].map { $0 != key } ?? false)
         }
         // Bulbs used here first, then by name.
         items.sort { a, b in

@@ -21,6 +21,8 @@ struct SetPilotApp: App {
     var body: some Scene {
         Window("setPilot", id: "main") { ContentView(model: model) }
             .windowResizability(.contentSize)
+            // setpilot:// links go to the app delegate, not to opening this window.
+            .handlesExternalEvents(matching: [])
             .commands {
                 LightCommands(model: model)
                 CommandGroup(replacing: .appInfo) {

@@ -20,7 +20,10 @@ enum URLCommands {
         var action = url.host()?.lowercased() ?? ""
         if action == "x-callback-url" { action = url.pathComponents.dropFirst().first?.lowercased() ?? "" }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        func value(_ name: String) -> String? { items.first { $0.name.lowercased() == name }?.value }
+        // "+" as a space too, as many launchers encode one.
+        func value(_ name: String) -> String? {
+            items.first { $0.name.lowercased() == name }?.value?.replacingOccurrences(of: "+", with: " ")
+        }
         func int(_ name: String) -> Int? { value(name).flatMap { Int($0) } }
         func flag(_ name: String) -> Bool? {
             switch value(name)?.lowercased() {
@@ -76,17 +79,28 @@ enum URLCommands {
 
     private static func bad(_ message: String) -> ScriptError { ScriptError(code: .badArguments, message: message) }
 
-    /// The x-success, x-error or x-cancel URL with the result added, if the link gave one.
+    /// Schemes a callback may not open: a link (from a web page, say) mustn't use setPilot to open
+    /// files or connect to servers without the prompt the browser would give.
+    static let refusedCallbackSchemes: Set<String> = [
+        "file", "ftp", "sftp", "smb", "afp", "nfs", "vnc", "ssh", "telnet", "x-man-page",
+        "facetime", "facetime-audio", "tel", "sms", "mailto", "javascript", "data",
+    ]
+
+    /// The x-success or x-error URL with the result added, if the link gave one (and it may be
+    /// opened). The state goes without the bulb's MAC and address: a web page needn't learn them.
     static func callback(for url: URL, result: ScriptResult) -> URL? {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let key = result.error == nil ? "x-success" : "x-error"
         guard let target = items.first(where: { $0.name == key })?.value,
-              var callback = URLComponents(string: target) else { return nil }
+              var callback = URLComponents(string: target),
+              let scheme = callback.scheme?.lowercased(), !refusedCallbackSchemes.contains(scheme) else { return nil }
         var extra: [URLQueryItem] = []
         if let error = result.error {
             extra = [URLQueryItem(name: "errorCode", value: error.code.rawValue),
                      URLQueryItem(name: "errorMessage", value: error.message)]
-        } else if let state = result.state {
+        } else if var state = result.state {
+            state.bulb.mac = nil
+            state.bulb.address = nil
             let encoder = JSONEncoder()
             encoder.outputFormatting = .sortedKeys
             if let data = try? encoder.encode(state) {

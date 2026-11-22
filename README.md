@@ -59,10 +59,11 @@ trademark of Signify.
   Colour, temperature and scene actions leave the power as it is unless Switch On is set.
 - **setpilot:// links** (Mac and iPhone), for launchers and automation tools, with x-callback-url:
   `setpilot://power?on=toggle`, `setpilot://scene?name=Ocean&speed=150`,
-  `setpilot://x-callback-url/get?x-success=…` (the state as JSON, in `state`). The actions:
+  `setpilot://x-callback-url/get?x-success=…` (the state as JSON, in `state`, without the bulb's MAC
+  and address; callbacks to `file:` and other non-app schemes aren't opened). The actions:
   `get`, `power` (`on=true|false|toggle`), `brightness` (`level`), `brighter`/`dimmer` (`step`),
   `colour` (`r g b c w`), `temperature` (`kelvin`, `scale` a CCT scale's name or `bulb`), `scene`
-  and `custom-scene` (`name`, `speed`), `speed` (`value`), `preset` (`name`) and `switch` (`bulb`),
+  (`name`, `speed`), `custom-scene` (`name`), `speed` (`value`), `preset` (`name`) and `switch` (`bulb`),
   with `on=1` to switch the bulb on too. x-error gets `errorCode` and `errorMessage`. Only what the
   app's controls do: no raw bulb methods, as web pages can open these links too.
 - **Command-line tool** (Mac): `setpilot get`, `on`, `off`, `toggle`, `brightness 40`, `brighter`,

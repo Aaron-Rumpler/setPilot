@@ -83,6 +83,7 @@ struct HomeImportView: View {
                 Section {
                     Button("Import") {
                         result = model.apply(plan, setKeys: setKeys && plan.key != nil)
+                        replan() // the names (and keys) are the current ones now
                     }
                     .disabled(!plan.items.contains(where: \.include))
                     if let result { Text(result).foregroundStyle(.secondary) }
@@ -105,7 +106,8 @@ struct HomeImportView: View {
             return String(item.mac[s..<item.mac.index(s, offsetBy: 2)])
         }.joined(separator: ":")
         let now = item.currentName.map { "now “\($0)”" } ?? "no name yet"
-        return "\(mac) · \(item.known ? now : "not used here yet")"
+        let key = item.otherKey && setKeys ? " · replaces its signing key" : ""
+        return "\(mac) · \(item.known ? now : "not used here yet")\(key)"
     }
 
     private func load() async {
@@ -124,12 +126,23 @@ struct HomeImportView: View {
         }
     }
 
+    /// The signing keys the export's bulbs have now, by lower-case MAC.
+    private func currentKeys(_ export: WiZHomeExport) -> [String: String] {
+        var keys: [String: String] = [:]
+        for d in export.devices {
+            let mac = (d.mac_address ?? "").lowercased().filter { $0.isHexDigit }
+            if let key = model.signingKey(for: mac) { keys[mac] = key }
+        }
+        return keys
+    }
+
     /// Again with the naming options, keeping which bulbs are ticked.
     private func replan() {
         guard let export else { return }
         let excluded = Set(plan?.items.filter { !$0.include }.map(\.mac) ?? [])
         var p = HomeImportPlan(export, naming: naming, currentNames: model.names,
-                               knownMACs: Set(model.knownBulbs.compactMap(\.mac)))
+                               knownMACs: Set(model.knownBulbs.compactMap(\.mac)),
+                               currentKeys: currentKeys(export))
         for i in p.items.indices where excluded.contains(p.items[i].mac) { p.items[i].include = false }
         plan = p
     }
