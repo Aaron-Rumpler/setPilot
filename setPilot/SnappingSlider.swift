@@ -87,6 +87,12 @@ struct SnappingSlider: NSViewRepresentable {
         slider.step = step
         slider.trackFillColor = tint.map { NSColor($0) }
         slider.setAccessibilityLabel(label)
+        // A temperature's colour in words too, for VoiceOver ("2700 K, warm white").
+        if colourTemperatureStrip {
+            slider.valueDescription = { kelvin in "\(Int(kelvin.rounded())) K, \(ColourNames.name(kelvin: kelvin))" }
+        } else {
+            slider.valueDescription = nil
+        }
         if mappingChanged { slider.value = current } // keep the knob on the same value
         if container.marks != marks { container.marks = marks }
         if let cell = slider.cell as? SnapSliderCell {
@@ -124,6 +130,8 @@ final class SnapSlider: NSSlider {
     var range: ClosedRange<Double> = 0...1
     var scale: SliderScale = .linear
     var step: Double = 1
+    /// What VoiceOver says for the value, if more than the number.
+    var valueDescription: ((Double) -> String)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -222,6 +230,7 @@ final class SnapSlider: NSSlider {
     override func accessibilityValue() -> Any? { NSNumber(value: (value * 1000).rounded() / 1000) } // not 3400.0000000000005
     override func accessibilityMinValue() -> Any? { NSNumber(value: range.lowerBound) }
     override func accessibilityMaxValue() -> Any? { NSNumber(value: range.upperBound) }
+    override func accessibilityValueDescription() -> String? { valueDescription?(value) ?? super.accessibilityValueDescription() }
 
     /// x of the knob's centre at `value`, in this view's coordinates.
     func knobCentreX(at value: Double) -> CGFloat {

@@ -112,6 +112,15 @@ final class Library {
         }
     }
 
+    /// The colour in words, for VoiceOver: "warm white, 2700 K", "pale blue", or a scene's name.
+    func spokenName(of colour: LightColour) -> String {
+        guard let words = colour.colourName else { return name(of: colour) }
+        switch colour {
+        case .temp, .customCCT: return "\(words), \(name(of: colour))"
+        default: return words
+        }
+    }
+
     var summaries: [CustomSceneSummary] {
         customScenes.map { CustomSceneSummary(id: $0.id, name: $0.name, swatch: $0.swatch) }
     }

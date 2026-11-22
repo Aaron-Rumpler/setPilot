@@ -106,6 +106,9 @@ private struct LightShowScreen: View {
                 Image(systemName: "lightbulb.fill")
                     .font(.system(size: 44))
                     .foregroundStyle(.white.opacity(0.5))
+                    // The stage's light, for VoiceOver.
+                    .accessibilityLabel("Bulb")
+                    .accessibilityValue(lightDescription)
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -117,6 +120,7 @@ private struct LightShowScreen: View {
                     .padding(.vertical, 5)
                     .background(.black.opacity(0.55), in: Capsule())
                     .padding(10)
+                    .accessibilityLabel("Cue: \(label)")
             }
         }
         .animation(.easeOut(duration: 0.12), value: player.currentCue)
@@ -129,6 +133,23 @@ private struct LightShowScreen: View {
         guard let rgb = player.swatch else { return .black }
         let k = player.brightness
         return Color(.sRGB, red: rgb.r * k, green: rgb.g * k, blue: rgb.b * k)
+    }
+
+    /// The light the show is sending now, in words: "warm white, 40%".
+    private var lightDescription: String {
+        guard let rgb = player.swatch, player.brightness > 0 else { return "Off" }
+        return "\(ColourNames.name(rgb)), \(Int((player.brightness * 100).rounded()))%"
+    }
+
+    /// The colour a cue sets, in words (nil for a cue that leaves the colour as it is).
+    private static func colourName(_ pilot: [String: Any]) -> String? {
+        if pilot["state"] as? Bool == false { return "off" }
+        if let k = (pilot["temp"] as? NSNumber)?.intValue { return ColourNames.name(kelvin: Double(k)) }
+        if let id = (pilot["sceneId"] as? NSNumber)?.intValue { return Scenes.name(id) }
+        let keys = ["r", "g", "b", "c", "w"]
+        guard keys.contains(where: { pilot[$0] != nil }) else { return nil }
+        let ch = keys.map { (pilot[$0] as? NSNumber)?.intValue ?? 0 }
+        return LightColour.rgbcw(r: ch[0], g: ch[1], b: ch[2], c: ch[3], w: ch[4]).colourName
     }
 
     // MARK: Controls
@@ -288,6 +309,11 @@ private struct LightShowScreen: View {
                 .listRowBackground(cue.id == player.currentCue ? Color.accentColor.opacity(0.2) : Color.clear)
                 .id(cue.id)
                 .help("Go to this cue")
+                // The row's highlight, and the colour in words rather than the raw params.
+                .accessibilityLabel(cue.label.map { "\(LightShowPlayer.format(cue.time)), \($0)" } ?? LightShowPlayer.format(cue.time))
+                .accessibilityValue(Self.colourName(cue.pilot) ?? cue.summary)
+                .accessibilityHint("Goes to this cue")
+                .accessibilityAddTraits(cue.id == player.currentCue ? .isSelected : [])
             }
             .onChange(of: player.currentCue) { _, id in
                 guard let id else { return }

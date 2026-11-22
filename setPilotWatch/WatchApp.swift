@@ -64,6 +64,8 @@ struct PresetsView: View {
                                 }
                             }
                         }
+                        .accessibilityValue(colourName(preset.colour))
+                        .accessibilityHint("Applies the preset")
                         .swipeActions {
                             Button { editing = preset } label: { Label("Edit", systemImage: "pencil") }
                                 .tint(.blue)
@@ -114,6 +116,15 @@ struct PresetsView: View {
         // On the stack, not its root list: the list's task would be cancelled while a screen
         // (Controls, say) is pushed over it.
         .task { await link.poll() } // live updates while the app is open
+    }
+
+    /// The swatch in words, for VoiceOver ("warm white"), or the scene's name.
+    private func colourName(_ colour: LightColour) -> String {
+        switch colour {
+        case let .scene(id, _): return Scenes.name(id)
+        case let .custom(id, _): return link.scenes.first { $0.id == id }?.name ?? "a custom scene"
+        default: return colour.colourName ?? ""
+        }
     }
 
     private func swatch(_ colour: LightColour) -> RGB? {
@@ -227,6 +238,7 @@ struct CustomScenesView: View {
                     }
                 }
                 .disabled(s?.canControl != true)
+                .accessibilityValue(scene.swatch.map { ColourNames.name($0) } ?? "")
             }
             // While one of these is playing: the two settings that apply to it.
             if let s, s.canControl, let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {

@@ -64,6 +64,7 @@ struct ContentView: View {
                     Circle()
                         .fill(model.linkColour)
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true) // the text beside it says the same
                     Text(model.linkText)
                     if model.link == .connected {
                         Text("·").foregroundStyle(.tertiary)
@@ -87,6 +88,8 @@ struct ContentView: View {
                 .controlSize(.small)
                 .opacity(model.pending ? 1 : 0)
                 .help("Waiting for the bulb to confirm")
+                .accessibilityLabel("Waiting for the bulb to confirm")
+                .accessibilityHidden(!model.pending)
             UndoLightButton(model: model)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)

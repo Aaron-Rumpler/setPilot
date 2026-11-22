@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// A value for VoiceOver: "40%", or for a temperature its colour in words too ("2700 K, warm white").
+func spokenValue(_ value: Double, unit: String) -> String {
+    let number = "\(Int(value))\(unit)"
+    return unit == " K" ? "\(number), \(ColourNames.name(kelvin: value))" : number
+}
+
 /// A value in a list: label, value and a bar. Opens the editor.
 struct ValueRow: View {
     let label: String
@@ -17,6 +23,7 @@ struct ValueRow: View {
                     Text(label)
                     Spacer()
                     Text(verbatim: "\(Int(value))\(unit)").monospacedDigit().foregroundStyle(.secondary)
+                        .accessibilityLabel(spokenValue(value, unit: unit))
                 }
                 Gauge(value: min(max(value, range.lowerBound), range.upperBound), in: range) { EmptyView() }
                     .gaugeStyle(.accessoryLinearCapacity)
@@ -52,10 +59,17 @@ struct ValueEditor: View {
                     .lineLimit(1)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(Int(value))\(unit): enter or fine-tune the value")
+            // Adjustable, as a slider is: swiping up or down steps it as − and + do.
+            .accessibilityLabel(label)
+            .accessibilityValue(spokenValue(value, unit: unit))
+            .accessibilityHint("Enter or fine-tune the value")
+            .accessibilityAdjustableAction { direction in
+                set(Stepping.next(value, up: direction == .increment, by: coarse, in: range))
+            }
             Gauge(value: min(max(value, range.lowerBound), range.upperBound), in: range) { EmptyView() }
                 .gaugeStyle(.accessoryLinearCapacity)
                 .tint(tint)
+                .accessibilityHidden(true) // the value above says it
             HStack {
                 Button { set(Stepping.next(value, up: false, by: coarse, in: range)) } label: { Image(systemName: "minus") }
                     .accessibilityLabel("Down \(Int(coarse))")
@@ -102,8 +116,6 @@ struct ValueEditor: View {
         .sheet(isPresented: $typing) {
             NumberPad(title: label, range: range, unit: unit, initial: value) { set($0) }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityValue("\(Int(value))\(unit)")
     }
 
     private var coarse: Double { Stepping.coarse(for: range) }

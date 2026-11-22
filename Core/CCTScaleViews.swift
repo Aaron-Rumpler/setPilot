@@ -248,7 +248,10 @@ struct PointEditor: View {
                 .fill((LightColour.rgbcw(r: point.r, g: point.g, b: point.b, c: point.c, w: point.w).swatch?.color ?? .black))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
                 .frame(width: 36, height: 22)
-                .accessibilityHidden(true)
+                // What the point's channels look like, in words.
+                .accessibilityElement()
+                .accessibilityLabel("Point colour")
+                .accessibilityValue(LightColour.rgbcw(r: point.r, g: point.g, b: point.b, c: point.c, w: point.w).colourName ?? "")
         }
         IntSliderRow(label: "Red", value: $point.r, range: 0...255, tint: .red)
         IntSliderRow(label: "Green", value: $point.g, range: 0...255, tint: .green)

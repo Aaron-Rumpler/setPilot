@@ -53,7 +53,7 @@ struct MobileSlider: View {
                 .modifier(FineDrag(fine: $fine, sliding: sliding))
                 .tint(tint)
                 .accessibilityLabel(label)
-                .accessibilityValue("\(Int(value))\(unit)")
+                .accessibilityValue(spokenValue)
                 .accessibilityAdjustableAction { direction in
                     value = Stepping.next(value, up: direction == .increment, by: coarse, in: range)
                 }
@@ -67,6 +67,12 @@ struct MobileSlider: View {
         }
         .padding(.vertical, 2)
         .animation(.easeOut(duration: 0.15), value: fine)
+    }
+
+    /// The value for VoiceOver; a temperature's colour in words too ("2700 K, warm white").
+    private var spokenValue: String {
+        guard mired else { return "\(Int(value))\(unit)" }
+        return "\(Int(value)) K, \(ColourNames.name(kelvin: value))"
     }
 
     /// − or +: to the next round number (borderless, so each button in the list row takes its own taps).

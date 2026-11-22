@@ -15,6 +15,7 @@ struct BulbPicker: View {
             HStack(spacing: 8) {
                 Image(systemName: "lightbulb")
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.currentName ?? (address.isEmpty ? "Choose a bulb" : address))
                         .foregroundStyle(address.isEmpty ? .secondary : .primary)
@@ -29,12 +30,14 @@ struct BulbPicker: View {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .help("Choose the bulb: searches your network, or type an address")
+        .accessibilityHint("Searches your network, or type an address")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             BulbChooser(model: model) { open = false }
         }
@@ -64,6 +67,7 @@ struct BulbChooser: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Search again")
+                    .accessibilityLabel("Search again")
                 }
             }
 
@@ -111,6 +115,7 @@ struct BulbChooser: View {
                     Image(systemName: "checkmark")
                         .font(.caption.bold())
                         .opacity(current ? 1 : 0)
+                        .accessibilityHidden(true) // the row is marked selected instead
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name ?? bulb.ip).monospacedDigit()
                         Text(detail)
@@ -127,6 +132,7 @@ struct BulbChooser: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityAddTraits(current ? .isSelected : [])
             RenameButton(model: model, mac: bulb.mac)
                 .padding(.trailing, 6)
         }
@@ -164,6 +170,7 @@ struct RenameButton: View {
         }
         .buttonStyle(.borderless)
         .help("Name this bulb")
+        .accessibilityLabel("Name this bulb")
         // A popover, not an alert: it's also used in the menu bar panel, which can't show alerts.
         .popover(isPresented: $editing, arrowEdge: .trailing) {
             NamePrompt(title: "Name This Bulb",
@@ -202,6 +209,8 @@ struct SigningKeyButton: View {
         }
         .buttonStyle(.borderless)
         .help("Set the key for signed requests")
+        .accessibilityLabel("Signing key")
+        .accessibilityValue(model.signingKey(for: mac) == nil ? "Not set" : "Set")
         .alert("Signing Key", isPresented: $editing) {
             TextField("32 hex digits", text: $draft)
             Button("Save") {

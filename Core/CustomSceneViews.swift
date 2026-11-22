@@ -180,6 +180,8 @@ struct CustomSceneEditor: View {
                         .buttonStyle(.plain)
                         .id(step.id)
                         .accessibilityLabel("Step \(i + 1)\(i == start ? ", the start" : "")")
+                        .accessibilityValue(step.spokenSummary(ownTiming: scene.wrappedValue.timing == .steps))
+                        .accessibilityHint("Shows the step's settings")
                         .accessibilityAddTraits(i == current ? .isSelected : [])
                     }
                     Button {
@@ -325,7 +327,9 @@ struct StepEditor: View {
                 .fill((step.colour.swatch?.color ?? .black).opacity(Double(max(step.level, 15)) / 100))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
                 .frame(width: 36, height: 22)
-                .accessibilityHidden(true)
+                .accessibilityElement()
+                .accessibilityLabel("Step colour")
+                .accessibilityValue(step.spokenColour)
         }
         if step.dark {
             Text("No light: every channel at 0.")
@@ -512,6 +516,27 @@ struct CustomSceneRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // The swatch in words: the first lit step's colour.
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(scene.swatch.map { ColourNames.name($0) } ?? "")
+    }
+}
+
+// Main actor: it uses StepChip's formatting, and only views ask.
+@MainActor
+extension CustomScene.Step {
+    /// The step's colour in words, for VoiceOver: "warm white, 2700 K, level 60%", or "dark".
+    var spokenColour: String {
+        if dark { return "dark" }
+        let words = colour.colourName ?? ""
+        let colourText = useTemp ? "\(words), \(temp) K" : words
+        return level < 100 ? "\(colourText), level \(level)%" : colourText
+    }
+
+    /// The colour, then the times when the scene uses them: "pale blue, hold 1s, fade 0.5s".
+    func spokenSummary(ownTiming: Bool) -> String {
+        guard ownTiming else { return spokenColour }
+        return "\(spokenColour), hold \(StepChip.seconds(hold)), fade \(StepChip.seconds(fade))"
     }
 }
 

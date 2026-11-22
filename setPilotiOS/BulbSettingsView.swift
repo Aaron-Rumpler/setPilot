@@ -47,7 +47,9 @@ struct BulbSettingsView: View {
                                     }
                                 }
                                 Spacer()
-                                if bulb.address == saved { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                                if bulb.address == saved {
+                                    Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("Current")
+                                }
                             }
                         }
                         .swipeActions {
@@ -66,6 +68,7 @@ struct BulbSettingsView: View {
                     LabeledContent("Connection") {
                         HStack(spacing: 6) {
                             Circle().fill(model.linkColour).frame(width: 8, height: 8)
+                                .accessibilityHidden(true) // the text beside it says the same
                             Text(model.linkText)
                         }
                     }

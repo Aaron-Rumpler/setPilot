@@ -37,7 +37,8 @@ struct PresetGrid: View {
                         #endif
                         .disabled(model.link != .connected)
                         .accessibilityLabel(preset.name)
-                        .accessibilityHint("Applies the preset: \(lib.name(of: preset.colour)), \(preset.dimming)%")
+                        .accessibilityValue("\(lib.spokenName(of: preset.colour)), \(preset.dimming)%")
+                        .accessibilityHint("Applies the preset")
                         .help("\(lib.name(of: preset.colour)), \(preset.dimming)%")
                         .contextMenu { menu(for: preset) }
                         #if os(macOS)

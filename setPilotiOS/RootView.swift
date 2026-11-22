@@ -133,6 +133,7 @@ struct RootView: View {
             } else {
                 HStack(spacing: 10) {
                     Circle().fill(model.linkColour).frame(width: 9, height: 9)
+                        .accessibilityHidden(true) // the text beside it says the same
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.linkText)
                         if model.link == .connected {
@@ -206,6 +207,8 @@ struct RootView: View {
                     .textCase(nil)
                     .disabled(!model.canControl)
                 ProgressView().opacity(model.pending ? 1 : 0)
+                    .accessibilityLabel("Waiting for the bulb to confirm")
+                    .accessibilityHidden(!model.pending)
                 // At the top of the light: the first thing to reach for.
                 Toggle("Power", isOn: model.powerBinding)
                     .labelsHidden()
