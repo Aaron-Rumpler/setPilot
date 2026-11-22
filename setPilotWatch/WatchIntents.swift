@@ -96,11 +96,12 @@ struct WatchPowerIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let s = try await relay(switch action {
+        let command: WatchCommand = switch action {
         case .on: .power(true)
         case .off: .power(false)
         case .toggle: .togglePower
-        })
+        }
+        let s = try await relay(command)
         return .result(dialog: "\(s.isOn == false ? "Switched off." : "Switched on.")")
     }
 }
