@@ -90,7 +90,7 @@ trademark of Signify.
   command-line tool's exit code. The dictionary is in Script Editor's Library.
 - **Siri, Spotlight and suggestions**: Get Light State, power and brightness actions show the light
   with power, brighter and dimmer buttons. Presets and custom scenes can be found by name in
-  Spotlight: tapping a preset applies it, and a custom scene plays. Applying presets tells Siri when
+  Spotlight: tapping a preset applies it, and a custom scene plays (the app opens, as the system has it, but stays where it was). Applying presets tells Siri when
   you use them, for Siri Suggestions and the Smart Stack.
 - **Import from the WiZ app** (Settings on the Mac, Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room

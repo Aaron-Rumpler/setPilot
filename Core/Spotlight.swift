@@ -3,16 +3,19 @@ import CoreSpotlight
 import Foundation
 
 // Presets and custom scenes in Spotlight: find one by name, and tapping it applies the preset or
-// plays the scene (opening setPilot, on the scene's editor for a custom scene).
+// plays the scene. Tapping an item from an app always opens the app (the system's rule), so it
+// opens as it was, without going to the scene's editor. The App Shortcuts (Apply Preset, Play
+// Custom Scene) run from Spotlight without opening it.
 
 extension PresetEntity: IndexedEntity {}
 
 extension CustomSceneEntity: IndexedEntity {}
 
-/// A custom scene from Spotlight (or Shortcuts' Open): plays it, and opens its editor.
+/// A custom scene from Spotlight (or Shortcuts' Open): plays it.
 struct OpenCustomSceneIntent: OpenIntent {
-    static let title: LocalizedStringResource = "Play Custom Scene and Open It"
-    static let description = IntentDescription("Plays a custom scene on the bulb (switching it on) and opens its editor in setPilot.")
+    static let title: LocalizedStringResource = "Play Custom Scene"
+    static let description = IntentDescription("Plays a custom scene on the bulb, switching it on.")
+    static let isDiscoverable = false // Spotlight's; Shortcuts has the actions of these names
 
     @Parameter(title: "Custom Scene") var target: CustomSceneEntity
 
@@ -20,16 +23,16 @@ struct OpenCustomSceneIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        HandoffRouter.shared.open(.customScene(target.id))
         _ = try? await script(.customScene(target.id.uuidString, power: true))
         return .result()
     }
 }
 
-/// A preset from Spotlight (or Shortcuts' Open): applies it, and opens setPilot.
+/// A preset from Spotlight (or Shortcuts' Open): applies it.
 struct OpenPresetIntent: OpenIntent {
-    static let title: LocalizedStringResource = "Apply Preset and Open setPilot"
-    static let description = IntentDescription("Applies one of your presets and opens setPilot.")
+    static let title: LocalizedStringResource = "Apply Preset"
+    static let description = IntentDescription("Sets the bulb to one of your setPilot presets, switching it on if it's off.")
+    static let isDiscoverable = false // Spotlight's; Shortcuts has the actions of these names
 
     @Parameter(title: "Preset") var target: PresetEntity
 
@@ -37,7 +40,6 @@ struct OpenPresetIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        HandoffRouter.shared.open(.controls)
         _ = try? await script(.preset(target.id.uuidString))
         return .result()
     }
