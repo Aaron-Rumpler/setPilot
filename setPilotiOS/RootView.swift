@@ -209,6 +209,11 @@ struct RootView: View {
                 UndoLightButton(model: model)
                     .labelStyle(.iconOnly)
                     .font(.subheadline)
+                if model.canRedo {
+                    RedoLightButton(model: model)
+                        .labelStyle(.iconOnly)
+                        .font(.subheadline)
+                }
                 ComposeToggle(model: model)
                     .font(.subheadline)
                     .textCase(nil)

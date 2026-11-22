@@ -14,6 +14,20 @@ struct UndoLightButton: View {
     }
 }
 
+/// Puts back the change last undone (Model.redo).
+struct RedoLightButton: View {
+    let model: Model
+
+    var body: some View {
+        Button { model.redo() } label: {
+            Label("Redo", systemImage: "arrow.uturn.forward")
+        }
+        .disabled(!model.canRedo)
+        .help("Put back the change last undone")
+        .accessibilityHint("Puts back the change last undone")
+    }
+}
+
 extension View {
     /// Gives the model this window's undo manager, for Edit › Undo, ⌘Z and shake to undo.
     func providesUndo(to model: Model) -> some View {

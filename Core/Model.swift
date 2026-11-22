@@ -315,19 +315,22 @@ final class Model {
         library.onChange?() // the widgets' ready-made requests carry the fade setting too
     }
 
-    // MARK: Undo
+    // MARK: Undo and redo
 
     /// How the light was before each of the last changes made here (a drag or a burst of
     /// changes counts once), newest last.
     private(set) var undoHistory: [SavedLight] = []
+    /// How it was before each undo, for redo; emptied by a new change.
+    private(set) var redoHistory: [SavedLight] = []
     @ObservationIgnored private var lastUndoPoint = Date.distantPast
     @ObservationIgnored private var undoing = false
-    /// The window's undo manager (set by the main view), so Edit › Undo, ⌘Z and shaking the
-    /// iPhone undo light changes too.
+    /// The window's undo manager (set by the main view), so Edit › Undo and Redo, ⌘Z and ⇧⌘Z,
+    /// and shaking the iPhone undo and redo light changes too.
     @ObservationIgnored weak var undoManager: UndoManager?
     static let undoActionName = "Light Change"
 
     var canUndo: Bool { !undoHistory.isEmpty && canControl }
+    var canRedo: Bool { !redoHistory.isEmpty && canControl }
 
     /// Called before a change: keeps how the light is now, unless a change was made in the last
     /// moment and a half (then it's part of the same one).
@@ -338,12 +341,21 @@ final class Model {
         guard now.timeIntervalSince(lastUndoPoint) > 1.5 else { return }
         undoHistory.append(savedLight)
         if undoHistory.count > 20 { undoHistory.removeFirst() }
-        undoManager?.registerUndo(withTarget: self) { model in MainActor.assumeIsolated { model.undoNow() } }
+        redoHistory = []
+        registerWithManager(redo: false)
+    }
+
+    /// An undo (or, registered while undoing, a redo) on the window's undo manager.
+    private func registerWithManager(redo: Bool) {
+        undoManager?.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { redo ? model.redoNow() : model.undoNow() }
+        }
         undoManager?.setActionName(Self.undoActionName)
     }
 
     private func clearUndo() {
         undoHistory = []
+        redoHistory = []
         undoManager?.removeAllActions(withTarget: self) // so Edit › Undo doesn't offer what's gone
     }
 
@@ -357,11 +369,35 @@ final class Model {
         }
     }
 
+    /// The Redo button, likewise.
+    func redo() {
+        if let m = undoManager, m.canRedo, m.redoActionName == Self.undoActionName {
+            m.redo()
+        } else {
+            redoNow()
+        }
+    }
+
     private func undoNow() {
         guard let last = undoHistory.popLast() else { return }
+        redoHistory.append(savedLight)
+        restoreForUndo(last)
+        // Registered while the manager is undoing, it's the manager's redo (not when the button
+        // went round the manager).
+        if undoManager?.isUndoing == true { registerWithManager(redo: true) }
+    }
+
+    private func redoNow() {
+        guard let next = redoHistory.popLast() else { return }
+        undoHistory.append(savedLight)
+        restoreForUndo(next)
+        registerWithManager(redo: false) // registered during a redo: undo again
+    }
+
+    private func restoreForUndo(_ saved: SavedLight) {
         undoing = true
         defer { undoing = false; lastUndoPoint = .distantPast }
-        if let note = restore(last) { status = note }
+        if let note = restore(saved) { status = note }
     }
 
     // MARK: Connection

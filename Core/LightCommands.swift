@@ -13,6 +13,8 @@ struct LightCommands: Commands {
                 .disabled(!model.canControl)
             Button("Undo Light Change") { model.undo() } // also Edit › Undo (⌘Z)
                 .disabled(!model.canUndo)
+            Button("Redo Light Change") { model.redo() } // also Edit › Redo (⇧⌘Z)
+                .disabled(!model.canRedo)
             Button("Sync") { model.sync() }
                 .disabled(model.link == .none)
             Divider()

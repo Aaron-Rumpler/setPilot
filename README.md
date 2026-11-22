@@ -146,12 +146,13 @@ trademark of Signify.
   delay** slider sends every cue that much early, to make up for the bulb's lag; seeking sends the
   state at the new place first; and stopping (or the end) can put the light back as it was. The format is in
   [docs/LIGHT-SHOW.md](docs/LIGHT-SHOW.md).
-- **Light menu** (Mac, and an iPad with a keyboard): switch on or off (⇧⌘P), undo the last light
-  change, sync, and the first nine presets on ⌘1–⌘9. The Mac's Dock icon menu has power and the
+- **Light menu** (Mac, and an iPad with a keyboard): switch on or off (⇧⌘P), undo and redo light
+  changes, sync, and the first nine presets on ⌘1–⌘9. The Mac's Dock icon menu has power and the
   presets.
-- **Undo**: Edit › Undo (⌘Z) on the Mac, shaking the iPhone, or the Undo button by the Light
-  controls puts the light back as it was before the last change (a drag or a burst of changes
-  counts as one; up to 20 back; choosing another bulb starts afresh).
+- **Undo and redo**: Edit › Undo (⌘Z) and Redo (⇧⌘Z) on the Mac, shaking the iPhone, or the Undo
+  and Redo buttons by the Light controls put the light back as it was before the last change, and
+  forward again (a drag or a burst of changes counts as one; up to 20 back; choosing another bulb
+  starts afresh).
 - **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes
   and CCT scales as one JSON file, to copy them between devices without iCloud. Importing adds to
   what's there and updates items exported from there before.
