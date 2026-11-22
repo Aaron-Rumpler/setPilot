@@ -260,10 +260,24 @@ final class PhoneRelay: NSObject {
         SharedStore.save(s, SharedStore.snapshotKey)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
-        guard key != widgetKey else { return }
-        widgetKey = key
-        reloadWidgets()
+        trailingReload?.cancel()
+        if key != widgetKey {
+            widgetKey = key
+            reloadedDimming = Int(s.dimming)
+            reloadWidgets()
+        } else if Int(s.dimming) != reloadedDimming {
+            // Within the same step of 5, but they show the exact level: once it's settled, so a
+            // drag costs one more reload, not one per step.
+            trailingReload = Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { return }
+                reloadedDimming = Int(s.dimming)
+                reloadWidgets()
+            }
+        }
     }
+    private var reloadedDimming: Int?
+    private var trailingReload: Task<Void, Never>?
 
     /// The presets for widgets and controls, each with its setPilot ready to send.
     private func publishLibrary() {

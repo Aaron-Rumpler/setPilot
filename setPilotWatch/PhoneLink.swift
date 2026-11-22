@@ -147,11 +147,24 @@ final class PhoneLink: NSObject {
         // For the complications: reloaded only when something they show changes.
         SharedStore.save(s, SharedStore.snapshotKey)
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.bulbName ?? "")"
+        trailingReload?.cancel()
         if key != widgetKey {
             widgetKey = key
+            reloadedDimming = Int(s.dimming)
             WidgetCenter.shared.reloadAllTimelines()
+        } else if Int(s.dimming) != reloadedDimming {
+            // The same step of 5, but they show the exact level: once it's settled (one more
+            // reload per Crown turn, not one per step).
+            trailingReload = Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { return }
+                reloadedDimming = Int(s.dimming)
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
     }
+    @ObservationIgnored private var reloadedDimming: Int?
+    @ObservationIgnored private var trailingReload: Task<Void, Never>?
 
     private var widgetKey: String?
 
