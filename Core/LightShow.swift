@@ -214,7 +214,7 @@ final class LightShowPlayer {
                 guard let self else { return }
                 let defaults = UserDefaults.standard
                 let sends = defaults.object(forKey: Self.sendKey) as? Bool ?? true
-                if sends != sendsToBulb { sendsToBulb = sends }
+                if sends != self.sendsToBulb { self.sendsToBulb = sends }
                 let restores = defaults.object(forKey: Self.restoreKey) as? Bool ?? true
                 if restores != self.restores { self.restores = restores }
             }
