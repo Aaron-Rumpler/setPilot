@@ -171,6 +171,15 @@ struct SetPilotShortcuts: AppShortcutsProvider {
             systemImageName: "lightbulb"
         )
         AppShortcut(
+            intent: GetLightStateIntent(),
+            phrases: [
+                "What's the light doing in \(.applicationName)",
+                "Get the light state from \(.applicationName)",
+            ],
+            shortTitle: "Light State",
+            systemImageName: "lightbulb.circle"
+        )
+        AppShortcut(
             intent: AdjustBrightnessIntent(),
             phrases: [
                 "Make the light \(\.$direction) with \(.applicationName)",

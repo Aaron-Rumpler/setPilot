@@ -133,6 +133,8 @@ enum HomeImportSource {
                                           ? "the link has expired or isn't valid (make a new export in the WiZ app)"
                                           : "the server said \(http.statusCode)"))
             }
+            // A home export is a few KB: anything big is something else.
+            guard data.count < 1_000_000 else { return .failure(.notAnExport) }
             return WiZHomeExport.parse(data)
         } catch {
             return .failure(.download(error.localizedDescription))
