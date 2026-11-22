@@ -13,15 +13,72 @@ struct LibraryFile: Codable, Sendable {
 }
 
 extension Library {
+    /// The file with the items already here given new IDs and names of their own; presets of a
+    /// copied scene or scale follow it to the copy.
+    fileprivate func copiesOfClashes(_ original: LibraryFile) -> LibraryFile {
+        var file = original
+        var newIDs: [UUID: UUID] = [:]
+        let sceneIDs = Set(customScenes.map(\.id))
+        let scaleIDs = Set(cctScales.values.flatMap { $0.map(\.id) })
+        for i in file.customScenes.indices where sceneIDs.contains(file.customScenes[i].id) {
+            let new = UUID()
+            newIDs[file.customScenes[i].id] = new
+            file.customScenes[i].id = new
+            file.customScenes[i].name = uniqueSceneName(file.customScenes[i].name)
+        }
+        for (mac, list) in file.cctScales {
+            var copied = list
+            for i in copied.indices where scaleIDs.contains(copied[i].id) {
+                let new = UUID()
+                newIDs[copied[i].id] = new
+                copied[i].id = new
+                copied[i].name += " 2"
+            }
+            file.cctScales[mac] = copied
+        }
+        let presetIDs = Set(presets.map(\.id))
+        for i in file.presets.indices {
+            switch file.presets[i].colour {
+            case let .custom(id, speed): if let n = newIDs[id] { file.presets[i].colour = .custom(n, speed: speed) }
+            case let .customCCT(id, k): if let n = newIDs[id] { file.presets[i].colour = .customCCT(scale: n, kelvin: k) }
+            default: break
+            }
+            if presetIDs.contains(file.presets[i].id) {
+                file.presets[i].id = UUID()
+                file.presets[i].name = uniquePresetName(file.presets[i].name)
+            }
+        }
+        return file
+    }
+
     var exportFile: LibraryFile { LibraryFile(presets: presets, customScenes: customScenes, cctScales: cctScales) }
 
-    /// Adds what's in `file`, replacing items with the same ID (the same item exported earlier)
-    /// and keeping everything else. Returns what changed, as a sentence.
-    func merge(_ file: LibraryFile) -> String {
+    /// What to do with an incoming item that's already here (the same ID: the same item, shared
+    /// or exported before).
+    enum Clash { case replace, keepBoth, skip }
+
+    /// How many of `file`'s items are already here.
+    func clashes(_ file: LibraryFile) -> Int {
+        let p = Set(presets.map(\.id)), s = Set(customScenes.map(\.id))
+        let c = Set(cctScales.values.flatMap { $0.map(\.id) })
+        return file.presets.filter { p.contains($0.id) }.count + file.customScenes.filter { s.contains($0.id) }.count
+            + file.cctScales.values.flatMap { $0 }.filter { c.contains($0.id) }.count
+    }
+
+    /// Adds what's in `file`, keeping everything else; an item that's already here is replaced, or
+    /// added again as a copy (a new ID, and a name of its own), or left as it is. Returns what
+    /// changed, as a sentence.
+    func merge(_ file: LibraryFile, clash: Clash = .replace) -> String {
+        var file = file
+        if clash == .keepBoth { file = copiesOfClashes(file) }
         func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] {
             var out = mine
             for item in theirs {
-                if let i = out.firstIndex(where: { $0.id == item.id }) { out[i] = item } else { out.append(item) }
+                if let i = out.firstIndex(where: { $0.id == item.id }) {
+                    if clash == .replace { out[i] = item }
+                } else {
+                    out.append(item)
+                }
             }
             return out
         }
@@ -105,7 +162,15 @@ struct LibraryTransferSection: View {
                 result = "That library file is from a newer version of setPilot."
                 return
             }
-            result = model.library.merge(file)
+            // Items already here: asked about first (IncomingItems).
+            if model.library.clashes(file) > 0 {
+                IncomingItems.shared.pending = file
+                #if os(macOS)
+                HandoffRouter.shared.open(.controls) // the main window asks
+                #endif
+            } else {
+                result = model.library.merge(file)
+            }
         } catch is DecodingError {
             result = "That isn't a setPilot library file."
         } catch {

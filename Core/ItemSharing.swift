@@ -94,14 +94,28 @@ private struct IncomingItemsPrompt: ViewModifier {
 
     func body(content: Content) -> some View {
         let incoming = IncomingItems.shared
-        content.alert("Add to setPilot?", isPresented: Binding(get: { incoming.pending != nil }, set: { if !$0 { incoming.pending = nil } })) {
-            Button("Add") {
-                if let file = incoming.pending { _ = model.library.merge(file) }
-                incoming.pending = nil
+        let clashes = incoming.pending.map(model.library.clashes) ?? 0
+        content.alert(clashes > 0 ? "You already have some of these" : "Add to setPilot?",
+                      isPresented: Binding(get: { incoming.pending != nil }, set: { if !$0 { incoming.pending = nil } })) {
+            if clashes > 0 {
+                Button("Replace Mine") { add(.replace) }
+                Button("Keep Both") { add(.keepBoth) }
+                Button("Add Only the New Ones") { add(.skip) }
+            } else {
+                Button("Add") { add(.replace) }
             }
             Button("Cancel", role: .cancel) { incoming.pending = nil }
         } message: {
-            Text("Shared with you: \(incoming.summary). An item you already have is replaced by this copy.")
+            if clashes > 0 {
+                Text("\(incoming.summary): \(clashes == 1 ? "one is" : "\(clashes) are") already here. Replace yours with these, keep both (the new ones as copies), or add only the ones you don't have?")
+            } else {
+                Text("\(incoming.summary).")
+            }
         }
+    }
+
+    private func add(_ clash: Library.Clash) {
+        if let file = IncomingItems.shared.pending { _ = model.library.merge(file, clash: clash) }
+        IncomingItems.shared.pending = nil
     }
 }

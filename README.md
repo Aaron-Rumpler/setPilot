@@ -127,7 +127,8 @@ trademark of Signify.
   panel and the Presets widget show the favourites (or every preset, with none starred).
 - **Sharing**: a preset or custom scene can be shared as a `.setpilot` file (AirDrop, Messages,
   Files) or copied as a `setpilot://import` link; opened in setPilot, it's added once you confirm. A
-  preset brings the custom scene or CCT scale it uses.
+  preset brings the custom scene or CCT scale it uses. When something coming in (shared, or a
+  library file imported) is already here, you choose: replace yours, keep both, or add only the new.
 - **Custom scenes** (Window › Custom Scenes, or Edit Scenes… next to the scene picker): up to 12
   steps, each with a colour (RGBCW, a temperature, or dark), a level, how long it holds and how
   long it fades into the next, and optionally a random variation of those times. A scene can start
