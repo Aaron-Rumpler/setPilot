@@ -91,6 +91,30 @@ struct BulbEntry: TimelineEntry {
     let date: Date
     let snapshot: LightSnapshot?
     var preset: Preset? = nil
+    /// How strongly the Smart Stack should put this forward (around the times you usually apply
+    /// the preset, or any preset).
+    var relevance: TimelineEntryRelevance? = nil
+
+    /// Now, then a high-relevance entry for each usual time in the next day (and a low one after
+    /// each), from Common/PresetUsage.swift.
+    static func timeline(preset: Preset?, presetID: UUID?, snapshot: LightSnapshot?) -> Timeline<BulbEntry> {
+        let now = Date.now
+        let usual = PresetUsage.usualTimes(PresetUsage.load(SharedStore.defaults), preset: presetID, after: now)
+        var entries = [BulbEntry(date: now, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0))]
+        for (start, days) in usual {
+            let end = start.addingTimeInterval(45 * 60)
+            if start <= now {
+                entries[0].relevance = TimelineEntryRelevance(score: Float(days), duration: end.timeIntervalSince(now))
+            } else {
+                entries.append(BulbEntry(date: start, snapshot: snapshot, preset: preset,
+                                         relevance: TimelineEntryRelevance(score: Float(days), duration: 45 * 60)))
+            }
+            entries.append(BulbEntry(date: end, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0)))
+        }
+        entries.sort { $0.date < $1.date }
+        // Worked out again tomorrow (or sooner, when the app reloads the widgets).
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(86_400)))
+    }
 
     static let sample: BulbEntry = {
         var s = LightSnapshot()
@@ -125,7 +149,7 @@ struct StatusProvider: TimelineProvider {
         completion(context.isPreview ? .sample : BulbEntry(date: .now, snapshot: SharedStore.snapshot))
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<BulbEntry>) -> Void) {
-        completion(Timeline(entries: [BulbEntry(date: .now, snapshot: SharedStore.snapshot)], policy: .never))
+        completion(BulbEntry.timeline(preset: nil, presetID: nil, snapshot: SharedStore.snapshot))
     }
 }
 
@@ -220,7 +244,8 @@ struct PresetProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: PresetWidgetConfiguration, in context: Context) async -> Timeline<BulbEntry> {
-        Timeline(entries: [entry(configuration)], policy: .never)
+        let e = entry(configuration)
+        return BulbEntry.timeline(preset: e.preset, presetID: e.preset?.id, snapshot: e.snapshot)
     }
 
     /// The watch has no widget configuration screen: one suggestion per preset.

@@ -129,6 +129,8 @@ enum WatchKey {
     static let customScenes = "customScenes"
     static let error = "error"
     static let deviceInfo = "deviceInfo"
+    /// When presets were applied on the iPhone (PresetUsage).
+    static let presetUsage = "presetUsage"
 }
 
 /// A custom scene's name and swatch, which is all the watch needs.

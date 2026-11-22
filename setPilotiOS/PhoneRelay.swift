@@ -37,6 +37,10 @@ final class PhoneRelay: NSObject {
         }
         observeState()
         WidgetPublisher.shared.start(model: model) // the widgets and controls (Core/WidgetPublisher.swift)
+        // A preset applied here: the watch's Smart Stack learns when (Common/PresetUsage.swift).
+        NotificationCenter.default.addObserver(forName: PresetUsage.recorded, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { PhoneRelay.shared.libraryChanged() }
+        }
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -261,6 +265,7 @@ final class PhoneRelay: NSObject {
         var context: [String: Any] = [:]
         if let data = try? encoder.encode(model.library.presets) { context[WatchKey.presets] = data }
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
+        if let data = UserDefaults.standard.data(forKey: PresetUsage.key) { context[WatchKey.presetUsage] = data }
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
         if model.snapshot.link == .connected, let data = try? encoder.encode(Self.stamped(model.snapshot)) {
             context[WatchKey.snapshot] = data

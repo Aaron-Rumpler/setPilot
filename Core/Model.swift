@@ -1072,7 +1072,9 @@ final class Model {
     /// Applies a preset, switching the bulb on if it's off.
     @discardableResult
     func apply(_ preset: Preset) -> Bool {
-        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
+        let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
+        if sent { PresetUsage.record(preset.id, in: .standard) } // for the watch's Smart Stack
+        return sent
     }
 
     /// Sends several changes as one setPilot, with their own fade time (`trans`).
