@@ -201,7 +201,8 @@ The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to s
   lightness in the tint.
 - **Light show Live Activity** (iPhone): the show's title, current cue and its colour, progress, and
   play/pause and stop, on the Lock Screen and in the Dynamic Island, and small in the watch's Smart
-  Stack. Audio carries on with the phone locked.
+  Stack. A show carries on with the phone locked or in another app (a video's sound and cues, without
+  its picture).
 - **Home Screen quick actions** (touch and hold the app icon): power and the first three presets.
 
 On iPad the controls sit beside the custom scenes, light show, CCT scales or settings, in two

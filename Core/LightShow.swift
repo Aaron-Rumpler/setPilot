@@ -154,9 +154,10 @@ final class LightShowPlayer {
     private(set) var isPlaying = false {
         didSet {
             #if os(iOS)
-            // Video keeps the screen on by itself; audio doesn't. Audio carries on with the phone
-            // locked (the audio background mode), with the Live Activity on the Lock Screen, but
-            // video pauses then: kept awake so it doesn't lock part way.
+            // Video keeps the screen on by itself; audio doesn't. A show carries on with the phone
+            // locked or in another app (the audio background mode; a video's picture is taken off
+            // the screen meanwhile, PlayerView), with the Live Activity on the Lock Screen. Kept
+            // awake anyway, so the picture's still there to watch.
             if isPlaying != oldValue {
                 UIApplication.shared.isIdleTimerDisabled = isPlaying
                 LightShowLiveActivity.shared.changed(self)
