@@ -95,8 +95,9 @@ trademark of Signify.
 - **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
   for a room's only light, optionally with the home's name first) and give them the home's signing
-  key. A list shows what would change before anything does; bulbs not used here yet keep their name
-  and key for when they are.
+  key. A list shows what would change before anything does, and names can be changed there first;
+  bulbs not used here yet join Your Bulbs with their name and key (the Mac finds them by searching;
+  on iPhone, tap one to enter its address).
 - **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
   Settings › Console, with the log on its own page): send any method with any params. Known
   methods (the 36 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
@@ -121,7 +122,12 @@ trademark of Signify.
   to switch to 1s). Keyboard: arrow keys step a focused slider, ⌘R syncs.
 - **Presets**: save the light as it is (colour, temperature, scene or custom scene, with its
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
-  switches the bulb on. Right-click a preset to rename, update, move or delete it.
+  switches the bulb on. Right-click a preset to rename, update, move, share or delete it, or add it
+  to your **favourites**: the watch's main screen, the quick actions, the Dock menu, the menu bar
+  panel and the Presets widget show the favourites (or every preset, with none starred).
+- **Sharing**: a preset or custom scene can be shared as a `.setpilot` file (AirDrop, Messages,
+  Files) or copied as a `setpilot://import` link; opened in setPilot, it's added once you confirm. A
+  preset brings the custom scene or CCT scale it uses.
 - **Custom scenes** (Window › Custom Scenes, or Edit Scenes… next to the scene picker): up to 12
   steps, each with a colour (RGBCW, a temperature, or dark), a level, how long it holds and how
   long it fades into the next, and optionally a random variation of those times. A scene can start
@@ -203,7 +209,8 @@ The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to s
   play/pause and stop, on the Lock Screen and in the Dynamic Island, and small in the watch's Smart
   Stack. A show carries on with the phone locked or in another app (a video's sound and cues, without
   its picture).
-- **Home Screen quick actions** (touch and hold the app icon): power and the first three presets.
+- **Home Screen quick actions** (touch and hold the app icon): power, and your favourite presets
+  or else the ones you use most.
 
 On iPad the controls sit beside the custom scenes, light show, CCT scales or settings, in two
 columns; a hardware keyboard gets the Light menu, and presets lift under the pointer.
@@ -216,8 +223,10 @@ command-line tool does.
 The watch has complications (status, a preset, power) for watch faces and the Smart Stack, and
 Control Center controls (power, a preset, brighter, dimmer), which also work from the Smart Stack
 and the Action button. A tap opens the watch app, which asks the iPhone: watch widgets can't do it
-themselves. A preset you apply at about the same time of day on several days comes forward in the
-Smart Stack around then. Double tap (Series 9 and Ultra 2 on) switches the power on the main
+themselves. setPilot learns when you use each preset and switch the light on and off (recent days
+counting more, and spread over the hours around each time, so habits that vary still count), and
+its complications come forward in the Smart Stack in proportion; nothing is suggested until
+something's been used on three different days. Double tap (Series 9 and Ultra 2 on) switches the power on the main
 screen.
 
 The Watch app's main screen is power and the presets (tap to apply). Below them:
@@ -262,7 +271,7 @@ compilation conditions, so the code that needs them is left out otherwise.
 | Switch | Default | What it gives | Needs |
 |---|---|---|---|
 | `WIZ_APP_GROUPS` | YES | The widgets and Control Center controls on iPhone and Mac, the watch complications and controls (they read the apps' data through the group), and the Mac's command-line tool (it reaches the app through the group container) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps. On the Mac the group is Team-ID-prefixed, so the Mac widgets and the command-line tool also need a development team (an ad-hoc build has no Team ID, so no container) |
-| `WIZ_ICLOUD` | NO | iCloud sync between Mac and iPhone: presets, custom scenes, CCT scales and bulb names item by item through CloudKit (changes to different items on two devices both survive; the later change to the same item wins), and settings (the fades, the adapting white, snapping, the light show's options, the flashing warning) through key-value storage. Also Handoff (the light, a custom scene or CCT scale being edited, the light show; the watch offers its controls) and a setPilot folder in iCloud Drive, where the library and light show dialogs start. Signing keys, the chosen bulb and the light show delay stay on each device | A paid account, the iCloud container `iCloud.nz.aaronrumpler.setPilot` on both App IDs, and before a release the CloudKit schema deployed to production |
+| `WIZ_ICLOUD` | NO | iCloud sync between Mac and iPhone: presets, custom scenes, CCT scales and bulb names item by item through CloudKit (changes to different items on two devices both survive; the later change to the same item wins), signing keys and your bulbs the same way (in encrypted fields), and settings (the fades, the adapting white, snapping, the light show's options, the flashing warning, the CCT scale in use, the log and console options, preset habits, the last light show) through key-value storage. Also Handoff (the light or a Compose draft, a custom scene or CCT scale being edited, the light show with its files and position; the watch offers its controls), a setPilot folder in iCloud Drive (where the library and light show dialogs start; Open Last Show works on every device), the library shared with your household (Settings › Share Library with Household), an offer of the bulb your other devices use, and a question when the device's Apple ID changes. The chosen bulb and the light show delay stay on each device | A paid account, the iCloud container `iCloud.nz.aaronrumpler.setPilot` on both App IDs, and before a release the CloudKit schema deployed to production |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
 back, so writing one could overwrite a scene the WiZ app stored), changing the bulb's own settings
