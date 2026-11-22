@@ -95,32 +95,18 @@ struct BulbEntry: TimelineEntry {
     /// the preset, or any preset).
     var relevance: TimelineEntryRelevance? = nil
 
-    /// Now, then a high-relevance entry for each usual time in the next day (and a low one after
-    /// each), from Common/PresetUsage.swift.
-    static func timeline(preset: Preset?, presetID: UUID?, snapshot: LightSnapshot?) -> Timeline<BulbEntry> {
+    /// Entries every half hour for the next day, each as relevant as `keys` (presets, or power
+    /// on/off; any, if nil) usually are then (Common/PresetUsage.swift).
+    static func timeline(preset: Preset?, keys: Set<String>?, snapshot: LightSnapshot?) -> Timeline<BulbEntry> {
         let now = Date.now
-        let usual = PresetUsage.usualTimes(PresetUsage.load(SharedStore.defaults), preset: presetID, after: now)
-        var entries = [BulbEntry(date: now, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0))]
-        // Windows that overlap (usual times half an hour apart) as one, scored by the more usual.
-        var windows: [(start: Date, end: Date, days: Int)] = []
-        for (start, days) in usual {
-            let end = start.addingTimeInterval(45 * 60)
-            if let last = windows.last, start <= last.end {
-                windows[windows.count - 1] = (last.start, max(last.end, end), max(last.days, days))
-            } else {
-                windows.append((start, end, days))
-            }
+        let uses = PresetUsage.load(SharedStore.defaults)
+        let entries = (0..<48).map { i -> BulbEntry in
+            let date = now.addingTimeInterval(Double(i) * 1800)
+            // The middle of the half hour it stands for.
+            let score = PresetUsage.usualness(uses, keys: keys, at: date.addingTimeInterval(900), now: now)
+            return BulbEntry(date: date, snapshot: snapshot, preset: preset,
+                             relevance: TimelineEntryRelevance(score: Float(score), duration: 1800))
         }
-        for (start, end, days) in windows {
-            if start <= now {
-                entries[0].relevance = TimelineEntryRelevance(score: Float(days), duration: end.timeIntervalSince(now))
-            } else {
-                entries.append(BulbEntry(date: start, snapshot: snapshot, preset: preset,
-                                         relevance: TimelineEntryRelevance(score: Float(days), duration: end.timeIntervalSince(start))))
-            }
-            entries.append(BulbEntry(date: end, snapshot: snapshot, preset: preset, relevance: TimelineEntryRelevance(score: 0)))
-        }
-        entries.sort { $0.date < $1.date }
         // Worked out again tomorrow (or sooner, when the app reloads the widgets).
         return Timeline(entries: entries, policy: .after(now.addingTimeInterval(86_400)))
     }
@@ -153,12 +139,15 @@ func statusText(_ s: LightSnapshot?) -> String {
 // MARK: Status
 
 struct StatusProvider: TimelineProvider {
+    /// What its relevance follows: the power switch for the power complication, anything (nil) for status.
+    var keys: Set<String>? = nil
+
     func placeholder(in context: Context) -> BulbEntry { .sample }
     func getSnapshot(in context: Context, completion: @escaping (BulbEntry) -> Void) {
         completion(context.isPreview ? .sample : BulbEntry(date: .now, snapshot: SharedStore.snapshot))
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<BulbEntry>) -> Void) {
-        completion(BulbEntry.timeline(preset: nil, presetID: nil, snapshot: SharedStore.snapshot))
+        completion(BulbEntry.timeline(preset: nil, keys: keys, snapshot: SharedStore.snapshot))
     }
 }
 
@@ -254,7 +243,7 @@ struct PresetProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: PresetWidgetConfiguration, in context: Context) async -> Timeline<BulbEntry> {
         let e = entry(configuration)
-        return BulbEntry.timeline(preset: e.preset, presetID: e.preset?.id, snapshot: e.snapshot)
+        return BulbEntry.timeline(preset: e.preset, keys: e.preset.map { [$0.id.uuidString] }, snapshot: e.snapshot)
     }
 
     /// The watch has no widget configuration screen: one suggestion per preset.
@@ -325,7 +314,7 @@ struct PresetView: View {
 
 struct PowerWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "power", provider: StatusProvider()) { entry in
+        StaticConfiguration(kind: "power", provider: StatusProvider(keys: [PresetUsage.powerOn, PresetUsage.powerOff])) { entry in
             let isOn = entry.snapshot?.isOn
             let on = isOn == true
             ZStack {

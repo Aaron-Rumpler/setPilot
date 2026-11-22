@@ -312,6 +312,8 @@ final class Model {
         if fade != controlsFade { controlsFade = fade }
         let ms = defaults.object(forKey: Self.controlsFadeMsKey) as? Int ?? 1000
         if ms != controlsFadeMs { controlsFadeMs = ms }
+        let usesScale = defaults.bool(forKey: Self.temperatureScaleKey)
+        if usesScale != temperatureUsesScale { temperatureUsesScale = usesScale }
         library.onChange?() // the widgets' ready-made requests carry the fade setting too
     }
 
@@ -417,7 +419,22 @@ final class Model {
     }() {
         didSet {
             if let d = try? JSONEncoder().encode(knownBulbs) { UserDefaults.standard.set(d, forKey: Self.knownBulbsKey) }
+            if !fromCloud { CloudLibrary.shared.localChanged(.knownBulb) }
         }
+    }
+    /// Set while taking bulbs or signing keys from iCloud (CloudLibrary), so they aren't sent back.
+    @ObservationIgnored private var fromCloud = false
+
+    func setKnownBulbsFromCloud(_ new: [KnownBulb]) {
+        fromCloud = true
+        knownBulbs = new
+        fromCloud = false
+    }
+
+    func setSigningKeysFromCloud(_ new: [String: String]) {
+        fromCloud = true
+        signingKeys = new
+        fromCloud = false
     }
 
     /// Records a bulb's address (and MAC, once known), moving it to the top of `knownBulbs`.
@@ -481,10 +498,12 @@ final class Model {
     static let signingKeysKey = "signingKeys"
 
     /// Signing keys for bulbs whose firmware wants signed requests, keyed by lower-case MAC: the
-    /// home's udp_signing_key, as 32 hex digits. Kept on this device only.
+    /// home's udp_signing_key, as 32 hex digits. Synced through iCloud, in records' encrypted fields
+    /// (CloudLibrary), in builds with it.
     var signingKeys: [String: String] = UserDefaults.standard.dictionary(forKey: Model.signingKeysKey) as? [String: String] ?? [:] {
         didSet {
             UserDefaults.standard.set(signingKeys, forKey: Self.signingKeysKey)
+            if !fromCloud { CloudLibrary.shared.localChanged(.signingKey) }
             refreshSigning()
         }
     }
@@ -845,6 +864,7 @@ final class Model {
     /// was off goes with switching on.
     func power(_ on: Bool) {
         noteUndoPoint()
+        PresetUsage.record(on ? PresetUsage.powerOn : PresetUsage.powerOff, in: .standard)
         var p: [String: Any] = [:]
         if let fade = fadeForControls { p["trans"] = fade }
         let owed = on && speedOwed && mode == .scene ? Int(speed) : nil
@@ -1173,9 +1193,7 @@ final class Model {
     func apply(_ preset: Preset) -> Bool {
         let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
         if sent {
-            #if os(iOS)
-            PresetUsage.record(preset.id, in: .standard) // for the watch's Smart Stack
-            #endif
+            PresetUsage.record(preset.id.uuidString, in: .standard) // habits: the Smart Stack, quick actions
             SiriDonation.applied(preset) // and Siri Suggestions
         }
         return sent

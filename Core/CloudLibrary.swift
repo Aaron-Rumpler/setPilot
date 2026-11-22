@@ -39,6 +39,11 @@ final class CloudLibrary {
 
     enum Kind: String, CaseIterable, Sendable {
         case preset = "Preset", customScene = "CustomScene", cctScale = "CCTScale", bulbName = "BulbName"
+        case signingKey = "SigningKey", knownBulb = "KnownBulb"
+
+        /// Kinds keyed by a MAC or an address: their record names are a hash of it (record names
+        /// aren't encrypted), the key itself kept in the record's encrypted fields.
+        var hashed: Bool { self == .bulbName || self == .signingKey || self == .knownBulb }
     }
 
     /// One synced thing as it is here: its encoded value, its place in its list, and for CCT
@@ -225,8 +230,8 @@ final class CloudLibrary {
     /// A record's name. Bulb names are filed under a hash of the MAC: record names are visible to
     /// Apple (not end-to-end encrypted), unlike the MAC kept in the record's encrypted fields.
     private static func recordName(_ kind: Kind, _ id: String) -> String {
-        guard kind == .bulbName else { return "\(kind.rawValue).\(id)" }
-        let digest = SHA256.hash(data: Data("setPilot bulb name \(id.lowercased())".utf8))
+        guard kind.hashed else { return "\(kind.rawValue).\(id)" }
+        let digest = SHA256.hash(data: Data("setPilot \(kind.rawValue) \(id.lowercased())".utf8))
         return "\(kind.rawValue)." + digest.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -268,6 +273,12 @@ final class CloudLibrary {
             }
         case .bulbName:
             for (mac, name) in model.names { items[mac] = Item(data: Data(name.utf8), order: 0, mac: mac) }
+        case .signingKey:
+            for (mac, key) in model.signingKeys { items[mac] = Item(data: Data(key.utf8), order: 0, mac: mac) }
+        case .knownBulb:
+            for (i, b) in model.knownBulbs.enumerated() {
+                if let d = try? Self.encoder.encode(b) { items[b.id] = Item(data: d, order: Double(i), mac: b.id) }
+            }
         }
         return items
     }
@@ -321,6 +332,21 @@ final class CloudLibrary {
             var names = model.names
             for (mac, change) in changes { names[mac] = change.map { String(decoding: $0.data, as: UTF8.self) } }
             model.setNamesFromCloud(names)
+        case .signingKey:
+            var keys = model.signingKeys
+            for (mac, change) in changes { keys[mac] = change.map { String(decoding: $0.data, as: UTF8.self) } }
+            model.setSigningKeysFromCloud(keys)
+        case .knownBulb:
+            var byID: [String: (KnownBulb, Double)] = [:]
+            for (i, b) in model.knownBulbs.enumerated() { byID[b.id] = (b, order(b.id, i)) }
+            for (id, change) in changes {
+                if let change, let b = try? JSONDecoder().decode(KnownBulb.self, from: change.data) {
+                    byID[id] = (b, order(id, Int.max))
+                } else {
+                    byID[id] = nil
+                }
+            }
+            model.setKnownBulbsFromCloud(byID.values.sorted { $0.1 == $1.1 ? $0.0.id < $1.0.id : $0.1 < $1.1 }.map(\.0))
         }
     }
 
@@ -355,7 +381,7 @@ final class CloudLibrary {
     /// The item key a record's name stands for (for a bulb name, from what's known here).
     private func itemID(_ name: String, _ kind: Kind) -> String? {
         if let meta = saved.meta[name] { return meta.id }
-        return kind == .bulbName ? nil : String(name.dropFirst(kind.rawValue.count + 1))
+        return kind.hashed ? nil : String(name.dropFirst(kind.rawValue.count + 1))
     }
 
     /// iCloud's version of a record. Its content and its place are each taken unless this
@@ -365,7 +391,7 @@ final class CloudLibrary {
         let name = record.recordID.recordName
         guard let kind = Self.kind(of: name), let data: Data = record.encryptedValues["data"] else { return nil }
         let mac: String? = record.encryptedValues["mac"]
-        guard let id = kind == .bulbName ? mac : itemID(name, kind), !id.isEmpty else { return nil }
+        guard let id = kind.hashed ? mac : itemID(name, kind), !id.isEmpty else { return nil }
         if saved.deleting.contains(name) { return nil }
         let remote = Item(data: data, order: record["order"] as? Double ?? 0, mac: mac)
         let modified = record["modified"] as? Date ?? .distantPast

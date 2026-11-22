@@ -26,6 +26,13 @@ final class CloudSync {
     static let settingKeys = [
         Model.fadeKey, Model.controlsFadeKey, Model.controlsFadeMsKey, ColourTemperature.adaptingWhiteKey,
         Stepping.snapKey, LightShowPlayer.sendKey, LightShowPlayer.restoreKey, Flashing.warnKey,
+        // Which CCT scale Temperature uses (per bulb), and whether it uses one.
+        Library.activeCCTScaleKey, Model.temperatureScaleKey,
+        // The log's and console's options (not what's being typed in the console).
+        Model.logLimitKey, "logShowPushes", "logShowRegistration", "logPretty",
+        "consoleDontSwitchOn", "consoleRetry", "consoleFullReply",
+        // When presets are applied and the light switched (merged, not replaced: PresetUsage).
+        PresetUsage.key,
     ]
     private static let prefix = "setting."
 
@@ -53,6 +60,10 @@ final class CloudSync {
         // iCloud's settings, if it has them; otherwise this device's go up.
         var changed: [String] = []
         for key in Self.settingKeys {
+            if key == PresetUsage.key {
+                mergeUsage(store.object(forKey: Self.prefix + key))
+                continue
+            }
             if let remote = store.object(forKey: Self.prefix + key) as? NSObject {
                 known[key] = remote
                 if !remote.isEqual(defaults.object(forKey: key)) {
@@ -89,12 +100,28 @@ final class CloudSync {
         }
     }
 
+    /// The usage record: another device's uses are added to this one's, and the union goes up.
+    private func mergeUsage(_ remote: Any?) {
+        let defaults = UserDefaults.standard
+        if let data = remote as? Data, let uses = try? JSONDecoder().decode([PresetUsage.Use].self, from: data),
+           PresetUsage.merge(uses, into: defaults) {
+            NotificationCenter.default.post(name: PresetUsage.recorded, object: nil) // quick actions, the watch
+        }
+        guard let mine = defaults.data(forKey: PresetUsage.key) as NSData?, !mine.isEqual(remote) else { return }
+        known[PresetUsage.key] = mine // the merge's own write isn't sent again
+        NSUbiquitousKeyValueStore.default.set(mine, forKey: Self.prefix + PresetUsage.key)
+    }
+
     private func takeRemote(_ keys: [String]) {
         let defaults = UserDefaults.standard
         let store = NSUbiquitousKeyValueStore.default
         var changed: [String] = []
         for cloudKey in keys where cloudKey.hasPrefix(Self.prefix) {
             let key = String(cloudKey.dropFirst(Self.prefix.count))
+            if key == PresetUsage.key {
+                mergeUsage(store.object(forKey: cloudKey))
+                continue
+            }
             guard Self.settingKeys.contains(key), let value = store.object(forKey: cloudKey) as? NSObject else { continue }
             known[key] = value // before writing, so the write isn't sent back
             if !value.isEqual(defaults.object(forKey: key)) {

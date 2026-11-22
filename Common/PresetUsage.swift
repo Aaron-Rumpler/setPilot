@@ -1,61 +1,113 @@
 import Foundation
 
-/// When presets have been applied, for the watch's Smart Stack: a preset you apply at about the
-/// same time of day on several days is put forward around then. Recorded on the iPhone
-/// (Model.apply), which applies the watch's presets too, and passed to the watch with the presets.
+/// When presets are applied and the light switched on or off, to learn your habits: for the watch's
+/// Smart Stack (setPilot's widgets come forward when you usually use them) and the iPhone's quick
+/// actions (your most used presets). Recorded on the iPhone and Mac (Model), synced between them
+/// through iCloud (CloudSync), and passed from the iPhone to the watch with the presets.
+///
+/// Habits vary, so this learns a spread rather than fixed times: each use adds a bump of about an
+/// hour either side at its time of day, recent days counting more (a use a fortnight old counts
+/// half). A bedtime anywhere between 11 pm and 5 am becomes a broad stretch of middling relevance
+/// across those hours, strongest where it's most often.
 enum PresetUsage {
     struct Use: Codable, Hashable, Sendable {
-        var id: UUID
+        /// A preset's ID, or `powerOn` / `powerOff`.
+        var key: String
         var at: Date
+
+        init(key: String, at: Date) {
+            self.key = key
+            self.at = at
+        }
+
+        // Earlier builds kept only presets, as `id`.
+        private enum CodingKeys: String, CodingKey { case key, id, at }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            at = try c.decode(Date.self, forKey: .at)
+            key = try c.decodeIfPresent(String.self, forKey: .key) ?? c.decode(UUID.self, forKey: .id).uuidString
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(key, forKey: .key)
+            try c.encode(at, forKey: .at)
+        }
     }
 
     static let key = "presetUsage"
+    static let powerOn = "powerOn"
+    static let powerOff = "powerOff"
     /// Posted after a use is recorded (the iPhone passes it on to the watch).
     static let recorded = Notification.Name("PresetUsage.recorded")
     /// How far back it looks, and how many it keeps.
-    private static let days = 30.0
-    private static let limit = 300
+    private static let days = 60.0
+    private static let limit = 1000
+    /// How much a use counts after this many days: half.
+    private static let halfLife = 14.0
+    /// The spread of each use around its time of day, in minutes.
+    private static let spread = 60.0
 
     static func load(_ defaults: UserDefaults) -> [Use] {
         guard let d = defaults.data(forKey: key) else { return [] }
         return (try? JSONDecoder().decode([Use].self, from: d)) ?? []
     }
 
-    static func record(_ id: UUID, in defaults: UserDefaults, at date: Date = .now) {
-        save(load(defaults) + [Use(id: id, at: date)], in: defaults)
+    static func record(_ key: String, in defaults: UserDefaults, at date: Date = .now) {
+        save(load(defaults) + [Use(key: key, at: date)], in: defaults)
         NotificationCenter.default.post(name: recorded, object: nil)
     }
 
-    /// Adds uses from another device (the iPhone's, on the watch).
-    static func merge(_ uses: [Use], into defaults: UserDefaults) {
-        save(Array(Set(load(defaults) + uses)), in: defaults)
+    /// Adds uses from another device. Returns whether anything was new.
+    @discardableResult
+    static func merge(_ uses: [Use], into defaults: UserDefaults) -> Bool {
+        let had = load(defaults)
+        let all = Set(had + uses)
+        guard all.count != had.count else { return false }
+        save(Array(all), in: defaults)
+        return true
     }
 
     private static func save(_ uses: [Use], in defaults: UserDefaults) {
         let since = Date.now.addingTimeInterval(-days * 86_400)
         let kept = uses.filter { $0.at > since }.sorted { $0.at < $1.at }.suffix(limit)
-        if let d = try? JSONEncoder().encode(Array(kept)) { defaults.set(d, forKey: key) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys // compared byte for byte on the watch
+        if let d = try? encoder.encode(Array(kept)) { defaults.set(d, forKey: key) }
     }
 
-    /// The times in the next day when `preset` (or any preset, if nil) is usually applied: each
-    /// half hour of the day it's been applied in on at least two days, with how many days.
-    static func usualTimes(_ uses: [Use], preset: UUID?, after now: Date = .now,
-                           calendar: Calendar = .current) -> [(start: Date, days: Int)] {
-        var daysBySlot: [Int: Set<DateComponents>] = [:]
-        for use in uses where preset == nil || use.id == preset {
-            let c = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: use.at)
-            guard let h = c.hour, let m = c.minute else { continue }
-            let slot = h * 2 + m / 30
-            daysBySlot[slot, default: []].insert(DateComponents(year: c.year, month: c.month, day: c.day))
+    private static func weight(_ use: Use, now: Date) -> Double {
+        let age = max(0, now.timeIntervalSince(use.at) / 86_400)
+        return pow(0.5, age / halfLife)
+    }
+
+    /// How usual `keys` (any, if nil) are at `time`, from 0: the weighted bumps of past uses at
+    /// that time of day. Nothing until they've been used on at least 3 different days.
+    static func usualness(_ uses: [Use], keys: Set<String>?, at time: Date, now: Date = .now,
+                          calendar: Calendar = .current) -> Double {
+        let mine = uses.filter { keys?.contains($0.key) ?? true }
+        let days = Set(mine.map { calendar.startOfDay(for: $0.at) })
+        guard days.count >= 3 else { return 0 }
+        let t = minuteOfDay(time, calendar)
+        var total = 0.0
+        for use in mine {
+            var d = abs(minuteOfDay(use.at, calendar) - t)
+            d = min(d, 1440 - d) // round the clock: 11 pm and 1 am are 2 hours apart
+            total += weight(use, now: now) * exp(-(d * d) / (2 * spread * spread))
         }
-        let today = calendar.startOfDay(for: now)
-        return daysBySlot.compactMap { slot, days -> (Date, Int)? in
-            guard days.count >= 2 else { return nil }
-            // Put forward from a quarter of an hour before the slot.
-            guard var start = calendar.date(byAdding: .minute, value: slot * 30 - 15, to: today) else { return nil }
-            if start.addingTimeInterval(45 * 60) < now { start = start.addingTimeInterval(86_400) }
-            return (start, days.count)
-        }
-        .sorted { $0.0 < $1.0 }
+        return total
+    }
+
+    /// The presets used most (recent uses counting more), most first.
+    static func mostUsed(_ uses: [Use], now: Date = .now) -> [UUID] {
+        var score: [UUID: Double] = [:]
+        for use in uses { if let id = UUID(uuidString: use.key) { score[id, default: 0] += weight(use, now: now) } }
+        return score.sorted { $0.value > $1.value }.map(\.key)
+    }
+
+    private static func minuteOfDay(_ date: Date, _ calendar: Calendar) -> Double {
+        let c = calendar.dateComponents([.hour, .minute], from: date)
+        return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
     }
 }

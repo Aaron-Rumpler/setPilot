@@ -39,7 +39,10 @@ final class PhoneRelay: NSObject {
         WidgetPublisher.shared.start(model: model) // the widgets and controls (Core/WidgetPublisher.swift)
         // A preset applied here: the watch's Smart Stack learns when (Common/PresetUsage.swift).
         NotificationCenter.default.addObserver(forName: PresetUsage.recorded, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { PhoneRelay.shared.libraryChanged() }
+            MainActor.assumeIsolated {
+                PhoneRelay.shared.libraryChanged()
+                QuickActions.update(Shared.model.library) // most used first
+            }
         }
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self

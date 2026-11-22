@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Home Screen quick actions (touch and hold the app's icon): power, and the first three presets.
+/// Home Screen quick actions (touch and hold the app's icon): power, and your three most used presets.
 @MainActor
 enum QuickActions {
     private static let power = "nz.aaronrumpler.setPilot.power"
@@ -11,7 +11,11 @@ enum QuickActions {
     static func update(_ library: Library) {
         var items = [UIApplicationShortcutItem(type: power, localizedTitle: "Power", localizedSubtitle: "On or off",
                                                icon: UIApplicationShortcutIcon(systemImageName: "power"))]
-        for p in library.presets.prefix(3) {
+        // The three used most (recent uses counting more), then the first presets to make up three.
+        let ranked = PresetUsage.mostUsed(PresetUsage.load(.standard)).compactMap { id in library.presets.first { $0.id == id } }
+        var chosen = Array(ranked.prefix(3))
+        for p in library.presets where chosen.count < 3 && !chosen.contains(where: { $0.id == p.id }) { chosen.append(p) }
+        for p in chosen {
             items.append(UIApplicationShortcutItem(type: preset, localizedTitle: p.name, localizedSubtitle: "Preset",
                                                    icon: UIApplicationShortcutIcon(systemImageName: "square.grid.2x2"),
                                                    userInfo: ["id": p.id.uuidString as NSString]))

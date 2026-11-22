@@ -23,6 +23,16 @@ final class Library {
         cctScales = Self.load(Self.cctScalesKey) ?? [:]
         activeCCTScale = Self.load(Self.activeCCTScaleKey) ?? [:]
         syncWithCloud()
+        // Which scale is in use syncs as a setting (CloudSync).
+        NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] note in
+            guard (note.object as? [String])?.contains(Self.activeCCTScaleKey) == true else { return }
+            MainActor.assumeIsolated {
+                guard let self, let v: [String: UUID] = Self.load(Self.activeCCTScaleKey), v != self.activeCCTScale else { return }
+                self.fromCloud = true
+                self.activeCCTScale = v
+                self.fromCloud = false
+            }
+        }
     }
 
     /// Set while taking a value from iCloud, so it isn't sent straight back.
