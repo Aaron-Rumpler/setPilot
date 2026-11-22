@@ -29,6 +29,7 @@ private struct LightShowScreen: View {
     /// The cue list (an inspector; on iPhone a sheet over the player, so off to start with).
     @AppStorage("lightShowCues") private var showsCues = LightShowScreen.cuesByDefault
     @AppStorage(Flashing.warnKey) private var warnsFlashing = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The transport buttons' size, growing with the text size on iPhone and iPad.
     @ScaledMetric(relativeTo: .title2) private var buttonSize: CGFloat = 28
     #if os(iOS)
@@ -125,7 +126,7 @@ private struct LightShowScreen: View {
                     .accessibilityLabel("Cue: \(label)")
             }
         }
-        .animation(.easeOut(duration: 0.12), value: player.currentCue)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: player.currentCue)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
     }
@@ -319,7 +320,7 @@ private struct LightShowScreen: View {
             }
             .onChange(of: player.currentCue) { _, id in
                 guard let id else { return }
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(id, anchor: .center) }
             }
         }
         .inspectorColumnWidth(min: 220, ideal: 280, max: 420)

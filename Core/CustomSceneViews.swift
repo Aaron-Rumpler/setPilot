@@ -17,6 +17,7 @@ struct CustomSceneEditor: View {
     @State private var showsStep = false
     #endif
     @AppStorage(Flashing.warnKey) private var warnsFlashing = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let binding = sceneBinding {
@@ -202,7 +203,7 @@ struct CustomSceneEditor: View {
             }
             .onChange(of: selected) { _, id in
                 guard let id else { return }
-                withAnimation { proxy.scrollTo(id) }
+                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(id) }
             }
         }
     }
