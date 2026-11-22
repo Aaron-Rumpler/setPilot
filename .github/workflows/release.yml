@@ -1,0 +1,91 @@
+name: Release
+
+# On a version tag (v1.0.0, say), builds the Mac app and puts it on a GitHub release as a DMG.
+#
+# Signed and notarised when these repository secrets are set (a paid Apple developer account):
+#   DEVELOPER_ID_P12       the "Developer ID Application" certificate and key, as a .p12, base64
+#   DEVELOPER_ID_PASSWORD  the .p12's password
+#   DEVELOPMENT_TEAM       your Team ID (10 characters)
+#   NOTARY_APPLE_ID        the Apple ID to notarise with
+#   NOTARY_PASSWORD        an app-specific password for it
+# Without them it's the same ad-hoc build as CI's, which macOS will only open after right-click ›
+# Open (or System Settings › Privacy & Security › Open Anyway), and without the command-line tool's
+# App Group (that needs a team).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-26
+    env:
+      P12: ${{ secrets.DEVELOPER_ID_P12 }}
+      P12_PASSWORD: ${{ secrets.DEVELOPER_ID_PASSWORD }}
+      TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
+      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the commit stamp uses git describe
+      - name: Signing identity
+        id: signing
+        run: |
+          if [ -n "$P12" ] && [ -n "$TEAM" ]; then
+            keychain="$RUNNER_TEMP/release.keychain-db"
+            security create-keychain -p "" "$keychain"
+            security set-keychain-settings -lut 3600 "$keychain"
+            security unlock-keychain -p "" "$keychain"
+            echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain"
+            security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+            echo "signed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Developer ID secrets: an ad-hoc build." >> "$GITHUB_STEP_SUMMARY"
+            echo "signed=no" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build
+        run: |
+          if [ "${{ steps.signing.outputs.signed }}" = yes ]; then
+            xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
+              CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" DEVELOPMENT_TEAM="$TEAM" \
+              OTHER_CODE_SIGN_FLAGS=--timestamp WIZ_ICLOUD=NO build
+          else
+            xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
+              CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= WIZ_ICLOUD=NO build
+          fi
+          codesign --verify --deep --strict --verbose=2 build/Release/setPilot.app
+      - name: Disk image
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = tag ] || version="$(git describe --tags --always)"
+          mkdir -p dmg
+          cp -R build/Release/setPilot.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname setPilot -srcfolder dmg -ov -format UDZO "setPilot-$version.dmg"
+          echo "DMG=setPilot-$version.dmg" >> "$GITHUB_ENV"
+      - name: Notarise
+        if: steps.signing.outputs.signed == 'yes' && env.NOTARY_APPLE_ID != ''
+        run: |
+          codesign --sign "Developer ID Application" --timestamp "$DMG"
+          xcrun notarytool submit "$DMG" --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" \
+            --team-id "$TEAM" --wait
+          xcrun stapler staple "$DMG"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: setPilot-dmg
+          path: ${{ env.DMG }}
+      - name: Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          note="Ad-hoc build: open it with right-click › Open the first time."
+          [ "${{ steps.signing.outputs.signed }}" = yes ] && note="Signed with Developer ID."
+          gh release create "$GITHUB_REF_NAME" "$DMG" --title "setPilot ${GITHUB_REF_NAME#v}" --notes "$note" --verify-tag
