@@ -132,6 +132,7 @@ struct BulbSettingsView: View {
             }
 
             CloudSyncSection()
+            DiagnosticsSection(model: model)
             LibraryTransferSection(model: model)
 
             Section {

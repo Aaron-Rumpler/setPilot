@@ -26,7 +26,10 @@ final class CloudLibrary {
     let progress = CloudProgress()
     private var status: String {
         get { progress.status }
-        set { progress.status = newValue }
+        set {
+            if newValue != progress.status { Log.sync.info("iCloud: \(newValue, privacy: .public)") }
+            progress.status = newValue
+        }
     }
     private var lastSync: Date? {
         get { progress.lastSync }

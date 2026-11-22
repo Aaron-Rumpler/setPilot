@@ -298,6 +298,7 @@ struct SettingsView: View {
             }
 
             CloudSyncSection()
+            DiagnosticsSection(model: model)
             LibraryTransferSection(model: model)
             Section {
                 Button("Import from the WiZ App…") { importingHome = true }

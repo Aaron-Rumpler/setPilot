@@ -220,6 +220,7 @@ final class Model {
         bulb.onError = { [weak self] method, message in
             guard let self else { return }
             appendLog(.failure, method: method ?? "", text: message)
+            Log.bulb.error("\(message, privacy: .public)")
             if let method, BulbAPI.deviceInfo.contains(method) {
                 // A read again that got no answer: flagged, with what an earlier read showed kept.
                 if info[method] == nil { info[method] = JSONText.pretty(["error": message]) }
@@ -300,6 +301,7 @@ final class Model {
         CloudSync.shared.start()
         CloudLibrary.shared.start(model: self)
         CloudDocuments.shared.start()
+        MetricReports.shared.start() // crash and hang reports, for Export Diagnostics
     }
 
     /// Settings from another device (CloudSync) have been written to the defaults: take them.
