@@ -30,7 +30,7 @@ trademark of Signify.
 - **Menu bar item**: a lightbulb (lit inside when the bulb is on) with a panel holding the power switch
   and the same light controls as the window. The app keeps running in the menu bar when the window
   is closed: it has a Dock icon only while a window is open, ⌘Q just closes its windows, and the
-  panel's Quit button really quits. Settings can open it at login, menu bar only.
+  panel's Quit button (or a script's `quit`) really quits. Settings can open it at login, menu bar only.
 - **Bulb picker** in the window and the menu bar panel: opening it searches every IPv4 interface's
   broadcast address (the same `registration` broadcast as
   [pywizlight](https://github.com/sbidy/pywizlight)) and lists the bulbs that answer with their IP,
@@ -200,8 +200,8 @@ The iPhone remembers the bulbs you've used (all of them, until you forget one): 
 from the bulb menu at the top of the main screen, which also has Add Bulb….
 
 **Widgets and controls** (iPhone and Mac):
-- **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. Edit Widget picks
-  which presets it shows, in order.
+- **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. It shows your
+  favourites; Edit Widget picks others, in order.
 - **Bulb:** a small widget with the bulb's state, brighter, dimmer and power, for the Home Screen,
   StandBy and the Mac's desktop.
 - **Lock Screen** (iPhone): a bulb status, with a power toggle on the rectangular size.

@@ -78,7 +78,8 @@ extension Model {
         return ch
     }
 
-    var draftHasChange: Bool { !draftChange.isEmpty }
+    /// Something to send that the bulb would take (not all five channels at 0).
+    var draftHasChange: Bool { !draftChange.isEmpty && !draftChange.allChannelsZero }
 
     /// Roughly what will be sent.
     var draftPreview: String {

@@ -36,7 +36,14 @@ extension LightChange {
     }
 
     /// Something worth saying about this change before sending it, if anything.
+    /// RGBCW with every channel at 0, which the bulb refuses.
+    var allChannelsZero: Bool {
+        if case .rgbcw(0, 0, 0, 0, 0)? = colour { return true }
+        return false
+    }
+
     func note(isOn: Bool?) -> String? {
+        if allChannelsZero { return "The bulb refuses all five channels at 0: raise at least one to send this." }
         if power == false, fade != nil {
             return "The bulb may ignore the fade when switching off and use its own fade-out. To fade out slowly, fade the brightness down instead."
         }

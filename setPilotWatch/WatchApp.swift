@@ -384,11 +384,11 @@ struct PresetEditView: View {
                 Button { confirmingUpdate = true } label: {
                     Label("Update to Current Light", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .disabled(link.snapshot?.canControl != true) // it reads the light
                 Button { link.send(.favourite(preset.id, !preset.isFavourite)) } label: {
                     Label(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites",
                           systemImage: preset.isFavourite ? "star.slash" : "star")
                 }
-                .disabled(link.snapshot?.canControl != true)
                 let i = link.presets.firstIndex { $0.id == presetID } ?? 0
                 Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Up", systemImage: "arrow.up") }
                     .disabled(i == 0)

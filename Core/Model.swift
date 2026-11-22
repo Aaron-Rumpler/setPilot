@@ -114,7 +114,14 @@ final class Model {
     /// that's off has to say so, or it switches on).
     var canControl: Bool { link == .connected && isOn != nil }
     /// Registered for syncPilot pushes.
-    var live = false { didSet { if !live { pushSeen = false } } }
+    var live = false {
+        didSet {
+            guard !live else { return }
+            pushSeen = false
+            // Gone off without a reason given: not still saying they're on (or on the way).
+            if !liveStatus.hasPrefix("Live updates off") { liveStatus = "Live updates off" }
+        }
+    }
     /// A push has arrived since connecting: registration alone doesn't show they get through
     /// (a firewall can block port 38900).
     var pushSeen = false
@@ -402,6 +409,15 @@ final class Model {
     }
 
     private func undoNow() {
+        // Edit › Undo, ⌘Z and shaking come here whatever canUndo says: with the bulb away, the
+        // history is kept (the Undo button still has it) rather than spent on a change that can't go.
+        guard canControl else {
+            status = "The bulb isn't answering, so nothing was undone"
+            if undoManager?.isUndoing == true {
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.registerWithManager(redo: false) } } // back on Edit › Undo
+            }
+            return
+        }
         guard let last = undoHistory.popLast() else { return }
         redoHistory.append(savedLight)
         restoreForUndo(last)
@@ -411,6 +427,10 @@ final class Model {
     }
 
     private func redoNow() {
+        guard canControl else {
+            status = "The bulb isn't answering, so nothing was redone"
+            return
+        }
         guard let next = redoHistory.popLast() else { return }
         undoHistory.append(savedLight)
         restoreForUndo(next)
@@ -522,11 +542,13 @@ final class Model {
     private static func loadSigningKeys() -> [String: String] {
         var keys = SigningKeyStore.all()
         if let old = UserDefaults.standard.dictionary(forKey: signingKeysKey) as? [String: String] {
+            var kept = true
             for (mac, key) in old where keys[mac] == nil {
-                SigningKeyStore.set(key, for: mac)
+                kept = SigningKeyStore.set(key, for: mac) && kept
                 keys[mac] = key
             }
-            UserDefaults.standard.removeObject(forKey: signingKeysKey)
+            // Only once they're all in the Keychain: otherwise they'd be lost at the next launch.
+            if kept { UserDefaults.standard.removeObject(forKey: signingKeysKey) }
         }
         SharedStore.defaults.removeObject(forKey: SharedStore.signingKeyKey) // the widgets' old copy
         return keys
@@ -853,6 +875,7 @@ final class Model {
         discovered = []
         discoveryNote = nil
         if await Net.requestLocalNetworkAccess() == .denied {
+            localNetworkDenied = true // the help, with its Open Settings button
             discoveryNote = Self.localNetworkHelp
             return []
         }
@@ -1413,8 +1436,8 @@ final class Model {
         return CCTScale.bulbDefault(cctRange: cctRange, renderFactor: renderFactor)
     }
 
-    /// Relative brightness (`dimDelta`): the bulb adds it to its own level, so concurrent changes
-    /// from elsewhere aren't overwritten.
+    /// Brighter or dimmer by a step, from the level as setPilot last knew it (sent as the new
+    /// level, so a change from elsewhere it hasn't heard of yet is overwritten).
     func adjustDimming(by delta: Int) {
         guard delta != 0 else { refusal = nil; return } // nothing to do: no earlier reason applies
         noteUndoPoint()
@@ -1894,5 +1917,10 @@ extension Model {
 
 /// What a signing key is, for the places that set one.
 enum SigningHelp {
-    static let text = "Newer firmware can refuse unsigned changes. Its key is the home's udp_signing_key, from the WiZ app's export of the home for local integration. With a key, setPilot signs every request to this bulb (but not the console's raw messages). It's kept on this device only."
+    #if WIZ_ICLOUD
+    private static let kept = "It syncs to your other devices through iCloud, encrypted."
+    #else
+    private static let kept = "It's kept on this device only."
+    #endif
+    static let text = "Newer firmware can refuse unsigned changes. Its key is the home's udp_signing_key, from the WiZ app's export of the home for local integration. With a key, setPilot signs every request to this bulb (but not the console's raw messages). " + kept
 }

@@ -386,6 +386,24 @@ final class LightShowPlayer {
 
     private func ended() {
         isPlaying = false
+        // Cues the media ended before reaching (with a delay at or below 0 the show runs behind
+        // the media, and a cue at the very end may fall after the last tick): sent now, as they'd
+        // have been, unless the light's put back anyway.
+        if !restores, sentUpTo != nil, let show, nextCue < show.cues.count {
+            let end = duration + max(delay, 0) / 1000 + Self.slack
+            let next = show.cues[nextCue...].firstIndex { $0.time > end } ?? show.cues.count
+            if next > nextCue {
+                let due = show.cues[nextCue..<next]
+                nextCue = next
+                currentCue = next - 1
+                if due.count == 1, let cue = due.first {
+                    send(cue.pilot)
+                } else {
+                    sendState(LightShow.state(after: due), trans: due.last?.pilot["trans"])
+                }
+                light = LightShow.state(after: show.cues[..<next])
+            }
+        }
         restore()
         #if os(iOS)
         LightShowLiveActivity.shared.end()

@@ -48,7 +48,7 @@ func takeFlag(_ name: String) -> Bool {
 func takeOption(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name) else { return nil }
     guard i + 1 < args.count else {
-        if args.contains("--json") {
+        if CommandLine.arguments.contains("--json") { // taken out of args already
             print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) needs a value.\"}}")
         } else {
             FileHandle.standardError.write(Data("setpilot: \(name) needs a value\n".utf8))
@@ -152,6 +152,24 @@ default:
     badArguments("Unknown command “\(verb)”.")
 }
 
+// An option the command doesn't use is a mistake, not something to drop without a word.
+let colourVerbs: Set = ["colour", "color", "rgb", "rgbcw", "temp", "temperature", "kelvin", "scene", "custom", "custom-scene", "set"]
+let optionUse: [(String, Bool, Set<String>)] = [
+    ("--on", onFlag, colourVerbs),
+    ("--scale", scaleOption != nil, ["temp", "temperature", "kelvin", "set"]),
+    ("--speed", speedOption != nil, ["scene", "set"]),
+    ("--rgb", rgbOption != nil, ["set"]), ("--temp", tempOption != nil, ["set"]),
+    ("--scene", sceneOption != nil, ["set"]), ("--custom", customOption != nil, ["set"]),
+    ("--brightness", brightnessOption != nil, ["set"]),
+    ("--fade", fadeOption != nil, colourVerbs.union(["on", "off", "toggle", "brightness", "dim", "dimming", "brighter", "dimmer", "speed", "preset"])),
+]
+for (name, given, verbs) in optionUse where given && !verbs.contains(verb) {
+    badArguments("\(name) doesn't go with \(verb).")
+}
+// Checked before the app's reached (and perhaps launched).
+let fade = fadeOption.map { int($0, "The fade") }
+if let fade, !(0...86_400_000).contains(fade) { badArguments("The fade is 0–86400000 ms (a day).") }
+
 // MARK: Talking to the app
 
 /// The setPilot.app this tool is inside (Contents/Helpers/setpilot), following a symlink to it.
@@ -216,11 +234,14 @@ if !watching {
     var wait = timeval(tv_sec: 30, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
 }
-let request = Array((encode(ScriptRequest(command: command, fade: fadeOption.map { int($0, "The fade") }, watch: watching ? true : nil)) + "\n").utf8)
+let request = Array((encode(ScriptRequest(command: command, fade: fade, watch: watching ? true : nil)) + "\n").utf8)
 // write(2) and read(2), not FileHandle: its methods raise (an abort, not an exit code) on an error.
 guard request.withUnsafeBytes({ Darwin.write(fd, $0.baseAddress, $0.count) }) == request.count else {
     fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection."))
 }
+
+/// The app didn't answer in time (rather than closing the connection).
+var timedOut = false
 
 /// Lines from the app, as they come.
 func lines(_ each: (Data) -> Bool) {
@@ -228,6 +249,7 @@ func lines(_ each: (Data) -> Bool) {
     var chunk = [UInt8](repeating: 0, count: 4096)
     while true {
         let n = read(fd, &chunk, chunk.count)
+        if n < 0, errno == EAGAIN || errno == EWOULDBLOCK { timedOut = true }
         if n <= 0 { return } // the app closed it (or didn't answer in time)
         buffer.append(contentsOf: chunk[0..<n])
         while let nl = buffer.firstIndex(of: 0x0A) {
@@ -289,7 +311,10 @@ lines { data in
     return false
 }
 guard let result = answer else {
-    fail(ScriptError(code: .notAnswering, message: "The setPilot app didn't answer in time (the change may still go through)."))
+    if timedOut {
+        fail(ScriptError(code: .notAnswering, message: "The setPilot app didn't answer in time (the change may still go through)."))
+    }
+    fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection without an answer (did it quit, or is it a different version?)."))
 }
 if let error = result.error { fail(error) }
 if json {

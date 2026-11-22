@@ -31,7 +31,7 @@ struct SetPilotApp: App {
     }
 
     var body: some Scene {
-        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard().accountSwitchPrompt().incomingItemsPrompt(model).householdInvitationPrompt() }
+        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard(outside: true).accountSwitchPrompt().incomingItemsPrompt(model).householdInvitationPrompt() }
             .windowResizability(.contentSize)
             // setpilot:// links go to the app delegate, not to opening this window.
             .handlesExternalEvents(matching: [])
@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #if WIZ_ICLOUD
     /// An invitation to a household library, opened from Messages or Mail.
     func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
-        CloudLibrary.shared.progress.invitation = metadata
+        CloudLibrary.shared.offer(metadata)
         HandoffRouter.shared.open(.controls) // the main window, where it's asked
     }
     #endif
@@ -187,12 +187,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Really quit from the panel's Quit button, and when macOS quits apps for logout, restart or
-        // shut down (its quit event carries a reason, kAEQuitReason 'why?'). Any other quit, such as
-        // ⌘Q or the Dock icon's Quit, just closes the windows and leaves the menu bar item.
+        // Really quit from the panel's Quit button, when macOS quits apps for logout, restart or
+        // shut down (its quit event carries a reason, kAEQuitReason 'why?'), and when a script or
+        // another app asks (osascript's quit, an installer's). ⌘Q and the Dock icon's Quit just
+        // close the windows and leave the menu bar item.
+        let event = NSAppleEventManager.shared().currentAppleEvent
         let quitReason: AEKeyword = 0x7768_793F // 'why?'
-        let systemQuit = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: quitReason) != nil
-        if Self.reallyQuit || systemQuit { return .terminateNow }
+        let systemQuit = event?.attributeDescriptor(forKeyword: quitReason) != nil
+        let senderPID: AEKeyword = 0x7370_6964 // 'spid', keySenderPIDAttr
+        let sender = event?.attributeDescriptor(forKeyword: senderPID).map { pid_t($0.int32Value) }
+        let scripted = sender.map { $0 != ProcessInfo.processInfo.processIdentifier
+            && NSRunningApplication(processIdentifier: $0)?.bundleIdentifier != "com.apple.dock" } ?? false
+        if Self.reallyQuit || systemQuit || scripted { return .terminateNow }
         closeWindows()
         return .terminateCancel
     }
@@ -202,8 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = Shared.model
         let menu = NSMenu()
         menu.autoenablesItems = false // the items say for themselves whether they can be used
-        let power = NSMenuItem(title: model.isOn == true ? "Switch Off" : "Switch On", action: #selector(dockPower), keyEquivalent: "")
+        let power = NSMenuItem(title: model.isOn == true ? "Switch Off" : "Switch On", action: #selector(dockPower(_:)), keyEquivalent: "")
         power.target = self
+        power.representedObject = model.isOn != true // what the title says, even if the light changes meanwhile
         power.isEnabled = model.canControl
         menu.addItem(power)
         let presets = model.library.presets.favourites
@@ -224,9 +231,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    @objc private func dockPower() {
+    @objc private func dockPower(_ item: NSMenuItem) {
         let model = Shared.model
-        model.power(model.isOn != true)
+        model.power(item.representedObject as? Bool ?? (model.isOn != true))
     }
 
     @objc private func dockPreset(_ item: NSMenuItem) {

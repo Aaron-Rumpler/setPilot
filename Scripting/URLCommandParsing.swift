@@ -159,7 +159,15 @@ enum URLCommands {
                 extra = [URLQueryItem(name: "state", value: String(decoding: data, as: UTF8.self))]
             }
         }
-        callback.queryItems = (callback.queryItems ?? []) + extra
+        // Encoded here, "+", "&" and "=" too: URLComponents leaves a "+" as it is, which a page
+        // reading the query (as setPilot's own links are read) would take for a space.
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=")
+        let encoded = extra.map { item in
+            URLQueryItem(name: item.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? item.name,
+                         value: item.value?.addingPercentEncoding(withAllowedCharacters: allowed))
+        }
+        callback.percentEncodedQueryItems = (callback.percentEncodedQueryItems ?? []) + encoded
         return callback.url
     }
 }

@@ -73,14 +73,16 @@ private struct LightShowScreen: View {
 
     /// Opens a show and its media (the last ones, or another device's), and goes to a place in it.
     private func openLast(media: URL?, show: URL?, at position: Double?) {
-        if let media { player.openMedia(media) }
-        if let show { player.openShow(show) }
-        if let position, position > 0 {
+        Task {
+            // Not downloaded here yet (from another device): opened once it's down.
+            if let media { await LastShow.downloaded(media) }
+            if let show { await LastShow.downloaded(show) }
+            if let media { player.openMedia(media) }
+            if let show { player.openShow(show) }
+            guard let position, position > 0 else { return }
             // Once the media's length is known (seeking before then is clamped to the start).
-            Task {
-                for _ in 0..<50 where player.duration == 0 { try? await Task.sleep(for: .milliseconds(100)) }
-                player.seek(to: position)
-            }
+            for _ in 0..<50 where player.duration == 0 { try? await Task.sleep(for: .milliseconds(100)) }
+            player.seek(to: position)
         }
     }
 

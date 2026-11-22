@@ -59,6 +59,9 @@ final class URLCommandTests: XCTestCase {
         let err = try XCTUnwrap(URLCommands.callback(for: url, result: ScriptResult(error: ScriptError(code: .notAnswering, message: "No"))))
         XCTAssertEqual(err.host(), "err")
         XCTAssertTrue(err.absoluteString.contains("errorCode=not-answering"))
+        // A "+" is encoded, so a page reading the query doesn't take it for a space.
+        let plus = try XCTUnwrap(URLCommands.callback(for: url, result: ScriptResult(error: ScriptError(code: .notFound, message: "No Red+Blue"))))
+        XCTAssertTrue(plus.absoluteString.contains("Red%2BBlue"))
         XCTAssertNil(URLCommands.callback(for: URL(string: "setpilot://get")!, result: ScriptResult(state: state)))
     }
 }

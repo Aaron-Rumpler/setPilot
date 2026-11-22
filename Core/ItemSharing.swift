@@ -54,14 +54,16 @@ struct SharedItem: Transferable {
 final class IncomingItems {
     static let shared = IncomingItems()
     var pending: LibraryFile?
+    /// Why something opened here couldn't be added.
+    var problem: String?
 
     /// From a setpilot://import link.
     func take(link url: URL) {
         guard let b64 = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "item" })?.value
-        else { return }
+        else { problem = "That link has nothing to add in it."; return }
         var s = b64.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         while s.count % 4 != 0 { s += "=" }
-        guard let data = Data(base64Encoded: s) else { return }
+        guard let data = Data(base64Encoded: s) else { problem = "That link is incomplete: it may have been cut short."; return }
         take(data: data)
     }
 
@@ -69,11 +71,23 @@ final class IncomingItems {
     func take(file url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url) { take(data: data) }
+        do {
+            take(data: try Data(contentsOf: url))
+        } catch {
+            problem = "Couldn't open “\(url.lastPathComponent)”: \(error.localizedDescription)"
+        }
     }
 
     private func take(data: Data) {
-        guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data), file.setPilotLibrary <= 1 else { return }
+        guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
+            problem = "That isn't a setPilot preset, scene or library."
+            return
+        }
+        // A later format may mean something else by the same keys: don't guess.
+        guard file.setPilotLibrary <= 1 else {
+            problem = "That's from a newer version of setPilot: update setPilot here to add it."
+            return
+        }
         pending = file
     }
 
@@ -91,6 +105,8 @@ extension View {
 
 private struct IncomingItemsPrompt: ViewModifier {
     let model: Model
+    /// The text kept while the alert closes (problem is cleared first).
+    @State private var shownProblem = ""
 
     func body(content: Content) -> some View {
         let incoming = IncomingItems.shared
@@ -111,6 +127,12 @@ private struct IncomingItemsPrompt: ViewModifier {
             } else {
                 Text("\(incoming.summary).")
             }
+        }
+        .onChange(of: incoming.problem) { _, text in if let text { shownProblem = text } }
+        .alert("Couldn't add it", isPresented: Binding(get: { incoming.problem != nil }, set: { if !$0 { incoming.problem = nil } })) {
+            Button("OK") { incoming.problem = nil }
+        } message: {
+            Text(incoming.problem ?? shownProblem)
         }
     }
 

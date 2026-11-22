@@ -140,7 +140,7 @@ struct CCTScaleEditor: View {
                     }
                     .disabled(scale.points.count >= 32 || scale.extendedDownwards() == nil)
                 } footer: {
-                    Text("Between points, each channel changes in a straight line with kelvin, as in the bulb's own table, so a scale made from the bulb's default gives exactly what its temperature setting gives. Extending continues the line between the two lowest points until red is full, as WiZ's table would (about 1540 K on this bulb's default). Changes apply the next time the kelvin is set.")
+                    Text("Between points, each channel changes in a straight line with kelvin, as in the bulb's own table, so a scale made from the bulb's default gives exactly what its temperature setting gives. Extending continues the line between the two lowest points until red is full, as WiZ's table would (on the ESP25_SHRGB_01's default, at about 1540 K). Changes apply the next time the kelvin is set.")
                 }
                 ForEach(scale.sorted) { point in
                     if let p = pointBinding(binding, point.id) {

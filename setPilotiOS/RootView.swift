@@ -50,7 +50,7 @@ struct RootView: View {
             }
         }
         .providesUndo(to: model) // shake to undo a light change
-        .flashingGuard()
+        .flashingGuard(outside: true)
         .accountSwitchPrompt()
         .incomingItemsPrompt(model)
         .householdInvitationPrompt()

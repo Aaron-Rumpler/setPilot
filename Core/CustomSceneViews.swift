@@ -87,7 +87,7 @@ struct CustomSceneEditor: View {
                 } header: {
                     Text("Steps")
                 } footer: {
-                    Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Dimming above.")
+                    Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Brightness above.")
                 }
             }
             .formStyle(.grouped)

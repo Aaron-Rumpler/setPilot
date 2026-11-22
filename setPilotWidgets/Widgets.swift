@@ -62,10 +62,10 @@ struct BulbProvider: TimelineProvider {
 
 // MARK: Presets (Home Screen)
 
-/// Which presets the Presets widget shows (Edit Widget): none chosen shows them all, in order.
+/// Which presets the Presets widget shows (Edit Widget): none chosen shows the favourites, in order.
 struct PresetsWidgetConfiguration: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Presets"
-    static let description = IntentDescription("Choose the presets to show, in order; none shows them all.")
+    static let description = IntentDescription("Choose the presets to show, in order; none shows your favourites.")
 
     @Parameter(title: "Presets")
     var presets: [PresetEntity]?
@@ -87,7 +87,7 @@ struct PresetsProvider: AppIntentTimelineProvider {
 
     private func entry(_ configuration: PresetsWidgetConfiguration) -> BulbEntry {
         let all = SharedStore.presets
-        // None chosen: the favourites (or all, with none starred).
+        // None chosen: the favourites.
         var seen = Set<UUID>() // a preset chosen twice shows once
         let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }.filter { seen.insert($0.id).inserted }
         return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all.favourites : chosen)
@@ -101,7 +101,7 @@ struct PresetsWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Presets")
-        .description("Your setPilot presets (all, or the ones you choose), with the bulb's power and brightness.")
+        .description("Your favourite setPilot presets (or the ones you choose), with the bulb's power and brightness.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

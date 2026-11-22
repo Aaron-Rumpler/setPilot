@@ -55,7 +55,7 @@ final class PhoneSceneDelegate: NSObject, UIWindowSceneDelegate {
         }
         #if WIZ_ICLOUD
         if let metadata = connectionOptions.cloudKitShareMetadata {
-            MainActor.assumeIsolated { CloudLibrary.shared.progress.invitation = metadata }
+            MainActor.assumeIsolated { CloudLibrary.shared.offer(metadata) }
         }
         #endif
     }
@@ -63,7 +63,7 @@ final class PhoneSceneDelegate: NSObject, UIWindowSceneDelegate {
     #if WIZ_ICLOUD
     /// An invitation to a household library, opened from Messages or Mail.
     func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
-        MainActor.assumeIsolated { CloudLibrary.shared.progress.invitation = cloudKitShareMetadata }
+        MainActor.assumeIsolated { CloudLibrary.shared.offer(cloudKitShareMetadata) }
     }
     #endif
 

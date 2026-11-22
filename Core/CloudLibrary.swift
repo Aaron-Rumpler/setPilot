@@ -48,7 +48,7 @@ final class CloudLibrary {
 
     /// One synced thing as it is here: its encoded value, its place in its list, and for CCT
     /// scales the bulb (MAC) it belongs to.
-    struct Item: Equatable, Sendable {
+    struct Item: Codable, Equatable, Sendable {
         var data: Data
         var order: Double
         var mac: String?
@@ -84,6 +84,12 @@ final class CloudLibrary {
         var seeded = false
         /// A household library shared with this account (iCloud sharing), synced instead of its own.
         var shared: SharedZone?
+        /// iCloud is now another Apple ID and the question about this device's library is still
+        /// open: nothing is offered to the account until it's answered (kept over a relaunch).
+        var switchPending: Bool?
+        /// iCloud's versions this build can't read (from a newer build), by record name: neither
+        /// taken nor overwritten nor deleted here, and tried again at launch (after an update).
+        var unreadable: [String: Item]?
     }
 
     struct SharedZone: Codable {
@@ -120,11 +126,14 @@ final class CloudLibrary {
             saved = s
         }
         makeEngine()
-        if !saved.seeded {
+        if saved.switchPending == true {
+            progress.accountSwitched = true
+        } else if !saved.seeded {
             seed()
         } else {
             requeueUnsent()
         }
+        retryUnreadable()
         Task { await findHousehold() }
         #endif
     }
@@ -134,11 +143,16 @@ final class CloudLibrary {
         #if WIZ_ICLOUD
         guard let engine, !applying else { return }
         // Not offered to iCloud since its data was deleted: everything goes, not just this kind.
-        guard saved.seeded else { seed(); return }
+        guard saved.seeded else {
+            if saved.switchPending != true { seed() } // not before the question's answered
+            return
+        }
         var pending: [CKSyncEngine.PendingRecordZoneChange] = []
         let now = current(kind)
+        let unreadable = saved.unreadable ?? [:]
         for (id, item) in now {
             let name = Self.recordName(kind, id)
+            guard unreadable[name] == nil else { continue } // iCloud's is newer than this build
             let hash = Self.hash(item)
             if var meta = saved.meta[name] {
                 guard meta.hash != hash || meta.order != item.order else { continue }
@@ -153,7 +167,7 @@ final class CloudLibrary {
             pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
         }
         let prefix = kind.rawValue + "."
-        for (name, meta) in saved.meta where name.hasPrefix(prefix) && now[meta.id] == nil {
+        for (name, meta) in saved.meta where name.hasPrefix(prefix) && now[meta.id] == nil && unreadable[name] == nil {
             saved.meta.removeValue(forKey: name)
             saved.deleting.insert(name)
             pending.append(.deleteRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
@@ -172,6 +186,7 @@ final class CloudLibrary {
         progress.accountSwitched = false
         #if WIZ_ICLOUD
         guard let model else { return }
+        saved.switchPending = nil
         switch choice {
         case .merge:
             seed()
@@ -188,8 +203,16 @@ final class CloudLibrary {
         case .replace:
             _ = model
             clearLibraryHere()
+            // Everything fetched afresh: what the account sent while the question was open is
+            // already marked as taken, and would otherwise never come back (or, missing here, be
+            // deleted from iCloud by the next change).
+            saved.meta = [:]
+            saved.deleting = []
+            saved.unreadable = nil
+            saved.state = nil
             saved.seeded = true
             persist()
+            makeEngine()
             Task { try? await engine?.fetchChanges() }
         }
         #endif
@@ -286,7 +309,16 @@ final class CloudLibrary {
         return saved
     }
 
-    /// An invitation accepted (opened from Messages or Mail): join that household's library,
+    /// An invitation opened here (from Messages or Mail): asked about, unless it's this account's own.
+    func offer(_ metadata: CKShare.Metadata) {
+        guard metadata.participantRole != .owner else {
+            status = "That's the invitation to your own library"
+            return
+        }
+        progress.invitation = metadata
+    }
+
+    /// An invitation accepted: join that household's library,
     /// adding this device's library to it, or replacing this device's with it.
     func join(_ metadata: CKShare.Metadata, addMine: Bool) async {
         do {
@@ -296,36 +328,47 @@ final class CloudLibrary {
             return
         }
         let zone = metadata.share.recordID.zoneID
-        guard zone.ownerName != CKCurrentUserDefaultName else { return } // our own share
+        guard metadata.participantRole != .owner, zone.ownerName != CKCurrentUserDefaultName else { return } // our own share
         if !addMine { clearLibraryHere() }
         switchLibrary(to: SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName))
     }
 
     /// A household this account joined on another of its devices: an invitation is accepted for
     /// the whole account, but only the device that accepted it switches there. The others find
-    /// the household's zone in the shared database, and join it with what they have.
+    /// the household's zone in the shared database and take its library in place of theirs: theirs
+    /// is the account's, which the device that joined already added (or chose to replace).
     private func findHousehold() async {
         guard saved.shared == nil, engine != nil,
               let zones = try? await container.sharedCloudDatabase.allRecordZones(),
               let zone = zones.first(where: { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName })
         else { return }
         guard saved.shared == nil else { return } // joined meanwhile
-        switchLibrary(to: SharedZone(zoneName: zone.zoneID.zoneName, ownerName: zone.zoneID.ownerName))
+        clearLibraryHere()
+        switchLibrary(to: SharedZone(zoneName: zone.zoneID.zoneName, ownerName: zone.zoneID.ownerName), offerMine: false)
     }
 
     /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).
     func leaveHousehold() async {
         guard saved.shared != nil else { return }
-        _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
+        do {
+            _ = try await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
+        } catch let error as CKError where error.code == .zoneNotFound || error.code == .unknownItem {
+            // Already gone (the owner stopped sharing): left all the same.
+        } catch {
+            // Still a member (offline, say): staying, or the next launch would join again.
+            status = "Couldn't leave the household: " + Self.describe(error)
+            return
+        }
         switchLibrary(to: nil)
     }
 
     /// Syncs another library from now on: a new engine on its database, with what's here offered to it.
-    private func switchLibrary(to shared: SharedZone?) {
+    private func switchLibrary(to shared: SharedZone?, offerMine: Bool = true) {
         saved = Saved(shared: shared)
+        if !offerMine { saved.seeded = true }
         persist()
         makeEngine()
-        seed()
+        if offerMine { seed() } else { ensureZone() }
     }
 
     private func clearLibraryHere() {
@@ -483,7 +526,9 @@ final class CloudLibrary {
     private func record(for id: CKRecord.ID) -> CKRecord? {
         guard let kind = Self.kind(of: id.recordName), let meta = saved.meta[id.recordName],
               let item = current(kind)[meta.id] else { return nil }
-        let record = meta.systemFields.flatMap(Self.record(fromSystemFields:)) ?? CKRecord(recordType: kind.rawValue, recordID: id)
+        // System fields from another zone (kept from before a switch of library) would save there.
+        let kept = meta.systemFields.flatMap(Self.record(fromSystemFields:)).flatMap { $0.recordID == id ? $0 : nil }
+        let record = kept ?? CKRecord(recordType: kind.rawValue, recordID: id)
         record.encryptedValues["data"] = item.data
         record.encryptedValues["mac"] = item.mac
         record["order"] = item.order
@@ -552,11 +597,20 @@ final class CloudLibrary {
             persist()
 
         case .accountChange(let e):
+            // A household belongs to the account that joined it: another account (or none) goes
+            // back to its own library, on the private database.
+            if saved.shared != nil {
+                saved = Saved()
+                persist()
+                makeEngine()
+            }
             switch e.changeType {
             case .signIn: reset(reseed: true)
             // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
             case .switchAccounts:
                 reset(reseed: false)
+                saved.switchPending = true
+                persist()
                 progress.accountSwitched = true
             case .signOut: reset(reseed: false); status = "Not signed in to iCloud"
             @unknown default: break
@@ -587,18 +641,19 @@ final class CloudLibrary {
             for d in e.deletions where d.recordID.zoneID == zoneID {
                 let name = d.recordID.recordName
                 saved.deleting.remove(name)
+                saved.unreadable?.removeValue(forKey: name)
                 guard let kind = Self.kind(of: name), let id = itemID(name, kind) else { continue }
                 saved.meta.removeValue(forKey: name)
                 changes[kind, default: [:]].updateValue(nil, forKey: id)
             }
-            for (kind, c) in changes { apply(kind, c) }
+            for (kind, c) in changes { apply(kind, readable(kind, c)) }
             persist()
 
         case .willSendChanges:
             sendFailed = false
 
         case .sentRecordZoneChanges(let e):
-            for record in e.savedRecords {
+            for record in e.savedRecords where record.recordID.zoneID == zoneID {
                 saved.meta[record.recordID.recordName]?.systemFields = Self.systemFields(of: record)
                 saved.meta[record.recordID.recordName]?.unsent = false
             }
@@ -616,6 +671,10 @@ final class CloudLibrary {
                     if let server = failure.error.serverRecord, let (kind, itemID, item) = take(server) {
                         changes[kind, default: [:]].updateValue(item, forKey: itemID)
                     }
+                case .zoneNotFound where saved.shared != nil:
+                    // The household's gone (its owner stopped sharing): back to this account's own.
+                    switchLibrary(to: nil)
+                    return
                 case .zoneNotFound:
                     ensureZone()
                     retry.append(.saveRecord(id))
@@ -632,7 +691,7 @@ final class CloudLibrary {
                 }
             }
             if !retry.isEmpty { engine?.state.add(pendingRecordZoneChanges: retry) }
-            for (kind, c) in changes { apply(kind, c) }
+            for (kind, c) in changes { apply(kind, readable(kind, c)) }
             persist()
 
         case .didFetchChanges, .didSendChanges:
@@ -641,6 +700,47 @@ final class CloudLibrary {
         default:
             break
         }
+    }
+
+    /// Whether this build can read an item of iCloud's (a newer build's may have more in it).
+    private static func canRead(_ kind: Kind, _ item: Item) -> Bool {
+        let d = JSONDecoder()
+        switch kind {
+        case .preset: return (try? d.decode(Preset.self, from: item.data)) != nil
+        case .customScene: return (try? d.decode(CustomScene.self, from: item.data)) != nil
+        case .cctScale: return (try? d.decode(CCTScale.self, from: item.data)) != nil
+        case .knownBulb: return (try? d.decode(KnownBulb.self, from: item.data)) != nil
+        case .bulbName, .signingKey: return true
+        }
+    }
+
+    /// The changes this build can read; the others are set aside (`unreadable`), so they aren't
+    /// taken for deletions here, and nothing here overwrites or deletes them in iCloud.
+    private func readable(_ kind: Kind, _ changes: [String: Item?]) -> [String: Item?] {
+        var out: [String: Item?] = [:]
+        for (id, change) in changes {
+            let name = Self.recordName(kind, id)
+            if let item = change, !Self.canRead(kind, item) {
+                saved.unreadable = (saved.unreadable ?? [:]).merging([name: item]) { $1 }
+                continue
+            }
+            saved.unreadable?.removeValue(forKey: name)
+            out[id] = change
+        }
+        return out
+    }
+
+    /// Items set aside as unreadable that this build can read (it's been updated): taken now.
+    private func retryUnreadable() {
+        guard let unreadable = saved.unreadable, !unreadable.isEmpty else { return }
+        var changes: [Kind: [String: Item?]] = [:]
+        for (name, item) in unreadable {
+            guard let kind = Self.kind(of: name), let id = saved.meta[name]?.id, Self.canRead(kind, item) else { continue }
+            saved.unreadable?.removeValue(forKey: name)
+            changes[kind, default: [:]].updateValue(item, forKey: id)
+        }
+        for (kind, c) in changes { apply(kind, c) }
+        persist()
     }
 
     private static func describe(_ error: Error) -> String {
@@ -660,11 +760,16 @@ final class CloudLibrary {
 #if WIZ_ICLOUD
 extension CloudLibrary: CKSyncEngineDelegate {
     nonisolated func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
-        await MainActor.run { self.handle(event) }
+        await MainActor.run {
+            // A library switched from (household joined or left) may still be finishing a round.
+            guard syncEngine === self.engine else { return }
+            self.handle(event)
+        }
     }
 
     nonisolated func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext,
                                                syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {
+        guard await MainActor.run(body: { syncEngine === self.engine }) else { return nil }
         let scope = context.options.scope
         let changes = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { id in

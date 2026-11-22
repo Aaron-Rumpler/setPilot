@@ -179,7 +179,7 @@ struct NumberPad: View {
                     .font(.title3.monospacedDigit())
                     .foregroundStyle(valid || text.isEmpty ? Color.primary : Color.orange)
                     .onChange(of: text) { _, new in
-                        let digits = String(new.filter(\.isNumber).prefix(6))
+                        let digits = String(new.filter(\.isNumber).prefix(maxDigits))
                         if digits != new { text = digits }
                         // The Crown carries on from what's typed.
                         if let number, valid, crown != number {
@@ -272,12 +272,15 @@ struct NumberPad: View {
         replace = true
     }
 
+    /// As many digits as the largest value has (a fade's up to 86400000 ms).
+    private var maxDigits: Int { max(String(Int(range.upperBound)).count, 1) }
+
     private func key(_ digit: String) -> some View {
         Button(digit) {
             if replace {
                 text = digit
                 replace = false
-            } else if text.count < 6 {
+            } else if text.count < maxDigits {
                 text += digit
             }
         }

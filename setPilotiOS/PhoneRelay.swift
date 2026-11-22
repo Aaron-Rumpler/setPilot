@@ -81,7 +81,18 @@ final class PhoneRelay: NSObject {
     /// their turn to find out again: a burst of taps during an outage would queue up, then either
     /// time out on the watch or land late, long after they were meant. They're answered "not
     /// answering" at once instead (a connect keeps being tried meanwhile).
-    private var notAnsweringSince: Date?
+    private var notAnsweringSince: Date? {
+        didSet { notAnsweringAddress = notAnsweringSince == nil ? nil : UserDefaults.standard.string(forKey: Model.addressKey) }
+    }
+    /// The bulb that wasn't answering: another one (chosen here or on the watch) is worth waiting for.
+    private var notAnsweringAddress: String?
+
+    /// Just found not answering, and still the same bulb.
+    private var recentlyNotAnswering: Bool {
+        guard let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10,
+              notAnsweringAddress == UserDefaults.standard.string(forKey: Model.addressKey) else { return false }
+        return true
+    }
     private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
 
     /// The bulb can take a command now, waiting (up to `timeout`) only if it hasn't just been
@@ -95,7 +106,7 @@ final class PhoneRelay: NSObject {
             _ = await model.waitUntilControllable(timeout: timeout)
             return true
         }
-        if let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10 {
+        if recentlyNotAnswering {
             _ = model.ensureLive()
             return false
         }
@@ -111,7 +122,8 @@ final class PhoneRelay: NSObject {
         guard let model else { return .now(LightSnapshot()) }
         if let (scripted, fade) = Self.scripted(command) {
             // Just found not answering: said at once, not after waiting again (a burst of taps).
-            if !model.canControl, let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10 {
+            // Not for switching bulbs or listing, which don't need this one.
+            if !model.canControl, recentlyNotAnswering, scripted.needsBulb {
                 _ = model.ensureLive()
                 return .scripted(ScriptResult(state: Scripting.state(of: model),
                                               error: ScriptError(code: .notAnswering, message: Self.notAnswering)))
@@ -384,5 +396,15 @@ extension PhoneRelay: WCSessionDelegate {
         if let error { response[WatchKey.error] = error }
         if let code { response[WatchKey.errorCode] = code }
         message.reply(response)
+    }
+}
+
+private extension ScriptCommand {
+    /// Whether it needs the chosen bulb to answer (switching bulbs and listing don't).
+    var needsBulb: Bool {
+        switch self {
+        case .switchBulb, .list: false
+        default: true
+        }
     }
 }

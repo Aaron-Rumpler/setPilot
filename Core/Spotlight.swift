@@ -23,7 +23,13 @@ struct OpenCustomSceneIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        _ = try? await script(.customScene(target.id.uuidString, power: true))
+        // Started by a person, so asked about first if it flashes (in the app, which this opens).
+        let model = Shared.model
+        if let scene = model.library.customScene(target.id), scene.flashes, Flashing.asks {
+            FlashingRequests.shared.ask(scene.name) { _ = model.playCustom(scene, switchOn: true) }
+            return .result()
+        }
+        _ = try await script(.customScene(target.id.uuidString, power: true))
         return .result()
     }
 }
@@ -40,7 +46,13 @@ struct OpenPresetIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        _ = try? await script(.preset(target.id.uuidString))
+        let model = Shared.model
+        if let preset = model.library.presets.first(where: { $0.id == target.id }),
+           model.library.customSceneOf(preset.colour)?.flashes == true, Flashing.asks {
+            FlashingRequests.shared.ask(preset.name) { _ = model.apply(preset) }
+            return .result()
+        }
+        _ = try await script(.preset(target.id.uuidString))
         return .result()
     }
 }

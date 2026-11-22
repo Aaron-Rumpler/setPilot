@@ -23,12 +23,39 @@ extension EnvironmentValues {
     }
 }
 
+/// A scene or preset started from outside the app's windows (Spotlight) that flashes: asked about
+/// in the main window (the one guard given `outside`).
+@MainActor @Observable
+final class FlashingRequests {
+    static let shared = FlashingRequests()
+    struct Request {
+        let id = UUID()
+        let name: String
+        let action: () -> Void
+    }
+    var request: Request?
+
+    func ask(_ name: String, _ action: @escaping () -> Void) {
+        request = Request(name: name, action: action)
+        #if os(macOS)
+        HandoffRouter.shared.open(.controls) // the main window, where it's asked
+        #endif
+    }
+}
+
+extension Flashing {
+    /// Whether flashing scenes are asked about before they play.
+    static var asks: Bool { UserDefaults.standard.object(forKey: askKey) as? Bool ?? true }
+}
+
 extension View {
-    /// Where the question about flashing light is asked, for the views inside.
-    func flashingGuard() -> some View { modifier(FlashingGuard()) }
+    /// Where the question about flashing light is asked, for the views inside; with `outside`,
+    /// also for scenes started from outside the app (FlashingRequests).
+    func flashingGuard(outside: Bool = false) -> some View { modifier(FlashingGuard(outside: outside)) }
 }
 
 private struct FlashingGuard: ViewModifier {
+    let outside: Bool
     @AppStorage(Flashing.askKey) private var asks = true
     @State private var pending: Pending?
     /// The name in the question, kept while it closes (pending is cleared first).
@@ -45,6 +72,11 @@ private struct FlashingGuard: ViewModifier {
                 if asks && flashes { pending = Pending(name: name, action: action) } else { action() }
             })
             .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
+            .onChange(of: FlashingRequests.shared.request?.id, initial: true) {
+                guard outside, let r = FlashingRequests.shared.request else { return }
+                FlashingRequests.shared.request = nil
+                if asks { pending = Pending(name: r.name, action: r.action) } else { r.action() }
+            }
             .alert("“\(pending?.name ?? shownName)” flashes quickly",
                    isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                    presenting: pending) { p in
