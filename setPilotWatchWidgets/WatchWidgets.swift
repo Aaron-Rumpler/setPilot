@@ -34,7 +34,7 @@ func statusText(_ s: LightSnapshot?) -> String {
     guard let s else { return "Open setPilot" }
     switch s.link {
     case .none: return "No bulb"
-    case .connecting: return "Connecting"
+    case .connecting: return "Connecting…"
     case .unreachable: return "Not answering"
     case .connected:
         switch s.isOn {

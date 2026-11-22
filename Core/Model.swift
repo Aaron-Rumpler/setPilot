@@ -500,7 +500,7 @@ final class Model {
         bulb.send("getModelConfig", retry: true)
         bulb.send("getSystemConfig", retry: true)
         bulb.send("getUserConfig", retry: true)
-        if rereadInfo { readConfig() }
+        if rereadInfo { readConfig(skipping: ["getPilot", "getModelConfig", "getSystemConfig", "getUserConfig"]) }
         addressDetail = nil
         // The other form of the address (DNS name for an IP, IP for a name), and an IPv4 address
         // for live updates. Lookups block, so off the main thread.
@@ -602,6 +602,10 @@ final class Model {
             live = false
             registerTask?.cancel() // not the other bulb's pushes
             registerTask = nil
+            // Its replies are dropped from now on: a change waiting on a read-back isn't pending.
+            verifyTask?.cancel()
+            verifyingSeq = nil
+            pending = false
             status = "A different bulb answered at this address"
             relocate()
             return false
@@ -828,12 +832,13 @@ final class Model {
 
     /// Reads everything the bulb will tell over UDP (device info), a little apart so the bulb
     /// isn't sent 22 requests at once.
-    func readConfig() {
+    /// `skipping`: reads just sent anyway (by connect), still shown as reading until answered.
+    func readConfig(skipping sent: Set<String> = []) {
         configTask?.cancel()
         infoWanted = true
         infoReading = Set(BulbAPI.deviceInfo)
         configTask = Task {
-            for m in BulbAPI.deviceInfo {
+            for m in BulbAPI.deviceInfo where !sent.contains(m) {
                 guard !Task.isCancelled else { return }
                 bulb.send(m, retry: true)
                 try? await Task.sleep(for: .milliseconds(60))
