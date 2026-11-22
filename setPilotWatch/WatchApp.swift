@@ -17,6 +17,10 @@ struct SetPilotWatchApp: App {
         WindowGroup {
             PresetsView(link: link)
                 .onOpenURL { link.open($0) } // from the complications
+                #if WIZ_ICLOUD
+                // Handoff: carry on with the light on the iPhone or Mac.
+                .userActivity(HandoffRoute.controls.activityType) { HandoffRoute.controls.fill($0) }
+                #endif
         }
         .onChange(of: phase) { _, new in
             link.isActive = new == .active

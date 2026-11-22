@@ -3,9 +3,11 @@ import SwiftUI
 struct RootView: View {
     let model: Model
     @AppStorage(Model.addressKey) private var address = ""
+    /// Where Handoff takes the app (the view-based links below aren't in it).
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 bulbSection
                 if !address.isEmpty {
@@ -23,6 +25,7 @@ struct RootView: View {
                         // Its own title: the media's name, or "Light Show".
                         LightShowView(model: model)
                             .navigationBarTitleDisplayMode(.inline)
+                            .handoff(.lightShow)
                     } label: {
                         Label("Light Show", systemImage: "play.rectangle")
                     }
@@ -40,6 +43,30 @@ struct RootView: View {
             }
             .navigationTitle(model.currentName ?? "setPilot")
             .refreshable { await model.refresh() }
+            .handoff(.controls)
+            .navigationDestination(for: HandoffRoute.self) { route in destination(route) }
+        }
+        // Continued from another device: go there.
+        .onContinueHandoff { route in
+            var p = NavigationPath()
+            switch route {
+            case .controls: break
+            case .customScenes, .cctScales, .lightShow: p.append(route)
+            case .customScene: p.append(HandoffRoute.customScenes); p.append(route)
+            case .cctScale: p.append(HandoffRoute.cctScales); p.append(route)
+            }
+            path = p
+        }
+    }
+
+    @ViewBuilder private func destination(_ route: HandoffRoute) -> some View {
+        switch route {
+        case .controls: EmptyView()
+        case .customScenes: CustomScenesList(model: model)
+        case .customScene(let id): CustomSceneEditor(model: model, sceneID: id).handoff(route)
+        case .cctScales: CCTScalesList(model: model)
+        case .cctScale(let id): CCTScaleEditor(model: model, scaleID: id).handoff(route)
+        case .lightShow: LightShowView(model: model).navigationBarTitleDisplayMode(.inline).handoff(route)
         }
     }
 

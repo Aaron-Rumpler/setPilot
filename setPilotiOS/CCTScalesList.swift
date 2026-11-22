@@ -41,8 +41,9 @@ struct CCTScalesList: View {
             }
         }
         .navigationTitle("CCT Scales")
-        .navigationDestination(for: UUID.self) { id in CCTScaleEditor(model: model, scaleID: id) }
-        .navigationDestination(item: $created) { id in CCTScaleEditor(model: model, scaleID: id) }
+        .handoff(.cctScales)
+        .navigationDestination(for: UUID.self) { id in CCTScaleEditor(model: model, scaleID: id).handoff(.cctScale(id)) }
+        .navigationDestination(item: $created) { id in CCTScaleEditor(model: model, scaleID: id).handoff(.cctScale(id)) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { created = model.newScale()?.id } label: { Label("New Scale", systemImage: "plus") }

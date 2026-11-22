@@ -17,5 +17,14 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>nz.aaronrumpler.setPilot.controls</string>
+		<string>nz.aaronrumpler.setPilot.customScenes</string>
+		<string>nz.aaronrumpler.setPilot.customScene</string>
+		<string>nz.aaronrumpler.setPilot.cctScales</string>
+		<string>nz.aaronrumpler.setPilot.cctScale</string>
+		<string>nz.aaronrumpler.setPilot.lightShow</string>
+	</array>
 </dict>
 </plist>

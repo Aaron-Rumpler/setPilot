@@ -931,6 +931,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_FILE = "setPilotWatch-Info.plist";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = nz.aaronrumpler.setPilot;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -960,6 +961,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_FILE = "setPilotWatch-Info.plist";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = nz.aaronrumpler.setPilot;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

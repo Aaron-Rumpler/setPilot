@@ -54,8 +54,10 @@ struct CustomScenesWindow: View {
             if let selection, lib.customScene(selection) != nil {
                 CustomSceneEditor(model: model, sceneID: selection)
                     .id(selection)
+                    .handoff(.customScene(selection))
             } else {
                 Text(lib.customScenes.isEmpty ? "" : "Select a scene").foregroundStyle(.secondary)
+                    .handoff(.customScenes)
             }
         }
         .onDeleteCommand { if let id = selection { deleting = lib.customScene(id) } }
@@ -72,5 +74,11 @@ struct CustomScenesWindow: View {
             Text("Presets that use it will stop working.")
         }
         .onAppear { if selection == nil { selection = lib.customScenes.first?.id } }
+        // Handoff from another device (setPilot/App.swift opens this window).
+        .onChange(of: HandoffRouter.shared.sceneToSelect, initial: true) { _, id in
+            guard let id else { return }
+            selection = id
+            HandoffRouter.shared.sceneToSelect = nil
+        }
     }
 }

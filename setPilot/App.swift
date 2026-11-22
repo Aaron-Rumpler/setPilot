@@ -26,7 +26,7 @@ struct SetPilotApp: App {
     }
 
     var body: some Scene {
-        Window("setPilot", id: "main") { ContentView(model: model) }
+        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls) }
             .windowResizability(.contentSize)
             // setpilot:// links go to the app delegate, not to opening this window.
             .handlesExternalEvents(matching: [])
@@ -48,6 +48,7 @@ struct SetPilotApp: App {
             MenuBarIcon(isOn: model.isOn == true)
                 // The label exists from launch, even when no window opens (launched at login).
                 .onAppear { model.startIfSaved() }
+                .modifier(HandoffWindowOpener())
         }
         .menuBarExtraStyle(.window)
         // Wide enough for the list, the editor and the step inspector side by side.
@@ -61,7 +62,7 @@ struct SetPilotApp: App {
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
-        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440) }
+        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440).handoff(.lightShow) }
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 960, height: 680)
             .keyboardShortcut("l", modifiers: [.command, .option])
@@ -110,6 +111,26 @@ struct LightCommands: Commands {
     }
 }
 
+/// Opens the window Handoff asked for. On the menu bar item's label, which is there even when
+/// no window is open.
+private struct HandoffWindowOpener: ViewModifier {
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.onChange(of: HandoffRouter.shared.request) { _, route in
+            guard let route else { return }
+            HandoffRouter.shared.request = nil
+            switch route {
+            case .controls: openWindow(id: "main")
+            case .customScenes, .customScene: openWindow(id: "scenes")
+            case .cctScales, .cctScale: openWindow(id: "scales")
+            case .lightShow: openWindow(id: "lightshow")
+            }
+            NSApp.activate()
+        }
+    }
+}
+
 /// The menu bar bulb, lit when the bulb is on: its inside is the light colour (white in a dark
 /// menu bar, clear in a light one) when on and the dark colour when off. The symbol is a template
 /// drawn in the menu bar's foreground colour, so which symbol that takes depends on the appearance.
@@ -146,6 +167,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateDockIcon() } }
             }
         }
+    }
+
+    /// Handoff from another device: the menu bar item (always there) opens the window.
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard let route = HandoffRoute(userActivity) else { return false }
+        HandoffRouter.shared.open(route)
+        return true
     }
 
     /// setpilot:// links (Core/URLCommands.swift).

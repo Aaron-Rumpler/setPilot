@@ -49,9 +49,17 @@ struct CCTScalesWindow: View {
         } detail: {
             if let selection, scales.contains(where: { $0.id == selection }) {
                 CCTScaleEditor(model: model, scaleID: selection).id(selection)
+                    .handoff(.cctScale(selection))
             } else {
                 Text(scales.isEmpty ? "" : "Select a scale").foregroundStyle(.secondary)
+                    .handoff(.cctScales)
             }
+        }
+        // Handoff from another device (setPilot/App.swift opens this window).
+        .onChange(of: HandoffRouter.shared.scaleToSelect, initial: true) { _, id in
+            guard let id else { return }
+            selection = id
+            HandoffRouter.shared.scaleToSelect = nil
         }
         .navigationTitle(model.currentName.map { "CCT Scales — \($0)" } ?? "CCT Scales")
         .onDeleteCommand { deleting = scales.first { $0.id == selection } }

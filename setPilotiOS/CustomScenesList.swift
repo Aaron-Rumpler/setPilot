@@ -49,8 +49,9 @@ struct CustomScenesList: View {
             }
         }
         .navigationTitle("Custom Scenes")
-        .navigationDestination(for: UUID.self) { id in CustomSceneEditor(model: model, sceneID: id) }
-        .navigationDestination(item: $created) { id in CustomSceneEditor(model: model, sceneID: id) }
+        .handoff(.customScenes)
+        .navigationDestination(for: UUID.self) { id in CustomSceneEditor(model: model, sceneID: id).handoff(.customScene(id)) }
+        .navigationDestination(item: $created) { id in CustomSceneEditor(model: model, sceneID: id).handoff(.customScene(id)) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { created = lib.addCustomScene().id } label: { Label("New Scene", systemImage: "plus") }
