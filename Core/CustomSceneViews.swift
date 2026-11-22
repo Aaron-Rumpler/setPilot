@@ -198,7 +198,6 @@ struct CustomSceneEditor: View {
         }
     }
 
-    /// A copy of the chosen step, after it, and chosen.
     /// Selects the step `offset` away from `id`, found as the steps are now (they can change under
     /// the view: iCloud).
     private func selectStep(_ scene: Binding<CustomScene>, from id: UUID, by offset: Int) {
@@ -207,6 +206,7 @@ struct CustomSceneEditor: View {
         selected = steps[i + offset].id
     }
 
+    /// A copy of the chosen step, after it, and chosen.
     private func addStep(_ scene: Binding<CustomScene>) {
         guard scene.wrappedValue.steps.count < CustomScene.maxSteps else { return }
         let i = selectedIndex(scene.wrappedValue) ?? scene.wrappedValue.steps.count - 1

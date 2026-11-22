@@ -138,7 +138,7 @@ struct CCTScaleEditor: View {
                     } label: {
                         Text(verbatim: "Extend Below \(scale.sorted.first?.kelvin ?? 0) K") // verbatim: no "1,541"
                     }
-                    .disabled(scale.extendedDownwards() == nil)
+                    .disabled(scale.points.count >= 32 || scale.extendedDownwards() == nil)
                 } footer: {
                     Text("Between points, each channel changes in a straight line with kelvin, as in the bulb's own table, so a scale made from the bulb's default gives exactly what its temperature setting gives. Extending continues the line between the two lowest points until red is full, as WiZ's table would (about 1540 K on this bulb's default). Changes apply the next time the kelvin is set.")
                 }
@@ -201,6 +201,7 @@ struct CCTScaleEditor: View {
                 copy.id = UUID()
                 scale.wrappedValue.points.append(copy)
             }
+            .disabled(scale.wrappedValue.points.count >= 32)
             Button("Delete", role: .destructive) { scale.wrappedValue.points.removeAll { $0.id == point.id } }
                 .disabled(scale.wrappedValue.points.count <= 2)
         } label: {

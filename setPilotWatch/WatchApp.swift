@@ -393,6 +393,7 @@ struct WatchDeviceInfoView: View {
 
     var body: some View {
         List {
+            ErrorRow(link: link)
             if link.deviceInfo.isEmpty {
                 HStack {
                     if link.busy { ProgressView().frame(width: 20) }

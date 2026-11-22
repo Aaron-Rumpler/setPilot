@@ -76,6 +76,8 @@ final class Model {
     var info: [String: String] = [:] // method -> pretty-printed result (or why there isn't one)
     /// Device info reads that failed: method -> what went wrong, in a few words.
     var infoErrors: [String: String] = [:]
+    /// Device info reads sent and not yet answered (or given up on): a re-read shows as reading.
+    var infoReading: Set<String> = []
     /// Every message to and from the bulb (and pushes), oldest first, for the console.
     var log: [LogEntry] = []
     /// The console's last request: its method while waiting ("" for the next message of any
@@ -218,6 +220,7 @@ final class Model {
                 // A read again that got no answer: flagged, with what an earlier read showed kept.
                 if info[method] == nil { info[method] = JSONText.pretty(["error": message]) }
                 infoErrors[method] = "No reply"
+                infoReading.remove(method)
             }
             // Waiting on "" (a raw message without a method): anything but the 20 s registration.
             if let waiting = consoleWaiting, waiting.isEmpty ? method != "registration" : method == waiting {
@@ -727,12 +730,16 @@ final class Model {
         case .scenes: setMode(Mode.scene)
         case .temperature:
             guard mode.choice != .temperature else { return }
-            let scale = UserDefaults.standard.bool(forKey: Self.temperatureScaleKey) && activeScale?.range != nil
+            let scale = temperatureUsesScale && activeScale?.range != nil
             setMode(scale ? Mode.custom : Mode.temp)
         }
     }
     /// Temperature last used a CCT scale rather than the bulb's own.
     static let temperatureScaleKey = "temperatureUsesScale"
+    /// Observed (the CCT scales' "in use" mark follows it), and kept in the defaults.
+    var temperatureUsesScale = UserDefaults.standard.bool(forKey: Model.temperatureScaleKey) {
+        didSet { UserDefaults.standard.set(temperatureUsesScale, forKey: Self.temperatureScaleKey) }
+    }
 
     /// Temperature's scale: nil for the bulb's own (`temp`), otherwise one of this bulb's CCT scales
     /// (Custom CCT). The kelvin carries over, kept within the new scale's range.
@@ -740,7 +747,7 @@ final class Model {
 
     /// The scale Temperature uses (whether or not the light is on Temperature now).
     var scaleForTemperature: UUID? {
-        UserDefaults.standard.bool(forKey: Self.temperatureScaleKey) && activeScale?.range != nil ? activeScale?.id : nil
+        temperatureUsesScale && activeScale?.range != nil ? activeScale?.id : nil
     }
 
     /// The CCT scales' "Use for Temperature": on Temperature now, it switches to it; otherwise it
@@ -749,11 +756,11 @@ final class Model {
         guard mode.choice != .temperature else { return useTemperatureScale(id) }
         guard let mac = chosenMAC else { return }
         library.setActiveScale(id, for: mac)
-        UserDefaults.standard.set(true, forKey: Self.temperatureScaleKey)
+        temperatureUsesScale = true
     }
 
     func useTemperatureScale(_ id: UUID?) {
-        UserDefaults.standard.set(id != nil, forKey: Self.temperatureScaleKey)
+        temperatureUsesScale = id != nil
         let kelvin = mode == .custom ? customKelvin : temp
         if let id, let mac = chosenMAC {
             library.setActiveScale(id, for: mac)
@@ -814,6 +821,7 @@ final class Model {
     /// isn't sent 22 requests at once.
     func readConfig() {
         configTask?.cancel()
+        infoReading = Set(BulbAPI.deviceInfo)
         configTask = Task {
             for m in BulbAPI.deviceInfo {
                 guard !Task.isCancelled else { return }
@@ -1068,7 +1076,7 @@ final class Model {
             mode = .temp
             temp = Double(k)
             // Temperature is on the bulb's own now: it goes back to that after another mode.
-            UserDefaults.standard.set(false, forKey: Self.temperatureScaleKey)
+            temperatureUsesScale = false
         case let .scene(id, s):
             // One this app doesn't know (an imported preset from a newer version, say) can't be
             // sent: leave the controls as they are rather than show it.
@@ -1099,7 +1107,7 @@ final class Model {
             if let mac = chosenMAC, found.mac == mac.lowercased() {
                 library.setActiveScale(id, for: mac)
                 // Temperature is on this scale now: it goes back to it after another mode.
-                UserDefaults.standard.set(true, forKey: Self.temperatureScaleKey)
+                temperatureUsesScale = true
                 mode = .custom
                 customKelvin = Double(k)
             } else {
@@ -1490,6 +1498,7 @@ final class Model {
                 // failed read isn't worth the status line.
                 info[method] = JSONText.pretty(["error": err])
                 infoErrors[method] = err["message"] as? String ?? (err["code"] as? Int).map { "Error \($0)" } ?? "Error"
+                infoReading.remove(method)
                 // Except getPilot, which the controls wait for, and a signing refusal, which every
                 // request will get: those need saying.
                 if method != "getPilot", code != -32605 { return }
@@ -1509,6 +1518,7 @@ final class Model {
         if BulbAPI.deviceInfo.contains(method), let anyResult {
             info[method] = JSONText.pretty(anyResult)
             infoErrors[method] = nil
+            infoReading.remove(method)
         }
         guard let result = anyResult as? [String: Any] else { return }
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.

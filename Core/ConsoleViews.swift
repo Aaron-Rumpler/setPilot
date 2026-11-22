@@ -103,7 +103,7 @@ struct ConsoleComposer: View {
     /// The params (or raw message) editor and its options.
     @ViewBuilder private var editorPane: some View {
         if rawMode || sendParams {
-            JSONEditor(text: rawMode ? $raw : $params)
+            JSONEditor(text: rawMode ? $raw : $params, label: rawMode ? "Raw message" : "Params")
                 .frame(minHeight: 70)
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
         } else {
@@ -164,8 +164,13 @@ struct ConsoleComposer: View {
         } else if let obj = rawObject, let m = obj["method"] as? String {
             method = m
             sendParams = obj["params"] != nil
-            let p = obj["params"] as? [String: Any] ?? [:]
-            params = p.isEmpty ? "{}" : JSONText.pretty(p)
+            if let p = obj["params"] as? [String: Any] {
+                params = p.isEmpty ? "{}" : JSONText.pretty(p)
+            } else if let other = obj["params"] {
+                params = JSONText.pretty(other) // not an object: kept as typed, for the check to flag
+            } else {
+                params = "{}"
+            }
         }
         rawMode = on
     }
@@ -539,6 +544,8 @@ struct LogRow: View {
 /// coloured before macOS 26). Smart quotes and dashes are off, so what's typed stays valid JSON.
 struct JSONEditor: NSViewRepresentable {
     @Binding var text: String
+    /// What VoiceOver calls it: the params, or in Raw mode the whole message.
+    var label = "Params"
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -557,7 +564,7 @@ struct JSONEditor: NSViewRepresentable {
         view.isGrammarCheckingEnabled = false
         view.smartInsertDeleteEnabled = false
         view.textContainerInset = NSSize(width: 4, height: 6)
-        view.setAccessibilityLabel("Params")
+        view.setAccessibilityLabel(label)
         view.string = text
         Self.colour(view)
         return scroll
@@ -565,6 +572,7 @@ struct JSONEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        (scroll.documentView as? NSTextView)?.setAccessibilityLabel(label)
         guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
         view.string = text
         // Replaced from outside (Raw switched, Format, Edit in Console): the undo steps were for
@@ -614,6 +622,8 @@ struct JSONEditor: NSViewRepresentable {
 /// typed stays valid JSON.
 struct JSONEditor: UIViewRepresentable {
     @Binding var text: String
+    /// What VoiceOver calls it: the params, or in Raw mode the whole message.
+    var label = "Params"
 
     static let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
 
@@ -632,7 +642,7 @@ struct JSONEditor: UIViewRepresentable {
         view.smartInsertDeleteType = .no
         view.keyboardType = .asciiCapable
         view.textContainerInset = UIEdgeInsets(top: 6, left: 2, bottom: 6, right: 2)
-        view.accessibilityLabel = "Params"
+        view.accessibilityLabel = label
         view.text = text
         Self.colour(view)
         return view
@@ -640,6 +650,7 @@ struct JSONEditor: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
+        view.accessibilityLabel = label
         guard view.text != text else { return }
         view.text = text
         Self.colour(view)

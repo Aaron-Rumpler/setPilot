@@ -35,14 +35,14 @@ struct DeviceInfoView: View {
     }
 
     @ViewBuilder private var summary: some View {
-        let read = methods.filter { model.info[$0] != nil }.count
+        let read = methods.filter { model.info[$0] != nil && !model.infoReading.contains($0) }.count
         let failed = methods.filter { model.infoErrors[$0] != nil }.count
         HStack(spacing: 6) {
             if read < methods.count {
                 ProgressView().controlSize(.small)
                 Text(verbatim: "Reading… \(read) of \(methods.count)")
             } else if failed > 0 {
-                Text(verbatim: "\(failed) of \(methods.count) returned an error")
+                Text(verbatim: "\(failed) of \(methods.count) had no reply or an error")
             } else {
                 Text(verbatim: "All \(methods.count) read")
             }
@@ -79,7 +79,7 @@ struct DeviceInfoView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .lineLimit(1)
-                } else if model.info[method] == nil {
+                } else if model.info[method] == nil || model.infoReading.contains(method) {
                     ProgressView().controlSize(.mini)
                 }
                 Spacer()

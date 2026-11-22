@@ -5,6 +5,7 @@ struct BulbSettingsView: View {
     let model: Model
     @AppStorage(Model.addressKey) private var saved = ""
     @State private var address = ""
+    @State private var appeared = false
     @State private var name = ""
     @FocusState private var focused: Bool
     @AppStorage(Stepping.snapKey) private var snaps = true
@@ -133,6 +134,9 @@ struct BulbSettingsView: View {
         .navigationTitle("Bulb & Settings")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            // Not on coming back from a screen pushed from here: that would undo what's typed.
+            guard !appeared else { return }
+            appeared = true
             address = saved
             name = model.currentName ?? ""
             if saved.isEmpty { focused = true }

@@ -36,7 +36,7 @@ struct FadeSetting: View {
     private var bulbDefault: String {
         switch (model.fadeIn, model.fadeOut) {
         case let (i?, o?): "\(i) ms on, \(o) ms off"
-        case let (i?, nil): "\(i) ms"
+        case let (i?, nil): "\(i) ms on"
         case let (nil, o?): "\(o) ms off"
         default: model.link == .connected ? "Not reported" : "—"
         }
@@ -103,9 +103,11 @@ struct MillisecondsField: View {
     @Binding var value: Int
     var maximum = 60_000
     @State private var text = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         TextField(label, text: $text)
+            .focused($focused)
             .labelsHidden()
             .multilineTextAlignment(.trailing)
             #if os(iOS)
@@ -122,6 +124,8 @@ struct MillisecondsField: View {
                     if String(clamped) != digits { text = String(clamped) }
                 }
             }
+            // Emptied and left: show the value that's still in use, rather than a blank.
+            .onChange(of: focused) { _, now in if !now, text.isEmpty { text = String(value) } }
             // Changed elsewhere (the stepper, the watch): show it, unless it's what's typed.
             .onChange(of: value) { _, new in if Int(text) != new { text = String(new) } }
     }

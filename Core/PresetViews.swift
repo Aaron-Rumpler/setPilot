@@ -47,19 +47,23 @@ struct PresetGrid: View {
             }
         }
         #if os(iOS)
-        .alert("Rename Preset", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+        // presenting: the preset is handed to the buttons, so it doesn't matter whether dismissing
+        // clears `renaming` before or after their actions run.
+        .alert("Rename Preset", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),
+               presenting: renaming) { p in
             TextField("Name", text: $newName)
             Button("Rename") {
-                if let p = renaming { model.renamePreset(p.id, to: newName) }
+                model.renamePreset(p.id, to: newName)
                 renaming = nil
             }
             Button("Cancel", role: .cancel) { renaming = nil }
         }
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
-                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            presenting: deleting) { p in
             Button("Delete", role: .destructive) {
-                lib.presets.removeAll { $0.id == deleting?.id }
+                lib.presets.removeAll { $0.id == p.id }
                 deleting = nil
             }
         }

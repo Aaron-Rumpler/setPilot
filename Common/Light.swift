@@ -440,7 +440,7 @@ struct CCTScale: Codable, Hashable, Identifiable, Sendable {
         let a = pts[1], b = pts[0]
         // Kelvin where red reaches 255 on the line through a and b.
         let k = a.kelvin - (255 - a.r) * (a.kelvin - b.kelvin) / (b.r - a.r)
-        guard k > 0, k < b.kelvin else { return nil }
+        guard k >= 500, k < b.kelvin else { return nil } // the lowest a point's kelvin field takes
         var copy = self
         copy.points.insert(Point(kelvin: k, r: 255, g: b.g, b: b.b, c: b.c, w: b.w), at: 0)
         copy.points = copy.sorted

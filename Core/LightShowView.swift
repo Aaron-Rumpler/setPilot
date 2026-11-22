@@ -239,7 +239,7 @@ private struct LightShowScreen: View {
         #if os(iOS)
         if let title = show.title { parts.append(title) }
         #endif
-        parts.append("\(show.cues.count) cues")
+        parts.append("\(show.cues.count) cue\(show.cues.count == 1 ? "" : "s")")
         if let media = show.media, let open = player.mediaName, media != open { parts.append("made for \(media)") }
         return parts.joined(separator: " · ")
     }

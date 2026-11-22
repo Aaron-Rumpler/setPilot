@@ -253,6 +253,10 @@ extension PhoneLink: WCSessionDelegate {
             if reachable {
                 self.refresh()
                 self.openWaitingURL()
+            } else if self.waitingURL != nil {
+                // A complication tap that launched the app: say why nothing's happened yet (it's
+                // still acted on if the iPhone comes within reach soon).
+                self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
             }
         }
     }

@@ -235,7 +235,9 @@ struct WatchComposeView: View {
             }
             Section {
                 // The iPhone's fade time setting is the default, if it has one.
-                Picker("Fade", selection: $fadeChoice) {
+                // The setting gone meanwhile (turned off on the iPhone) shows as None, which is what's sent.
+                Picker("Fade", selection: Binding(get: { fadeChoice == .setting && s?.fade == nil ? .none : fadeChoice },
+                                                  set: { fadeChoice = $0 })) {
                     ForEach(FadeChoice.options(setting: s?.fade), id: \.self) { Text($0.title(setting: s?.fade)).tag($0) }
                 }
                 if fadeChoice == .custom {
