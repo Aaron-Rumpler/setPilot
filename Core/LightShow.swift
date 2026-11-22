@@ -585,7 +585,8 @@ extension Model {
     /// Nil, or why only part of it could be put back.
     @discardableResult
     func restore(_ saved: SavedLight) -> String? {
-        guard canControl, saved.mac == chosenMAC else { return nil }
+        guard saved.mac == chosenMAC else { return nil } // another bulb chosen since: not this one's
+        guard canControl else { return "The bulb wasn't answering when the show ended, so the light wasn't put back" }
         // The show left it on. Off before: one setPilot with "state": false (the colour kept for
         // when it's switched on, with no flash of it now, and no speed, which would switch it on).
         // (Not known when the show started: as it is now.)

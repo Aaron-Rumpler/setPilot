@@ -152,7 +152,7 @@ final class Model {
     @ObservationIgnored private var unsent: Set<PilotField> = []
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
-    @ObservationIgnored private var speedOwed = false
+    private var speedOwed = false // observed: Compose's preview shows it (owedSpeed)
     /// A scene's speed waiting to go after the scene: a newer speed replaces it, rather than this
     /// one landing after it.
     @ObservationIgnored private var delayedSpeed: Task<Void, Never>?
@@ -192,7 +192,7 @@ final class Model {
 
     init() {
         // Bulb names sync through iCloud too (in builds with it), keyed by MAC.
-        CloudSync.shared.register(Self.namesKey, local: try? JSONEncoder().encode(names)) { [weak self] data in
+        CloudSync.shared.register(Self.namesKey, local: try? Self.namesEncoder.encode(names)) { [weak self] data in
             guard let self, let v = try? JSONDecoder().decode([String: String].self, from: data) else { return }
             namesFromCloud = true
             names = v
@@ -332,10 +332,16 @@ final class Model {
     var names: [String: String] = UserDefaults.standard.dictionary(forKey: Model.namesKey) as? [String: String] ?? [:] {
         didSet {
             UserDefaults.standard.set(names, forKey: Self.namesKey)
-            if !namesFromCloud, let d = try? JSONEncoder().encode(names) { CloudSync.shared.put(Self.namesKey, d) }
+            if !namesFromCloud, let d = try? Self.namesEncoder.encode(names) { CloudSync.shared.put(Self.namesKey, d) }
         }
     }
     @ObservationIgnored private var namesFromCloud = false
+    /// Sorted, so the same names always encode the same (iCloud's copy is compared byte for byte).
+    private static let namesEncoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = .sortedKeys
+        return e
+    }()
 
     func name(for mac: String?) -> String? {
         guard let mac else { return nil }
@@ -845,7 +851,16 @@ final class Model {
             // With dimDelta the resulting dimming depends on the bulb's level, so it isn't checked.
             lastPilot = p.filter { reported.contains($0.key) && !($0.key == "dimming" && p["dimDelta"] != nil) }
                 .compactMapValues { ($0 as? NSNumber)?.intValue }
+            // A change like the controls' own: an earlier one's reason and delayed speed no longer
+            // apply, and a switch that goes unanswered puts the power back.
+            refusal = nil
+            pilotAnswered = false
+            delayedSpeed?.cancel()
+            delayedSpeed = nil
+            let before = isOn
             if let s = p["state"] as? Bool { isOn = s } else if changesLight { isOn = true }
+            if before != isOn { powerBefore = before }
+            pilotSwitches = before != isOn
             lastState = isOn
             sendSeq += 1
             pending = true
@@ -1059,6 +1074,7 @@ final class Model {
             sceneId = id
             customSceneId = nil
             if let s { self.speed = Double(s); speed = s }
+            speedOwed = false // was for the scene before; this one starts at its own
         case let .custom(id, s):
             guard library.customScene(id) != nil else {
                 status = "That custom scene has been deleted"
@@ -1068,6 +1084,7 @@ final class Model {
             sceneId = Scenes.inlineCustom
             customSceneId = id
             if let s { self.speed = Double(s); speed = s }
+            speedOwed = false // was for the scene before; this one starts at its own
         case let .customCCT(id, k):
             guard let found = library.scale(id), let ch = found.scale.channels(at: k) else {
                 status = "That CCT scale has been deleted"
@@ -1176,6 +1193,9 @@ final class Model {
             lastSent = String(decoding: data, as: UTF8.self)
         }
         lastMethod = "setPilot"
+        // A scene's speed still to follow a change from before the show is out of date now.
+        delayedSpeed?.cancel()
+        delayedSpeed = nil
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
         // A read-back still due from a change before the show would compare against that change
         // (a false "didn't apply") and hold back the live updates the controls follow.

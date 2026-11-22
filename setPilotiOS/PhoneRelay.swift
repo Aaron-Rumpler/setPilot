@@ -292,8 +292,17 @@ final class PhoneRelay: NSObject {
         }
         SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
         SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
+        // Only when something they show or send has changed (most library edits, a custom scene's
+        // steps say, don't): they have a reload budget.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let shown = [try? encoder.encode(model.library.presets), try? encoder.encode(model.library.summaries),
+                     try? encoder.encode(params), try? encoder.encode(model.fadeForControls)]
+        guard shown != publishedLibrary else { return }
+        publishedLibrary = shown
         reloadWidgets()
     }
+    private var publishedLibrary: [Data?] = []
 
     private func reloadWidgets() {
         WidgetCenter.shared.reloadAllTimelines()

@@ -165,7 +165,7 @@ struct CCTScaleEditor: View {
                     } label: {
                         Label("Add Point", systemImage: "plus")
                     }
-                    .disabled(scale.points.count >= 32)
+                    .disabled(scale.points.count >= 32 || (scale.sorted.last?.kelvin ?? 0) >= 20000)
                 }
             }
             .formStyle(.grouped)
