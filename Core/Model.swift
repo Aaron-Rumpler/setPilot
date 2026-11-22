@@ -92,7 +92,7 @@ final class Model {
             try? await Task.sleep(for: .seconds(3))
             guard consoleRequest == request, consoleWaiting != nil else { return }
             consoleWaiting = nil
-            consoleFailure = "No reply within 3 s (sent once: Retry was off)"
+            consoleFailure = "No reply within 3 s (sent once: Retry was off, or the message has no method to retry by)"
         }
     }
     var consoleReply: String?
