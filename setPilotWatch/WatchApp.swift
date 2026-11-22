@@ -69,6 +69,10 @@ struct PresetsView: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
+                                if link.pending.contains(preset.id.uuidString) {
+                                    Spacer(minLength: 4)
+                                    ProgressView().accessibilityLabel("Applying")
+                                }
                             }
                         }
                         .accessibilityValue(colourName(preset.colour))
@@ -191,6 +195,10 @@ struct PowerRow: View {
             }
         }
         .disabled(s?.canControl != true || !link.reachable)
+        // Waiting for the bulb to confirm: a spinner, as the iPhone and Mac show.
+        .overlay(alignment: .trailing) {
+            if link.pending.contains("power") { ProgressView().padding(.trailing, 44).accessibilityLabel("Switching") }
+        }
         .handGestureShortcut(.primaryAction) // double tap (Series 9 and Ultra 2 on) switches it
     }
 
@@ -244,7 +252,9 @@ struct CustomScenesView: View {
                         Swatch(rgb: scene.swatch, isScene: true)
                         Text(scene.name)
                         Spacer()
-                        if s?.customScene == scene.id {
+                        if link.pending.contains(scene.id.uuidString) {
+                            ProgressView().accessibilityLabel("Starting")
+                        } else if s?.customScene == scene.id {
                             Image(systemName: "play.fill").foregroundStyle(.secondary).accessibilityLabel("Playing")
                         }
                     }

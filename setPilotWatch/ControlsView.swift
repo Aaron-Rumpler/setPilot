@@ -40,6 +40,9 @@ struct ControlsView: View {
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Brighter")
                     }
+                    .overlay {
+                        if link.pending.contains("brightness") { ProgressView().accessibilityLabel("Changing brightness") }
+                    }
                     .listRowBackground(Color.clear)
                     ValueRow(label: "Brightness", value: binding(\.dimming, .dimming), range: s.minDimming...100, unit: "%")
                 }

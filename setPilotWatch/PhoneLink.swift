@@ -86,7 +86,25 @@ final class PhoneLink: NSObject {
             livePending = nil
             transmitLive(next.values, fields: next.fields)
         }
-        transmit(command, quiet: quiet, done: done)
+        // What's waiting for the iPhone and bulb to confirm, for its spinner.
+        let key = Self.pendingKey(command)
+        if let key { pending.insert(key) }
+        transmit(command, quiet: quiet) { [weak self] ok in
+            if let key { self?.pending.remove(key) }
+            done?(ok)
+        }
+    }
+
+    /// What's being confirmed: a preset's or custom scene's ID, "power" or "brightness".
+    private(set) var pending: Set<String> = []
+
+    private static func pendingKey(_ command: WatchCommand) -> String? {
+        switch command {
+        case .applyPreset(let id), .playCustom(let id, _): id.uuidString
+        case .power, .togglePower: "power"
+        case .dimDelta: "brightness"
+        default: nil
+        }
     }
 
     private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor (Bool) -> Void)? = nil) {
