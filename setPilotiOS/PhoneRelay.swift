@@ -57,6 +57,24 @@ final class PhoneRelay: NSObject {
         case settle(after: Duration)
         /// Not done, and why (the reply says so).
         case failed(LightSnapshot, String)
+        /// Run by the shared runner (Core/Commands.swift): done, or its error (with its kind).
+        case scripted(ScriptResult)
+    }
+
+    /// The watch's light commands as the shared runner's, so they're done only once the bulb has
+    /// read them back, and fail with the same reasons as Shortcuts, links and the CLI. The rest
+    /// (presets' editing, live slider changes, Compose, device info) have no runner command.
+    private static func scripted(_ command: WatchCommand) -> (ScriptCommand, Int?)? {
+        switch command {
+        case .state: (.get, nil)
+        case .power(let on): (.power(on), nil)
+        case .togglePower: (.power(nil), nil)
+        case .applyPreset(let id): (.preset(id.uuidString), nil)
+        case .dimDelta(let delta): (.adjustBrightness(delta), nil)
+        case let .playCustom(id, switchOn): (.customScene(id.uuidString, power: switchOn ? true : nil), nil)
+        case let .script(data, fade): (try? JSONDecoder().decode(ScriptCommand.self, from: data)).map { ($0, fade) }
+        default: nil
+        }
     }
 
     /// When waiting for the bulb last came to nothing. For a while after, commands don't wait
@@ -91,10 +109,13 @@ final class PhoneRelay: NSObject {
     /// shouldn't wait out this one's read-back.
     private func run(_ command: WatchCommand) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
+        if let (scripted, fade) = Self.scripted(command) {
+            return .scripted(await Scripting.run(scripted, fade: fade, on: model))
+        }
+        if case .script = command {
+            return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
+        }
         switch command {
-        case .state:
-            _ = await bulbReady(model, timeout: 3)
-            return .now(model.snapshot)
         case .savePreset(let name):
             // The light as it is: not saved from a state that may be out of date.
             guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot, Self.notAnswering) }
@@ -132,30 +153,11 @@ final class PhoneRelay: NSObject {
         case .sync:
             model.sync()
             pause = .milliseconds(500)
-        case .power(let on):
-            model.power(on)
-            pause = .milliseconds(400)
-        case .togglePower:
-            model.power(!(model.isOn ?? false))
-            pause = .milliseconds(400)
-        case .applyPreset(let id):
-            guard let preset = model.library.presets.first(where: { $0.id == id }) else {
-                return .failed(model.snapshot, "That preset no longer exists.")
-            }
-            // Not sent (a deleted scale in it, say): answered now, not after an earlier change settles.
-            guard model.apply(preset) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .set(let values, let fields):
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
             // when this answers. Later state reaches it as the iPhone's usual updates.
             return .now(model.snapshot)
-        case .dimDelta(let delta):
-            model.adjustDimming(by: delta)
-        case let .playCustom(id, switchOn):
-            guard let scene = model.library.customScene(id) else {
-                return .failed(model.snapshot, "That custom scene no longer exists.")
-            }
-            guard model.playCustom(scene, switchOn: switchOn) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .compose(let change):
             guard model.send(change) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .modeChoice(let choice):
@@ -174,8 +176,9 @@ final class PhoneRelay: NSObject {
             model.readConfig()
             // The reads go out 60 ms apart; give the replies time to come in.
             pause = .milliseconds(2500)
-        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .controlsFade, .renameBulb:
-            break
+        case .state, .savePreset, .deletePreset, .chooseBulb, .renamePreset, .movePreset, .controlsFade, .renameBulb, .script,
+             .power, .togglePower, .applyPreset, .dimDelta, .playCustom:
+            break // the runner's (above), or answered without waiting
         }
         return .settle(after: pause)
     }
@@ -310,7 +313,7 @@ extension PhoneRelay: WCSessionDelegate {
         // going again (and the state read again if the app was suspended) through
         // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
         let sends = switch message.command {
-        case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
+        case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale, .script: true
         default: false
         }
         if sends { model?.forgetRefusal() }
@@ -322,6 +325,8 @@ extension PhoneRelay: WCSessionDelegate {
             finish(message, snapshot)
         case let .failed(snapshot, why):
             finish(message, snapshot, error: why)
+        case .scripted(let result):
+            finish(message, model?.snapshot ?? LightSnapshot(), error: result.error?.message, code: result.error?.code.rawValue)
         case .settle(let pause):
             Task {
                 try? await Task.sleep(for: pause)
@@ -337,7 +342,7 @@ extension PhoneRelay: WCSessionDelegate {
         }
     }
 
-    private func finish(_ message: Incoming, _ snapshot: LightSnapshot, error: String? = nil) {
+    private func finish(_ message: Incoming, _ snapshot: LightSnapshot, error: String? = nil, code: String? = nil) {
         let command = message.command
         // The presets changed: the watch's copy for when the iPhone is out of reach.
         switch command {
@@ -351,6 +356,7 @@ extension PhoneRelay: WCSessionDelegate {
             response[WatchKey.deviceInfo] = data
         }
         if let error { response[WatchKey.error] = error }
+        if let code { response[WatchKey.errorCode] = code }
         message.reply(response)
     }
 }

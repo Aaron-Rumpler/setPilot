@@ -405,6 +405,7 @@
 			fileSystemSynchronizedGroups = (
 				5A1C0DE0000000000000B005 /* setPilotWatch */,
 				5A1C0DE0000000000000B003 /* Common */,
+				5A1C0DE0000000000000B00A /* Scripting */,
 			);
 			name = "setPilot Watch";
 			packageProductDependencies = (

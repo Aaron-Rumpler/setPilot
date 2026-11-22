@@ -111,6 +111,10 @@ enum WatchCommand: Codable, Sendable {
     case renameBulb(mac: String, name: String)
     /// Reads the device info; the reply carries it.
     case deviceInfo
+    /// A scripting command (Scripting/ScriptProtocol.swift's ScriptCommand, as JSON), run by the
+    /// iPhone's shared runner, as Shortcuts and links are: done once the bulb has read it back.
+    /// The watch's Shortcuts actions send these.
+    case script(Data, fade: Int?)
 }
 
 /// One read for the watch's device info: the bulb's reply as text, or its error.
@@ -129,6 +133,8 @@ enum WatchKey {
     static let customScenes = "customScenes"
     static let error = "error"
     static let deviceInfo = "deviceInfo"
+    /// A failed command's kind (ScriptError.Code's raw value), with `error`.
+    static let errorCode = "errorCode"
     /// When presets were applied on the iPhone (PresetUsage).
     static let presetUsage = "presetUsage"
 }

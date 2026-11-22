@@ -1,22 +1,26 @@
 import AppIntents
 
 // Shortcuts actions on the watch itself: Siri on the watch, the Action button (Ultra), and the
-// Smart Stack. Like everything on the watch they go through the iPhone, which talks to the bulb,
-// and report what it says (not answering, refused) as an error.
+// Smart Stack. The same actions as the iPhone's, sent to the iPhone, whose shared runner
+// (Core/Commands.swift) carries them out as it does Shortcuts there: done once the bulb has read
+// them back, and failing with the same reasons (not answering, refused, not applied).
 
 struct WatchIntentError: Error, CustomLocalizedStringResourceConvertible {
     let localizedStringResource: LocalizedStringResource
 }
 
-/// Sends a command to the iPhone and waits for its answer.
+/// Runs a scripting command on the iPhone and waits for its answer.
 @MainActor
-private func relay(_ command: WatchCommand) async throws -> LightSnapshot {
+private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> LightSnapshot {
+    guard let data = try? JSONEncoder().encode(command) else {
+        throw WatchIntentError(localizedStringResource: "Couldn't send that.")
+    }
     let link = PhoneLink.shared
     // Launched just for this (Siri, the Action button): the link to the iPhone is still coming up.
     let until = Date.now.addingTimeInterval(5)
     while !link.ready, Date.now < until { try? await Task.sleep(for: .milliseconds(100)) }
     let ok = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
-        MainActor.assumeIsolated { link.send(command) { done.resume(returning: $0) } } // called right away, here
+        MainActor.assumeIsolated { link.send(.script(data, fade: fade)) { done.resume(returning: $0) } } // called right away, here
     }
     guard ok, let snapshot = link.snapshot else {
         throw WatchIntentError(localizedStringResource: "\(link.error ?? "Your iPhone didn't answer.")")
@@ -42,6 +46,8 @@ private func summary(_ s: LightSnapshot) -> String {
     }
 }
 
+// MARK: Entities (from what the iPhone has sent)
+
 struct WatchPresetEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Preset"
     static let defaultQuery = WatchPresetQuery()
@@ -63,19 +69,104 @@ struct WatchPresetQuery: EntityQuery {
     }
 }
 
+struct WatchSceneEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Scene"
+    static let defaultQuery = WatchSceneQuery()
+    var id: Int
+    var name: String
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+}
+
+struct WatchSceneQuery: EntityQuery {
+    func entities(for identifiers: [Int]) async throws -> [WatchSceneEntity] {
+        identifiers.compactMap { id in Scenes.all.first { $0.id == id }.map { WatchSceneEntity(id: $0.id, name: $0.name) } }
+    }
+
+    func suggestedEntities() async throws -> [WatchSceneEntity] {
+        Scenes.all.map { WatchSceneEntity(id: $0.id, name: $0.name) }
+    }
+}
+
+struct WatchCustomSceneEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Custom Scene"
+    static let defaultQuery = WatchCustomSceneQuery()
+    var id: UUID
+    var name: String
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+}
+
+struct WatchCustomSceneQuery: EntityQuery {
+    @MainActor
+    func entities(for identifiers: [UUID]) async throws -> [WatchCustomSceneEntity] {
+        let all = try await suggestedEntities()
+        return identifiers.compactMap { id in all.first { $0.id == id } }
+    }
+
+    @MainActor
+    func suggestedEntities() async throws -> [WatchCustomSceneEntity] {
+        PhoneLink.shared.scenes.map { WatchCustomSceneEntity(id: $0.id, name: $0.name) }
+    }
+}
+
+struct WatchScaleEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "CCT Scale"
+    static let defaultQuery = WatchScaleQuery()
+    var id: UUID
+    var name: String
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+}
+
+struct WatchScaleQuery: EntityQuery {
+    @MainActor
+    func entities(for identifiers: [UUID]) async throws -> [WatchScaleEntity] {
+        let all = try await suggestedEntities()
+        return identifiers.compactMap { id in all.first { $0.id == id } }
+    }
+
+    @MainActor
+    func suggestedEntities() async throws -> [WatchScaleEntity] {
+        (PhoneLink.shared.snapshot?.scales ?? []).map { WatchScaleEntity(id: $0.id, name: $0.name) }
+    }
+}
+
+struct WatchBulbEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Bulb"
+    static let defaultQuery = WatchBulbQuery()
+    /// Its MAC, or its address if that isn't known.
+    var id: String
+    var name: String
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+}
+
+struct WatchBulbQuery: EntityQuery {
+    @MainActor
+    func entities(for identifiers: [String]) async throws -> [WatchBulbEntity] {
+        let all = try await suggestedEntities()
+        return identifiers.compactMap { id in all.first { $0.id == id } }
+    }
+
+    @MainActor
+    func suggestedEntities() async throws -> [WatchBulbEntity] {
+        (PhoneLink.shared.snapshot?.bulbs ?? []).map { WatchBulbEntity(id: $0.id, name: $0.name ?? $0.address) }
+    }
+}
+
+// MARK: Actions
+
 struct WatchApplyPresetIntent: AppIntent {
     static let title: LocalizedStringResource = "Apply Preset"
     static let description = IntentDescription("Sets the bulb to one of your setPilot presets, switching it on if it's off.")
 
     @Parameter(title: "Preset") var preset: WatchPresetEntity
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Apply \(\.$preset)") }
+    static var parameterSummary: some ParameterSummary { Summary("Apply \(\.$preset)") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        _ = try await relay(.applyPreset(preset.id))
+        _ = try await relay(.preset(preset.id.uuidString), fade: fade)
         return .result(dialog: "Applied \(preset.name).")
     }
 }
@@ -87,6 +178,14 @@ enum WatchPowerAction: String, AppEnum {
     static let caseDisplayRepresentations: [WatchPowerAction: DisplayRepresentation] = [
         .on: "on", .off: "off", .toggle: "on or off",
     ]
+
+    var bool: Bool? {
+        switch self {
+        case .on: true
+        case .off: false
+        case .toggle: nil
+        }
+    }
 }
 
 struct WatchPowerIntent: AppIntent {
@@ -94,19 +193,15 @@ struct WatchPowerIntent: AppIntent {
     static let description = IntentDescription("Switches the bulb on, off, or the other way to how it is.")
 
     @Parameter(title: "Power", default: .toggle) var action: WatchPowerAction
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Switch the bulb \(\.$action)") }
+    static var parameterSummary: some ParameterSummary { Summary("Switch the bulb \(\.$action)") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let command: WatchCommand = switch action {
-        case .on: .power(true)
-        case .off: .power(false)
-        case .toggle: .togglePower
-        }
-        let s = try await relay(command)
+        let s = try await relay(.power(action.bool), fade: fade)
         return .result(dialog: "\(s.isOn == false ? "Switched off." : "Switched on.")")
     }
 }
@@ -126,15 +221,180 @@ struct WatchAdjustBrightnessIntent: AppIntent {
 
     @Parameter(title: "Direction", default: .brighter) var direction: WatchBrightnessDirection
     @Parameter(title: "Step", default: 10, inclusiveRange: (1, 90)) var step: Int
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Make the bulb \(\.$direction) by \(\.$step)%") }
+    static var parameterSummary: some ParameterSummary { Summary("Make the bulb \(\.$direction) by \(\.$step)%") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let s = try await relay(.dimDelta(direction == .brighter ? step : -step))
+        let s = try await relay(.adjustBrightness(direction == .brighter ? step : -step), fade: fade)
         return .result(dialog: "Brightness \(Int(s.dimming))%.")
+    }
+}
+
+struct WatchSetBrightnessIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Brightness"
+    static let description = IntentDescription("Sets the bulb's brightness (1–100%, within the bulb's own minimum), leaving its colour as it is.")
+
+    @Parameter(title: "Brightness", default: 100, inclusiveRange: (1, 100)) var level: Int
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary { Summary("Set the brightness to \(\.$level)%") { \.$fade } }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let s = try await relay(.brightness(level), fade: fade)
+        return .result(dialog: "Brightness \(Int(s.dimming))%.")
+    }
+}
+
+struct WatchSetColourIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Colour"
+    static let description = IntentDescription("Sets the bulb's red, green, blue, cool white and warm white channels (0–255).")
+
+    @Parameter(title: "Red", default: 255, inclusiveRange: (0, 255)) var r: Int
+    @Parameter(title: "Green", default: 0, inclusiveRange: (0, 255)) var g: Int
+    @Parameter(title: "Blue", default: 0, inclusiveRange: (0, 255)) var b: Int
+    @Parameter(title: "Cool White", default: 0, inclusiveRange: (0, 255)) var c: Int
+    @Parameter(title: "Warm White", default: 0, inclusiveRange: (0, 255)) var w: Int
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    var switchOn: Bool
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Set the colour to \(\.$r) \(\.$g) \(\.$b)") { \.$c; \.$w; \.$switchOn; \.$fade }
+    }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        _ = try await relay(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: "Colour set.")
+    }
+}
+
+struct WatchSetTemperatureIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Colour Temperature"
+    static let description = IntentDescription("Sets a white by kelvin, on the bulb's own scale or one of your CCT scales.")
+
+    @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "CCT Scale", description: "Empty for the bulb's own.") var scale: WatchScaleEntity?
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    var switchOn: Bool
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Set the temperature to \(\.$kelvin) K") { \.$scale; \.$switchOn; \.$fade }
+    }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let s = try await relay(.temperature(kelvin, scale: scale?.id.uuidString ?? "bulb", power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: "\(Int(s.mode == .custom ? s.customKelvin : s.temp)) K.")
+    }
+}
+
+struct WatchSetSceneIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Scene"
+    static let description = IntentDescription("Plays one of the bulb's built-in scenes.")
+
+    @Parameter(title: "Scene") var scene: WatchSceneEntity
+    @Parameter(title: "Speed", inclusiveRange: (10, 200)) var speed: Int?
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    var switchOn: Bool
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary { Summary("Play \(\.$scene)") { \.$speed; \.$switchOn; \.$fade } }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        _ = try await relay(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: "Playing \(scene.name).")
+    }
+}
+
+struct WatchPlayCustomSceneIntent: AppIntent {
+    static let title: LocalizedStringResource = "Play Custom Scene"
+    static let description = IntentDescription("Plays one of your setPilot custom scenes.")
+
+    @Parameter(title: "Custom Scene") var scene: WatchCustomSceneEntity
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    var switchOn: Bool
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary { Summary("Play \(\.$scene)") { \.$switchOn; \.$fade } }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        _ = try await relay(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: "Playing \(scene.name).")
+    }
+}
+
+enum WatchLightPower: String, AppEnum {
+    case leave, on, off
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Power"
+    static let caseDisplayRepresentations: [WatchLightPower: DisplayRepresentation] = [
+        .leave: "as it is", .on: "on", .off: "off",
+    ]
+}
+
+struct WatchSetLightIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Light"
+    static let description = IntentDescription("Changes several things at once, in one change: a temperature, scene or custom scene, the brightness and the power.")
+
+    @Parameter(title: "Temperature (K)") var kelvin: Int?
+    @Parameter(title: "CCT Scale", description: "With a temperature: empty for the bulb's own.") var scale: WatchScaleEntity?
+    @Parameter(title: "Scene") var scene: WatchSceneEntity?
+    @Parameter(title: "Custom Scene") var customScene: WatchCustomSceneEntity?
+    @Parameter(title: "Speed", inclusiveRange: (10, 200)) var speed: Int?
+    @Parameter(title: "Brightness", inclusiveRange: (1, 100)) var brightness: Int?
+    @Parameter(title: "Power", default: .leave) var power: WatchLightPower
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Set the light") { \.$kelvin; \.$scale; \.$scene; \.$customScene; \.$speed; \.$brightness; \.$power; \.$fade }
+    }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let change = ScriptChange(temp: kelvin, scale: kelvin == nil ? nil : (scale?.id.uuidString ?? "bulb"),
+                                  scene: scene.map { String($0.id) }, customScene: customScene?.id.uuidString,
+                                  speed: speed, brightness: brightness,
+                                  power: power == .leave ? nil : power == .on)
+        let s = try await relay(.set(change), fade: fade)
+        return .result(dialog: "\(summary(s))")
+    }
+}
+
+struct WatchSwitchBulbIntent: AppIntent {
+    static let title: LocalizedStringResource = "Switch Bulb"
+    static let description = IntentDescription("Makes another of your bulbs the one setPilot controls.")
+
+    @Parameter(title: "Bulb") var bulb: WatchBulbEntity
+
+    static var parameterSummary: some ParameterSummary { Summary("Switch to \(\.$bulb)") }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        _ = try await relay(.switchBulb(bulb.id))
+        return .result(dialog: "Switched to \(bulb.name).")
     }
 }
 
@@ -146,7 +406,7 @@ struct WatchGetLightStateIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
-        let text = summary(try await relay(.state))
+        let text = summary(try await relay(.get))
         return .result(value: text, dialog: "\(text)")
     }
 }
@@ -170,6 +430,12 @@ struct WatchShortcuts: AppShortcutsProvider {
             phrases: ["Make the light \(\.$direction) with \(.applicationName)"],
             shortTitle: "Brighter or Dimmer",
             systemImageName: "sun.max"
+        )
+        AppShortcut(
+            intent: WatchPlayCustomSceneIntent(),
+            phrases: ["Play \(\.$scene) in \(.applicationName)"],
+            shortTitle: "Play Custom Scene",
+            systemImageName: "sparkles"
         )
         AppShortcut(
             intent: WatchGetLightStateIntent(),
