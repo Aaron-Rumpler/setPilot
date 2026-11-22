@@ -333,7 +333,8 @@ struct SetLightIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        var change = ScriptChange(speed: speed, brightness: brightness,
+        // The speed only with a scene (it isn't shown for the other kinds).
+        var change = ScriptChange(speed: kind == .scene || kind == .customScene ? speed : nil, brightness: brightness,
                                   power: power == .on ? true : power == .off ? false : nil)
         switch kind {
         case .leave: break

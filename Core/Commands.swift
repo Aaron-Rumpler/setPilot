@@ -211,10 +211,15 @@ enum Scripting {
         if let q = scaleQuery {
             // A scale of that name (or ID) first, so one called "Bulb" can be chosen; then the
             // bulb's own.
-            if let found = find(q, in: scales, name: { $0.name }, id: { $0.id.uuidString }) {
-                scale = found
+            // A scale with exactly that name (or ID) first, so one called "Bulb" can be chosen; then
+            // the bulb's own; then a scale by the start of its name ("bulb" isn't "Bulb default").
+            let exact = scales.first { $0.id.uuidString.caseInsensitiveCompare(q) == .orderedSame || $0.name.caseInsensitiveCompare(q) == .orderedSame }
+            if let exact {
+                scale = exact
             } else if ["bulb", "own", "bulb's own"].contains(q.lowercased()) {
                 scale = nil
+            } else if let found = find(q, in: scales, name: { $0.name }, id: { $0.id.uuidString }) {
+                scale = found
             } else {
                 throw ScriptError(code: .notFound, message: "That CCT scale isn't one of this bulb's (with two or more points).")
             }
@@ -249,10 +254,12 @@ enum Scripting {
         if let problem = await model.outcome() {
             // No answer (still waiting, every retry gone unanswered, the connection lost) or a refusal.
             let unanswered = model.pending || problem == "The bulb didn't answer."
-                || problem.contains("no reply") || problem.hasPrefix("Lost the connection")
+                || problem.contains("no reply") || problem.contains("couldn't send") || problem.hasPrefix("Lost the connection")
             throw ScriptError(code: unanswered ? .notAnswering : .refused, message: problem)
         }
-        await model.waitUntilSettled()
+        // Long enough for the read-back's retries (0.7 s after sending, then resent at about 0.75,
+        // 2.25 and 5.25 s): a lost read-back or two isn't taken for no answer.
+        await model.waitUntilSettled(timeout: 7)
         // Answered, but not read back (yet): not known to be done.
         if model.pending { throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.") }
         if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }
@@ -283,7 +290,7 @@ enum Scripting {
         case .scenes: Scenes.all.filter { !(256...265).contains($0.id) }.map { ScriptItem(name: $0.name, id: String($0.id)) }
         case .customScenes: model.library.customScenes.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .scales: model.library.scales(for: model.chosenMAC).map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
-        case .bulbs: model.namedBulbs.map { ScriptItem(name: $0.name ?? $0.address, id: $0.mac ?? $0.address) }
+        case .bulbs: model.namedBulbs.map { ScriptItem(name: $0.name ?? "Unnamed bulb", id: $0.mac ?? $0.address) }
         }
     }
 }

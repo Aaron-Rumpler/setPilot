@@ -5,7 +5,10 @@ struct SetPilotWatchApp: App {
     @State private var link = PhoneLink.shared
     @Environment(\.scenePhase) private var phase
 
-    init() { PhoneLink.shared.start() }
+    init() {
+        PhoneLink.shared.start()
+        WatchShortcuts.updateAppShortcutParameters() // the preset names Siri knows, from the last context
+    }
 
     var body: some Scene {
         WindowGroup {

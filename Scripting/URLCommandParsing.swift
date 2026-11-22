@@ -19,12 +19,17 @@ enum URLCommands {
         // setpilot://power?… or setpilot://x-callback-url/power?…
         var action = url.host()?.lowercased() ?? ""
         if action == "x-callback-url" { action = url.pathComponents.dropFirst().first?.lowercased() ?? "" }
-        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        // "+" as a space too, as many launchers encode one.
-        func value(_ name: String) -> String? {
-            items.first { $0.name.lowercased() == name }?.value?.replacingOccurrences(of: "+", with: " ")
+        let items = queryItems(url)
+        func value(_ name: String) -> String? { items.first { $0.name.lowercased() == name }?.value }
+        // A number that's there but isn't one is an error, not left out without a word.
+        var invalid: String?
+        func int(_ name: String) -> Int? {
+            guard let v = value(name) else { return nil }
+            if let n = Int(v.trimmingCharacters(in: .whitespaces)) { return n }
+            if invalid == nil { invalid = name }
+            return nil
         }
-        func int(_ name: String) -> Int? { value(name).flatMap { Int($0) } }
+        _ = int("fade") // checked here, used by the caller
         func flag(_ name: String) -> Bool? {
             switch value(name)?.lowercased() {
             case "1", "true", "yes", "on": true
@@ -35,6 +40,7 @@ enum URLCommands {
         // "switch on" for colour, temperature and scenes: only true means anything.
         let switchOn: Bool? = flag("on") == true ? true : nil
 
+        let parsed: Result<ScriptCommand, ScriptError> = {
         switch action {
         case "get", "state":
             return .success(.get)
@@ -72,12 +78,14 @@ enum URLCommands {
         case "set":
             // Several at once: rgb=r,g,b[,c,w] | temp (with scale) | scene | custom; speed,
             // brightness, power=on|off.
-            let rgb = value("rgb").map { $0.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) } }
-            let power: Bool? = switch value("power")?.lowercased() {
-            case "on", "1", "true": true
-            case "off", "0", "false": false
-            default: nil
+            var rgb: [Int]?
+            if let text = value("rgb") {
+                let parts = text.split(separator: ",", omittingEmptySubsequences: false).map { Int($0.trimmingCharacters(in: .whitespaces)) }
+                guard parts.allSatisfy({ $0 != nil }) else { return .failure(bad("rgb is r,g,b (and optionally c,w), each 0–255.")) }
+                rgb = parts.compactMap { $0 }
             }
+            let power = flag("power")
+            if value("power") != nil, power == nil { return .failure(bad("power is on or off.")) }
             return .success(.set(ScriptChange(rgbcw: rgb, temp: int("temp") ?? int("kelvin"), scale: value("scale"),
                                               scene: value("scene"), customScene: value("custom"), speed: int("speed"),
                                               brightness: int("brightness"), power: power)))
@@ -92,14 +100,26 @@ enum URLCommands {
         default:
             return .failure(bad("Unknown action “\(action)”."))
         }
+        }()
+        if let invalid { return .failure(bad("\(invalid) has to be a whole number.")) }
+        return parsed
+    }
+
+    /// The query, with "+" as a space as many launchers encode one (before the percent-decoding,
+    /// so an encoded "+", %2B, stays a "+").
+    static func queryItems(_ url: URL) -> [URLQueryItem] {
+        let encoded = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQueryItems ?? []
+        return encoded.map { item in
+            URLQueryItem(name: item.name.removingPercentEncoding ?? item.name,
+                         value: item.value.map { $0.replacingOccurrences(of: "+", with: "%20").removingPercentEncoding ?? $0 })
+        }
     }
 
     private static func bad(_ message: String) -> ScriptError { ScriptError(code: .badArguments, message: message) }
 
     /// The fade a link asks for (fade=ms, for any change), if any.
     static func fade(from url: URL) -> Int? {
-        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
-            .first { $0.name.lowercased() == "fade" }?.value.flatMap { Int($0) }
+        queryItems(url).first { $0.name.lowercased() == "fade" }?.value.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     /// Schemes a callback may not open: a link (from a web page, say) mustn't use setPilot to open
@@ -107,6 +127,9 @@ enum URLCommands {
     static let refusedCallbackSchemes: Set<String> = [
         "file", "ftp", "sftp", "smb", "afp", "nfs", "vnc", "ssh", "telnet", "x-man-page",
         "facetime", "facetime-audio", "tel", "sms", "mailto", "javascript", "data",
+        // Nor setPilot itself (a page chaining several changes from one prompt). (shortcuts:// is
+        // allowed: it's how the Shortcuts app's Open X-Callback URL gets its answer.)
+        "setpilot",
     ]
 
     /// The x-success or x-error URL with the result added, if the link gave one (and it may be

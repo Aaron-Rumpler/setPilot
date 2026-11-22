@@ -106,7 +106,7 @@ struct HomeImportPlan: Equatable, Sendable {
                                   newName: naming.name(home: export.name, room: room, device: d.name, aloneInRoom: alone),
                                   currentName: currentNames[mac],
                                   known: knownMACs.contains(mac),
-                                  otherKey: currentKeys[mac].map { $0 != homeKey } ?? false)
+                                  otherKey: homeKey != nil && (currentKeys[mac].map { $0 != homeKey } ?? false))
         }
         // Bulbs used here first, then by name.
         items.sort { a, b in

@@ -161,8 +161,8 @@ final class Model {
     /// The setPilot just sent switches the bulb on or off (the power switch, a preset): if it gets
     /// no answer, the power switch goes back to how it was.
     @ObservationIgnored private var pilotSwitches = false
-    /// The latest change's setPilot was answered "success" (Shortcuts count that as taken, even if
-    /// the read-back after it is lost).
+    /// The latest change's setPilot was answered "success" (outcome() counts that as taken; the
+    /// scripting runner also waits for the read-back after it).
     @ObservationIgnored private var pilotAnswered = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.

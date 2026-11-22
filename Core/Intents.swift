@@ -78,7 +78,7 @@ struct PowerIntent: AppIntent {
 
 struct SetBrightnessIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Brightness"
-    static let description = IntentDescription("Sets the bulb's brightness (10–100%), leaving its colour as it is.")
+    static let description = IntentDescription("Sets the bulb's brightness (1–100%, within the bulb's own minimum), leaving its colour as it is.")
 
     @Parameter(title: "Brightness", default: 100, inclusiveRange: (1, 100))
     var level: Int

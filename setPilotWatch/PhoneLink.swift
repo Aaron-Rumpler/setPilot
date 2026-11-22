@@ -12,6 +12,8 @@ final class PhoneLink: NSObject {
     private(set) var presets: [Preset] = []
     private(set) var scenes: [CustomSceneSummary] = []
     private(set) var reachable = false
+    /// Activated, and the iPhone in reach: a command can go now.
+    var ready: Bool { WCSession.default.activationState == .activated && WCSession.default.isReachable }
     /// A command is waiting for the iPhone's reply (of however many are).
     var busy: Bool { waiting > 0 }
     private var waiting = 0
@@ -229,6 +231,8 @@ final class PhoneLink: NSObject {
             WidgetCenter.shared.reloadAllTimelines()
             // The preset complication's choices are one suggestion per preset.
             WidgetCenter.shared.invalidateConfigurationRecommendations()
+            // And Siri learns the preset names (Apply … in setPilot).
+            WatchShortcuts.updateAppShortcutParameters()
         }
         if let d = context[WatchKey.customScenes] as? Data, d != defaults.data(forKey: WatchKey.customScenes),
            let s = try? decoder.decode([CustomSceneSummary].self, from: d) {

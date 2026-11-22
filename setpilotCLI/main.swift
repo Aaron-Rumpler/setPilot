@@ -48,7 +48,11 @@ func takeFlag(_ name: String) -> Bool {
 func takeOption(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name) else { return nil }
     guard i + 1 < args.count else {
-        FileHandle.standardError.write(Data("setpilot: \(name) needs a value\n".utf8))
+        if args.contains("--json") {
+            print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) needs a value.\"}}")
+        } else {
+            FileHandle.standardError.write(Data("setpilot: \(name) needs a value\n".utf8))
+        }
         exit(2)
     }
     let value = args[i + 1]
@@ -93,6 +97,7 @@ func encode<T: Encodable>(_ value: T) -> String {
 }
 
 guard let verb = args.first?.lowercased() else { print(usage); exit(0) }
+if offFlag, verb != "set" { badArguments("--off goes with set (for the others, use off).") }
 let rest = Array(args.dropFirst())
 
 var watching = false
@@ -295,7 +300,9 @@ lines { data in
     answer = try? decoder.decode(ScriptResult.self, from: data)
     return false
 }
-guard let result = answer else { fail(ScriptError(code: .appUnavailable, message: "No answer from the setPilot app.")) }
+guard let result = answer else {
+    fail(ScriptError(code: .notAnswering, message: "The setPilot app didn't answer in time (the change may still go through)."))
+}
 if let error = result.error { fail(error) }
 if json {
     if let items = result.items { print(encode(items)) } else if let state = result.state { print(encode(state)) }

@@ -12,6 +12,9 @@ struct WatchIntentError: Error, CustomLocalizedStringResourceConvertible {
 @MainActor
 private func relay(_ command: WatchCommand) async throws -> LightSnapshot {
     let link = PhoneLink.shared
+    // Launched just for this (Siri, the Action button): the link to the iPhone is still coming up.
+    let until = Date.now.addingTimeInterval(5)
+    while !link.ready, Date.now < until { try? await Task.sleep(for: .milliseconds(100)) }
     let ok = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
         MainActor.assumeIsolated { link.send(command) { done.resume(returning: $0) } } // called right away, here
     }
@@ -21,6 +24,7 @@ private func relay(_ command: WatchCommand) async throws -> LightSnapshot {
     return snapshot
 }
 
+@MainActor
 private func summary(_ s: LightSnapshot) -> String {
     let name = s.bulbName ?? "The bulb"
     guard s.link == .connected else { return "\(name) isn't answering." }
@@ -31,7 +35,7 @@ private func summary(_ s: LightSnapshot) -> String {
         let colour = switch s.mode {
         case .temp: "\(Int(s.temp)) K"
         case .custom: "\(Int(s.customKelvin)) K"
-        case .scene: Scenes.name(s.sceneId)
+        case .scene: s.customScene.flatMap { id in PhoneLink.shared.scenes.first { $0.id == id }?.name } ?? Scenes.name(s.sceneId)
         case .rgbcw: "a colour"
         }
         return "\(name) is on, \(colour), at \(Int(s.dimming))%."

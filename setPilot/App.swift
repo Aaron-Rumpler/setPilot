@@ -45,13 +45,17 @@ struct SetPilotApp: App {
         .menuBarExtraStyle(.window)
         // Wide enough for the list, the editor and the step inspector side by side.
         Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model) }
+            .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 1060, height: 680)
         Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
+            .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 720, height: 680)
         Window("Console", id: "console") { ConsoleWindow(model: model) }
+            .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
         Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440) }
+            .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 960, height: 680)
             .keyboardShortcut("l", modifiers: [.command, .option])
         Settings { SettingsView(model: model) }
