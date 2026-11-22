@@ -471,7 +471,11 @@ enum Stepping {
 
     /// The next multiple of `step` above or below `value` (37 → 40 → 50), within `range`.
     static func next(_ value: Double, up: Bool, by step: Double, in range: ClosedRange<Double>) -> Double {
-        let v = up ? ((value / step).rounded(.down) + 1) * step : ((value / step).rounded(.up) - 1) * step
+        // A value a hair off a step (a slider's position mapped back, 3400.0000000000005) counts as
+        // on it, or rounding the wrong way would leave it where it is.
+        var q = value / step
+        if abs(q - q.rounded()) < 1e-9 { q = q.rounded() }
+        let v = up ? (q.rounded(.down) + 1) * step : (q.rounded(.up) - 1) * step
         return min(max(v, range.lowerBound), range.upperBound)
     }
 

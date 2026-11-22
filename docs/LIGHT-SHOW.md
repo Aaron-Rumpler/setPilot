@@ -29,7 +29,7 @@ Each cue:
 
 | Key | Meaning |
 |---|---|
-| `t` | When, in the media's time: seconds (`72.25`), or `"m:ss.sss"` / `"h:mm:ss.sss"` |
+| `t` | When, in the media's time: seconds (`72.25`), or `"m:ss.sss"` / `"h:mm:ss.sss"` (seconds and minutes after the first part under 60) |
 | `pilot` | The `setPilot` params to send, as the bulb takes them (see [UDP-API.md](UDP-API.md)) |
 | `label` | Optional: shown in the cue list |
 

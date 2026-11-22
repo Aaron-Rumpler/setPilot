@@ -1039,13 +1039,15 @@ final class Model {
 
     /// Plays one of setPilot's custom scenes (sent inline: nothing is stored on the bulb).
     /// `speed`, if given, follows in a setPilot of its own (the scene editor's preview plays at 100).
-    func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) {
-        _ = send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
+    @discardableResult
+    func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) -> Bool {
+        send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
     /// Applies a preset, switching the bulb on if it's off.
-    func apply(_ preset: Preset) {
-        _ = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
+    @discardableResult
+    func apply(_ preset: Preset) -> Bool {
+        send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
     }
 
     /// Sends several changes as one setPilot, with their own fade time (`trans`).

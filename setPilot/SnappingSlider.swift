@@ -219,7 +219,7 @@ final class SnapSlider: NSSlider {
     override func accessibilityPerformIncrement() -> Bool { nudge(1); return true }
     override func accessibilityPerformDecrement() -> Bool { nudge(-1); return true }
     // In the slider's units, not the 0...1 track positions it works in.
-    override func accessibilityValue() -> Any? { NSNumber(value: value) }
+    override func accessibilityValue() -> Any? { NSNumber(value: (value * 1000).rounded() / 1000) } // not 3400.0000000000005
     override func accessibilityMinValue() -> Any? { NSNumber(value: range.lowerBound) }
     override func accessibilityMaxValue() -> Any? { NSNumber(value: range.upperBound) }
 

@@ -62,8 +62,13 @@ struct LightShow {
         let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
         guard (1...3).contains(parts.count) else { return nil }
         var total = 0.0
-        for part in parts {
-            guard let v = Double(part), v >= 0 else { return nil }
+        for (i, part) in parts.enumerated() {
+            // Plain numbers only ("1e3" and "inf" are Doubles too); minutes and hours whole, and
+            // seconds and minutes after the first part under 60 ("1:75" is a typo, not 2:15).
+            guard !part.isEmpty, part.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
+                  let v = Double(part), v >= 0 else { return nil }
+            if i < parts.count - 1, v != v.rounded() { return nil }
+            if i > 0, v >= 60 { return nil }
             total = total * 60 + v
         }
         return valid(total)

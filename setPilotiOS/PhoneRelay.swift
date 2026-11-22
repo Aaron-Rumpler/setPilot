@@ -135,7 +135,8 @@ final class PhoneRelay: NSObject {
             guard let preset = model.library.presets.first(where: { $0.id == id }) else {
                 return .failed(model.snapshot, "That preset no longer exists.")
             }
-            model.apply(preset)
+            // Not sent (a deleted scale in it, say): answered now, not after an earlier change settles.
+            guard model.apply(preset) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .set(let values, let fields):
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
@@ -147,9 +148,9 @@ final class PhoneRelay: NSObject {
             guard let scene = model.library.customScene(id) else {
                 return .failed(model.snapshot, "That custom scene no longer exists.")
             }
-            model.playCustom(scene, switchOn: switchOn)
+            guard model.playCustom(scene, switchOn: switchOn) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .compose(let change):
-            model.send(change)
+            guard model.send(change) else { return .failed(model.snapshot, model.refusal ?? model.status) }
         case .modeChoice(let choice):
             model.setModeChoice(choice)
         case .temperatureScale(let id):
@@ -325,6 +326,7 @@ final class PhoneRelay: NSObject {
         let session = WCSession.default
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys // the watch compares the bytes: unchanged must match
         var context: [String: Any] = [:]
         if let data = try? encoder.encode(model.library.presets) { context[WatchKey.presets] = data }
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }

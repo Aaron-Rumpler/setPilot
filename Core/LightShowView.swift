@@ -215,8 +215,9 @@ private struct LightShowScreen: View {
             Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(1)
         } else if let note = player.restoreNote {
             Label(note, systemImage: "info.circle").foregroundStyle(.secondary).lineLimit(1).help(note)
-        } else if player.sendsToBulb && !model.canControl {
-            // Ahead of a show's warnings: nothing reaches the bulb until it's fixed.
+        } else if player.sendsToBulb && model.link != .connected {
+            // Ahead of a show's warnings: nothing reaches the bulb until it's fixed. (Connected
+            // with its state still to be read is fine: cues go anyway.)
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
         } else if let show = player.show, let warning = show.warnings.first {
             // The summary too (on iPhone it's the only place the title shows).
