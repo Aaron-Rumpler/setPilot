@@ -51,8 +51,33 @@ trademark of Signify.
   UDP (all 22 in firmware 1.38.0's method table, Wi-Fi ones included), in a popover from the ⓘ
   button (Bulb & Settings › Device Info on iPhone): each a collapsible section with a copy button,
   errors flagged, and Expand All and Copy All.
-- **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer;
-  from the Shortcuts app, Spotlight and Siri.
+- **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer,
+  set a colour, colour temperature (on a CCT scale or the bulb's own), scene or custom scene, switch
+  to another of your bulbs, and Get Light State (each part usable in later actions, and as JSON);
+  from the Shortcuts app, Spotlight and Siri. A change counts as done once the bulb has answered and
+  read back as asked; otherwise the action fails with why (not answering, refused, not applied).
+  Colour, temperature and scene actions leave the power as it is unless Switch On is set.
+- **setpilot:// links** (Mac and iPhone), for launchers and automation tools, with x-callback-url:
+  `setpilot://power?on=toggle`, `setpilot://scene?name=Ocean&speed=150`,
+  `setpilot://x-callback-url/get?x-success=…` (the state as JSON, in `state`). The actions:
+  `get`, `power` (`on=true|false|toggle`), `brightness` (`level`), `brighter`/`dimmer` (`step`),
+  `colour` (`r g b c w`), `temperature` (`kelvin`, `scale` a CCT scale's name or `bulb`), `scene`
+  and `custom-scene` (`name`, `speed`), `speed` (`value`), `preset` (`name`) and `switch` (`bulb`),
+  with `on=1` to switch the bulb on too. x-error gets `errorCode` and `errorMessage`. Only what the
+  app's controls do: no raw bulb methods, as web pages can open these links too.
+- **Command-line tool** (Mac): `setpilot get`, `on`, `off`, `toggle`, `brightness 40`, `brighter`,
+  `colour 255 80 0`, `temp 2700 --scale bulb`, `scene Ocean --speed 150`, `custom <name>`,
+  `preset <name>`, `switch <bulb>`, `list presets` and `watch` (the state, one line each time it
+  changes); `--json` for JSON (JSON Lines for `watch`), `--on` to switch the bulb on too. It asks the
+  app (launching it in the background if needed), with an exit code for each kind of failure (see
+  `setpilot --help`). It's inside the app: link it onto your PATH, e.g.
+  `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App
+  Groups and a development team (see below).
+- **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
+  home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
+  for a room's only light, optionally with the home's name first) and give them the home's signing
+  key. A list shows what would change before anything does; bulbs not used here yet keep their name
+  and key for when they are.
 - **Console** (Window › Console, ⌥⌘K, or Console… on the Last Command panel; on iPhone, Bulb &
   Settings › Console, with the log on its own page): send any method with any params. Known
   methods (the 36 firmware 1.38.0 takes over UDP; it refuses the rest) are in a menu with params to
@@ -182,7 +207,7 @@ compilation conditions, so the code that needs them is left out otherwise.
 
 | Switch | Default | What it gives | Needs |
 |---|---|---|---|
-| `WIZ_APP_GROUPS` | YES | The iPhone widgets, Control Center controls and watch complications (they read the apps' data through the group) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps |
+| `WIZ_APP_GROUPS` | YES | The iPhone widgets, Control Center controls and watch complications (they read the apps' data through the group), and the Mac's command-line tool (it reaches the app through a Team-ID-prefixed group container) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps. The command-line tool also needs a development team on the Mac (an ad-hoc build has no Team ID, so no container) |
 | `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
@@ -248,6 +273,9 @@ file added to a folder is picked up without editing the project:
 | `WidgetShared/` | the iPhone app and its widgets: sending to the bulb from a widget, the widget intents |
 | `setPilotWidgets/` | the iPhone widgets and Control Center controls |
 | `setPilotWatchWidgets/` | the watch complications |
+| `Scripting/` | Mac and iPhone apps and the command-line tool: what scripting can ask for, and setpilot:// parsing |
+| `setpilotCLI/` | the command-line tool (target "setpilot CLI", built into the Mac app's `Contents/Helpers`) |
+| `Tests/` | unit tests (target "setPilotTests", with Common and Scripting), run in CI with `xctest` |
 
 Each app records the commit it was built from (from `git describe`, with `-dirty` for uncommitted
 changes) and shows it in Settings and the About panel (on the watch, on the Bulb screen).
@@ -263,6 +291,12 @@ quarantine flag or approve it in System Settings › Privacy & Security:
 ```bash
 xattr -dr com.apple.quarantine setPilot.app
 ```
+
+Pushing a version tag (`v1.0.0`, say) runs the Release workflow, which puts the Mac app on a GitHub
+release as a DMG. With the `DEVELOPER_ID_P12`, `DEVELOPER_ID_PASSWORD` and `DEVELOPMENT_TEAM`
+repository secrets (a paid account's Developer ID certificate) it's signed, and with
+`NOTARY_APPLE_ID` and `NOTARY_PASSWORD` too, notarised; without them it's the same ad-hoc build.
+The CI also builds and runs the unit tests.
 
 ## Notes
 
