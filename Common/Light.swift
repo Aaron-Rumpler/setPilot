@@ -216,7 +216,7 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         var c = 0
         var w = 0
         var temp = 2700
-        /// Brightness of this step, 1–100, on top of the bulb's dimming.
+        /// Brightness of this step, 0–100, on top of the bulb's dimming.
         var level = 100
         /// How long the step holds, in ms.
         var hold = 1000

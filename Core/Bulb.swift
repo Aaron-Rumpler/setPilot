@@ -48,7 +48,7 @@ final class Bulb {
         c.start(queue: DispatchQueue(label: "wiz.udp"))
     }
 
-    /// `retry` mirrors pywizlight: resend up to 6 times (0.75 s doubling, capped at 3 s)
+    /// `retry` mirrors pywizlight: send up to 6 times (0.75 s apart, doubling, capped at 3 s)
     /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {

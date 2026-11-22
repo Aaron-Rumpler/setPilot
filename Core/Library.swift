@@ -114,7 +114,11 @@ final class Library {
     }
 
     private func save<T: Encodable>(_ value: T, _ key: String) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
+        // Sorted, so the same content always encodes the same (iCloud's copy is compared byte for
+        // byte, and the CCT scales are a dictionary).
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(value) else { return }
         UserDefaults.standard.set(data, forKey: key)
         if !fromCloud, key != Self.activeCCTScaleKey { CloudSync.shared.put(key, data) }
     }

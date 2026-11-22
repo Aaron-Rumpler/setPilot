@@ -1125,14 +1125,16 @@ final class Model {
     }
 
     /// A preset as a ready-made setPilot (for widgets and controls, which send it themselves if
-    /// they can't use the app). Speed is left out; dimming and the controls' fade are in, as when
-    /// the app applies it.
+    /// they can't use the app). Speed is left out; dimming (within the bulb's limits) and the
+    /// controls' fade are in, as when the app applies it. Nil for one the app wouldn't send.
     func pilotParams(for preset: Preset) -> [String: Any]? {
-        var p: [String: Any] = ["dimming": min(max(preset.dimming, 1), 100)]
+        var p: [String: Any] = ["dimming": Int(min(max(Double(preset.dimming), minDimming, 1), 100))]
         switch preset.colour {
         case let .rgbcw(r, g, b, c, w): p.merge(["r": r, "g": g, "b": b, "c": c, "w": w]) { $1 }
         case let .temp(k): p["temp"] = k
-        case let .scene(id, _): p["sceneId"] = id
+        case let .scene(id, _):
+            guard Scenes.isKnown(id) else { return nil }
+            p["sceneId"] = id
         case let .custom(id, _):
             guard let scene = library.customScene(id) else { return nil }
             p["sceneId"] = Scenes.inlineCustom
@@ -1587,7 +1589,7 @@ final class Model {
         } else if let t = num("temp") {
             mode = .temp
             temp = t
-        } else if num("r") != nil || num("c") != nil || num("w") != nil {
+        } else if ["r", "g", "b", "c", "w"].contains(where: { num($0) != nil }) {
             r = num("r") ?? 0; g = num("g") ?? 0; b = num("b") ?? 0
             c = num("c") ?? 0; w = num("w") ?? 0
             // The bulb only knows RGBCW. In Custom CCT, stay there if the scale gives exactly
