@@ -156,6 +156,45 @@ final class CloudLibrary {
         #endif
     }
 
+    enum AccountChoice { case merge, keepHereOnly, replace }
+
+    /// The answer to "iCloud is now another Apple ID": add what's here to it, keep it on this
+    /// device only (until an item is changed), or replace it with that account's.
+    func resolveAccountSwitch(_ choice: AccountChoice) {
+        progress.accountSwitched = false
+        #if WIZ_ICLOUD
+        guard let model else { return }
+        switch choice {
+        case .merge:
+            seed()
+        case .keepHereOnly:
+            // Taken as already in iCloud, so nothing goes up unless it's changed here.
+            for kind in Kind.allCases {
+                for (id, item) in current(kind) {
+                    saved.meta[Self.recordName(kind, id)] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: .distantPast,
+                                                                 orderModified: .distantPast, unsent: false)
+                }
+            }
+            saved.seeded = true
+            persist()
+        case .replace:
+            applying = true
+            model.library.takeFromCloud {
+                $0.presets = []
+                $0.customScenes = []
+                $0.cctScales = [:]
+            }
+            model.setNamesFromCloud([:])
+            model.setSigningKeysFromCloud([:])
+            model.setKnownBulbsFromCloud([])
+            applying = false
+            saved.seeded = true
+            persist()
+            Task { try? await engine?.fetchChanges() }
+        }
+        #endif
+    }
+
     /// Fetches and sends now (Settings' Sync Now).
     func syncNow() async {
         #if WIZ_ICLOUD
@@ -426,8 +465,10 @@ final class CloudLibrary {
         case .accountChange(let e):
             switch e.changeType {
             case .signIn: reset(reseed: true)
-            // Another Apple ID: what's here is offered to it as on signing in (see needs-you).
-            case .switchAccounts: reset(reseed: true)
+            // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
+            case .switchAccounts:
+                reset(reseed: false)
+                progress.accountSwitched = true
             case .signOut: reset(reseed: false); status = "Not signed in to iCloud"
             @unknown default: break
             }
@@ -547,4 +588,27 @@ extension CloudLibrary: CKSyncEngineDelegate {
 final class CloudProgress {
     var status = "Not started"
     var lastSync: Date?
+    /// iCloud is now another Apple ID, and what to do with this device's library hasn't been chosen.
+    var accountSwitched = false
+}
+
+import SwiftUI
+
+extension View {
+    /// Asks what to do with this device's library when iCloud is now another Apple ID.
+    func accountSwitchPrompt() -> some View { modifier(AccountSwitchPrompt()) }
+}
+
+private struct AccountSwitchPrompt: ViewModifier {
+    func body(content: Content) -> some View {
+        content.alert("iCloud is now another Apple ID",
+                      isPresented: Binding(get: { CloudLibrary.shared.progress.accountSwitched },
+                                           set: { if !$0 { CloudLibrary.shared.progress.accountSwitched = false } })) {
+            Button("Add Them to This Account") { CloudLibrary.shared.resolveAccountSwitch(.merge) }
+            Button("Keep Them on This Device Only") { CloudLibrary.shared.resolveAccountSwitch(.keepHereOnly) }
+            Button("Replace Them with This Account's", role: .destructive) { CloudLibrary.shared.resolveAccountSwitch(.replace) }
+        } message: {
+            Text("This device has presets, custom scenes, CCT scales, bulbs and signing keys from the account it used before. Add them to this account, keep them here without adding them (anything you change is added), or replace them with this account's?")
+        }
+    }
 }
