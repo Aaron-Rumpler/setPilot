@@ -132,7 +132,8 @@ enum LightColour: Codable, Hashable, Sendable {
 }
 
 /// A change to send in one setPilot: any of colour, brightness and power, with a fade time
-/// (`trans`, ms; nil for the bulb's own). Turning off always uses the bulb's own fade-out.
+/// (`trans`, ms; nil for the bulb's own). Switching off, the bulb has so far used its own
+/// fade-out whatever `trans` says (it's sent anyway, in case that changes).
 struct LightChange: Codable, Hashable, Sendable {
     var colour: LightColour? = nil
     var dimming: Int? = nil

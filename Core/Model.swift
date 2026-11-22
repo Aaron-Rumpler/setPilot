@@ -36,7 +36,7 @@ final class Model {
     /// nil (-1 stored) when there isn't one.
     static var fade: Int? {
         get { (UserDefaults.standard.object(forKey: fadeKey) as? Int).flatMap { $0 >= 0 ? $0 : nil } }
-        set { UserDefaults.standard.set(newValue, forKey: fadeKey) }
+        set { UserDefaults.standard.set(newValue ?? -1, forKey: fadeKey) } // as FadeSetting stores it
     }
     static let fadeKey = "fadeMs"
 

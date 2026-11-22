@@ -26,6 +26,10 @@ enum QuickBulb {
             let all = SharedStore.defaults.dictionary(forKey: SharedStore.presetParamsKey) as? [String: Data] ?? [:]
             guard let data = all[id.uuidString],
                   let params = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                // Known, but with nothing to send: its custom scene or CCT scale has gone.
+                if SharedStore.presets.contains(where: { $0.id == id }) {
+                    throw WidgetError(localizedStringResource: "That preset can't be sent: its scene or scale has been deleted.")
+                }
                 throw WidgetError(localizedStringResource: "Open setPilot once to update its presets.")
             }
             _ = try await send(host, "setPilot", params) // no "state": switches the bulb on
