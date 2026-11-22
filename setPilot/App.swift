@@ -156,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if WIZ_ICLOUD
+        NSApp.registerForRemoteNotifications() // iCloud tells the sync engine about changes this way
+        #endif
         guard launchedAtLogin else { return }
         // Launched at login: just the menu bar item, no window. Close it now, before it's drawn if
         // possible, and again shortly after in case SwiftUI opens it late.

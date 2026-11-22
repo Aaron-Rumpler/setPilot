@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct SetPilotMobileApp: App {
+    @UIApplicationDelegateAdaptor private var delegate: PhoneAppDelegate
     @State private var model = Shared.model
     @Environment(\.scenePhase) private var phase
 
@@ -50,5 +51,15 @@ struct SetPilotMobileApp: App {
         .onChange(of: phase) { _, new in
             if new == .active { model.resume() }
         }
+    }
+}
+
+final class PhoneAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if WIZ_ICLOUD
+        application.registerForRemoteNotifications() // iCloud tells the sync engine about changes this way
+        #endif
+        return true
     }
 }

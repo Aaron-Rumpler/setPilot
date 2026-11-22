@@ -208,6 +208,17 @@ final class LightShowPlayer {
     init(model: Model) {
         self.model = model
         startTicking()
+        // These two sync through iCloud (CloudSync).
+        NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let defaults = UserDefaults.standard
+                let sends = defaults.object(forKey: Self.sendKey) as? Bool ?? true
+                if sends != sendsToBulb { sendsToBulb = sends }
+                let restores = defaults.object(forKey: Self.restoreKey) as? Bool ?? true
+                if restores != self.restores { self.restores = restores }
+            }
+        }
     }
 
     // MARK: Files

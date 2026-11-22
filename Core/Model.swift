@@ -193,12 +193,13 @@ final class Model {
     private let phoneMac = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
 
     init() {
-        // Bulb names sync through iCloud too (in builds with it), keyed by MAC.
-        CloudSync.shared.register(Self.namesKey, local: try? Self.namesEncoder.encode(names)) { [weak self] data in
-            guard let self, let v = try? JSONDecoder().decode([String: String].self, from: data) else { return }
-            namesFromCloud = true
-            names = v
-            namesFromCloud = false
+        // Bulb names sync through iCloud too (in builds with it), keyed by MAC. Older builds kept
+        // them whole in key-value storage: take any not here yet, once.
+        if CloudSync.isEnabled, !UserDefaults.standard.bool(forKey: "cloudKeyValueNamesTaken") {
+            UserDefaults.standard.set(true, forKey: "cloudKeyValueNamesTaken")
+            if let d = CloudSync.legacyValue(Self.namesKey), let v = try? JSONDecoder().decode([String: String].self, from: d) {
+                names.merge(v) { mine, _ in mine }
+            }
         }
         bulb.onReply = { [weak self] in self?.handleReply($0) }
         bulb.onSent = { [weak self] method, text in self?.appendLog(.sent, method: method, text: text) }
@@ -287,6 +288,23 @@ final class Model {
             self?.live = false
             self?.liveStatus = "Live updates off — \(reason)"
         }
+        // iCloud sync (builds with WIZ_ICLOUD): settings through key-value storage, the library
+        // and names item by item.
+        NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadSyncedSettings() }
+        }
+        CloudSync.shared.start()
+        CloudLibrary.shared.start(model: self)
+    }
+
+    /// Settings from another device (CloudSync) have been written to the defaults: take them.
+    private func reloadSyncedSettings() {
+        let defaults = UserDefaults.standard
+        let fade = FadeChoice(rawValue: defaults.string(forKey: Self.controlsFadeKey) ?? "") ?? .setting
+        if fade != controlsFade { controlsFade = fade }
+        let ms = defaults.object(forKey: Self.controlsFadeMsKey) as? Int ?? 1000
+        if ms != controlsFadeMs { controlsFadeMs = ms }
+        library.onChange?() // the widgets' ready-made requests carry the fade setting too
     }
 
     // MARK: Connection
@@ -335,16 +353,17 @@ final class Model {
     var names: [String: String] = UserDefaults.standard.dictionary(forKey: Model.namesKey) as? [String: String] ?? [:] {
         didSet {
             UserDefaults.standard.set(names, forKey: Self.namesKey)
-            if !namesFromCloud, let d = try? Self.namesEncoder.encode(names) { CloudSync.shared.put(Self.namesKey, d) }
+            if !namesFromCloud { CloudLibrary.shared.localChanged(.bulbName) }
         }
     }
     @ObservationIgnored private var namesFromCloud = false
-    /// Sorted, so the same names always encode the same (iCloud's copy is compared byte for byte).
-    private static let namesEncoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.outputFormatting = .sortedKeys
-        return e
-    }()
+
+    /// Names from iCloud (CloudLibrary), which aren't sent back.
+    func setNamesFromCloud(_ new: [String: String]) {
+        namesFromCloud = true
+        names = new
+        namesFromCloud = false
+    }
 
     func name(for mac: String?) -> String? {
         guard let mac else { return nil }

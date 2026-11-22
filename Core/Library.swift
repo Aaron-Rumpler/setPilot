@@ -1,7 +1,7 @@
 import Foundation
 
 /// Presets, custom scenes and CCT scales, kept on this device (as JSON in user defaults) and,
-/// in builds with iCloud, synced through it.
+/// in builds with iCloud, synced item by item through it (CloudLibrary).
 @MainActor @Observable
 final class Library {
     static let presetsKey = "presets"
@@ -28,21 +28,32 @@ final class Library {
     /// Set while taking a value from iCloud, so it isn't sent straight back.
     @ObservationIgnored private var fromCloud = false
 
+    /// Builds before item-by-item sync kept each list whole in iCloud key-value storage: take
+    /// anything there that isn't here yet, once, so it goes up with the first sync.
     private func syncWithCloud() {
-        let d = UserDefaults.standard
-        let cloud = CloudSync.shared
-        cloud.register(Self.presetsKey, local: d.data(forKey: Self.presetsKey)) { [weak self] data in
-            self?.takeFromCloud { if let v = try? JSONDecoder().decode([Preset].self, from: data) { $0.presets = v } }
+        guard CloudSync.isEnabled, !UserDefaults.standard.bool(forKey: Self.migratedKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.migratedKey)
+        let decoder = JSONDecoder()
+        if let d = CloudSync.legacyValue(Self.presetsKey), let v = try? decoder.decode([Preset].self, from: d) {
+            let have = Set(presets.map(\.id))
+            presets += v.filter { !have.contains($0.id) }
         }
-        cloud.register(Self.customScenesKey, local: d.data(forKey: Self.customScenesKey)) { [weak self] data in
-            self?.takeFromCloud { if let v = try? JSONDecoder().decode([CustomScene].self, from: data) { $0.customScenes = v } }
+        if let d = CloudSync.legacyValue(Self.customScenesKey), let v = try? decoder.decode([CustomScene].self, from: d) {
+            let have = Set(customScenes.map(\.id))
+            customScenes += v.filter { !have.contains($0.id) }
         }
-        cloud.register(Self.cctScalesKey, local: d.data(forKey: Self.cctScalesKey)) { [weak self] data in
-            self?.takeFromCloud { if let v = try? JSONDecoder().decode([String: [CCTScale]].self, from: data) { $0.cctScales = v } }
+        if let d = CloudSync.legacyValue(Self.cctScalesKey), let v = try? decoder.decode([String: [CCTScale]].self, from: d) {
+            for (mac, list) in v {
+                let have = Set((cctScales[mac] ?? []).map(\.id))
+                let new = list.filter { !have.contains($0.id) }
+                if !new.isEmpty { cctScales[mac, default: []] += new }
+            }
         }
     }
+    private static let migratedKey = "cloudKeyValueLibraryTaken"
 
-    private func takeFromCloud(_ change: (Library) -> Void) {
+    /// Applies a change from iCloud (CloudLibrary), which isn't sent back.
+    func takeFromCloud(_ change: (Library) -> Void) {
         fromCloud = true
         change(self)
         fromCloud = false
@@ -114,13 +125,18 @@ final class Library {
     }
 
     private func save<T: Encodable>(_ value: T, _ key: String) {
-        // Sorted, so the same content always encodes the same (iCloud's copy is compared byte for
-        // byte, and the CCT scales are a dictionary).
+        // Sorted, so the same content always encodes the same.
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(value) else { return }
         UserDefaults.standard.set(data, forKey: key)
-        if !fromCloud, key != Self.activeCCTScaleKey { CloudSync.shared.put(key, data) }
+        guard !fromCloud else { return }
+        switch key {
+        case Self.presetsKey: CloudLibrary.shared.localChanged(.preset)
+        case Self.customScenesKey: CloudLibrary.shared.localChanged(.customScene)
+        case Self.cctScalesKey: CloudLibrary.shared.localChanged(.cctScale)
+        default: break // which scale is in use stays on each device
+        }
     }
 
     private static func load<T: Decodable>(_ key: String) -> T? {
