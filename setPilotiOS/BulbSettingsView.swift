@@ -126,6 +126,12 @@ struct BulbSettingsView: View {
             LibraryTransferSection(model: model)
 
             Section {
+                NavigationLink("Import from the WiZ App") { HomeImportView(model: model) }
+            } footer: {
+                Text("Names your bulbs (by room) and sets their signing key from the WiZ app's home export.")
+            }
+
+            Section {
                 NavigationLink("Shortcuts and Siri") { ShortcutsHelpView() }
             }
 

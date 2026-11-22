@@ -180,6 +180,7 @@ struct SettingsView: View {
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @AppStorage(Stepping.snapKey) private var snaps = true
+    @State private var importingHome = false
     /// The height of all the settings, for the window's size limits.
     @State private var contentHeight: CGFloat?
 
@@ -220,6 +221,15 @@ struct SettingsView: View {
 
             CloudSyncSection()
             LibraryTransferSection(model: model)
+            Section {
+                Button("Import from the WiZ App…") { importingHome = true }
+            } header: {
+                Text("WiZ App")
+            } footer: {
+                Text("Names your bulbs (by room) and sets their signing key from the WiZ app's home export.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
             // Testing aid: the white the colour-temperature colours are adapted to.
             Section("Colour temperature (testing)") {
@@ -264,6 +274,10 @@ struct SettingsView: View {
         .frame(width: 520)
         .windowHeight(content: contentHeight, minimum: 320)
         .onAppear { refreshLoginItem() }
+        .sheet(isPresented: $importingHome) {
+            NavigationStack { HomeImportView(model: model) }
+                .frame(minWidth: 480, minHeight: 420)
+        }
     }
 
     private func setOpenAtLogin(_ on: Bool) {
