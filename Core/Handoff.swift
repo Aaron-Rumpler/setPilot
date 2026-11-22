@@ -18,6 +18,12 @@ final class HandoffRouter {
         case .customScene(let id): sceneToSelect = id
         case .cctScale(let id): scaleToSelect = id
         case .lightShow: if let info, info["media"] != nil || info["show"] != nil { lightShowResume = info }
+        case .controls:
+            // A Compose draft from the other device: carried on here, in Compose.
+            if let draft = info?["draft"] as? [String: Any] {
+                Shared.model.draft.take(draft)
+                Shared.model.composing = true
+            }
         default: break
         }
         request = route
@@ -50,6 +56,7 @@ private struct HandoffAdvertiser: ViewModifier {
             .userActivity(route?.activityType ?? HandoffRoute.types[0], isActive: showing && route != nil) { activity in
                 route?.fill(activity)
                 if route == .lightShow { activity.addUserInfoEntries(from: LastShow.handoffInfo(LightShowPlayer.current)) }
+                if route == .controls, Shared.model.composing { activity.addUserInfoEntries(from: ["draft": Shared.model.draft.handoffInfo]) }
             }
         #else
         content

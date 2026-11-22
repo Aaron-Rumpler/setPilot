@@ -315,3 +315,44 @@ struct ComposeControls: View {
         #endif
     }
 }
+
+// MARK: Handoff
+
+extension ComposeDraft {
+    /// The draft, for Handoff to another device (the main controls' activity carries it).
+    var handoffInfo: [String: Any] {
+        var d: [String: Any] = [
+            "includeColour": includeColour, "kind": kind.rawValue, "rgbcw": [r, g, b, c, w], "kelvin": kelvin,
+            "includeSpeed": includeSpeed, "speed": speed, "includeDimming": includeDimming, "dimming": dimming,
+            "power": power.rawValue, "fadeChoice": fadeChoice.rawValue, "fade": fade,
+        ]
+        if let scaleID { d["scaleID"] = scaleID.uuidString }
+        switch scene {
+        case .builtin(let id): d["scene"] = id
+        case .custom(let id): d["customScene"] = id.uuidString
+        }
+        return d
+    }
+
+    /// Takes a draft handed off from another device.
+    func take(_ d: [String: Any]) {
+        includeColour = d["includeColour"] as? Bool ?? includeColour
+        kind = (d["kind"] as? String).flatMap(ModeChoice.init(rawValue:)) ?? kind
+        if let ch = d["rgbcw"] as? [Int], ch.count == 5 { (r, g, b, c, w) = (ch[0], ch[1], ch[2], ch[3], ch[4]) }
+        kelvin = d["kelvin"] as? Int ?? kelvin
+        scaleID = (d["scaleID"] as? String).flatMap(UUID.init(uuidString:))
+        if let id = (d["customScene"] as? String).flatMap(UUID.init(uuidString:)) {
+            scene = .custom(id)
+        } else if let id = d["scene"] as? Int {
+            scene = .builtin(id)
+        }
+        includeSpeed = d["includeSpeed"] as? Bool ?? includeSpeed
+        speed = d["speed"] as? Int ?? speed
+        includeDimming = d["includeDimming"] as? Bool ?? includeDimming
+        dimming = d["dimming"] as? Int ?? dimming
+        power = (d["power"] as? String).flatMap(Power.init(rawValue:)) ?? power
+        fadeChoice = (d["fadeChoice"] as? String).flatMap(FadeChoice.init(rawValue:)) ?? fadeChoice
+        fade = d["fade"] as? Int ?? fade
+        loaded = true
+    }
+}
