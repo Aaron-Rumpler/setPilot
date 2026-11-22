@@ -124,7 +124,8 @@ trademark of Signify.
   brightness) and apply it with one click, from the window or the menu bar panel. Applying a preset
   switches the bulb on. Right-click a preset to rename, update, move, share or delete it, or add it
   to your **favourites**: the watch's main screen, the quick actions, the Dock menu, the menu bar
-  panel and the Presets widget show the favourites (or every preset, with none starred).
+  panel and the Presets widget show the favourites (with none starred, they say so; the watch has
+  All Presets, and the quick actions fill in with your most used).
 - **Sharing**: a preset or custom scene can be shared as a `.setpilot` file (AirDrop, Messages,
   Files) or copied as a `setpilot://import` link; opened in setPilot, it's added once you confirm. A
   preset brings the custom scene or CCT scale it uses. When something coming in (shared, or a
@@ -195,7 +196,8 @@ The iPhone app doesn't search the network: broadcasting needs Apple's multicast 
 accounts only), and probing every address on a network isn't acceptable on networks you don't own.
 Enter the bulb's IP address or DNS name; a DNS name keeps working if the address changes.
 
-The iPhone remembers the bulbs you've used (Settings › Your Bulbs) to switch between.
+The iPhone remembers the bulbs you've used (all of them, until you forget one): switch between them
+from the bulb menu at the top of the main screen, which also has Add Bulb….
 
 **Widgets and controls** (iPhone and Mac):
 - **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. Edit Widget picks
