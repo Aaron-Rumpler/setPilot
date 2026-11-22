@@ -272,6 +272,7 @@ final class LightShowPlayer {
         duration = 0
         time = 0
         error = nil
+        showPosition(at: 0) // a cue at the very start is highlighted from the start, not from Play
         let name = url.lastPathComponent
         Task {
             do {

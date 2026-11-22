@@ -259,6 +259,9 @@ final class PhoneRelay: NSObject {
             contextScheduled = false
             WidgetPublisher.shared.publishLibrary() // already at most twice a second, here
             updateContext()
+            // A setting the state carries (snapping, the fades; not observed) to a watch that's here now.
+            lastSnapshot = nil
+            schedulePush()
             SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
         }
     }
@@ -278,8 +281,13 @@ final class PhoneRelay: NSObject {
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
         if model.snapshot.link == .connected, let data = try? encoder.encode(Self.stamped(model.snapshot)) {
             context[WatchKey.snapshot] = data
-        } else if let kept = session.applicationContext[WatchKey.snapshot] {
-            context[WatchKey.snapshot] = kept
+        } else if let kept = session.applicationContext[WatchKey.snapshot] as? Data,
+                  var s = try? JSONDecoder().decode(LightSnapshot.self, from: kept) {
+            // The last good state, with the settings it carries as they are now (snapping, the
+            // fades), so a change to them reaches the watch while the bulb's away too.
+            let now = model.snapshot
+            (s.fade, s.controlsFade, s.controlsFadeMs, s.snapSliders) = (now.fade, now.controlsFade, now.controlsFadeMs, now.snapSliders)
+            context[WatchKey.snapshot] = (try? encoder.encode(s)) ?? kept
         }
         try? session.updateApplicationContext(context)
     }

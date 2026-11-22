@@ -12,7 +12,9 @@ final class Library {
     var presets: [Preset] { didSet { save(presets, Self.presetsKey); onChange?() } }
     var customScenes: [CustomScene] { didSet { save(customScenes, Self.customScenesKey); onChange?() } }
     /// Custom CCT scales per bulb (keyed by lower-case MAC), and the one in use for each.
-    var cctScales: [String: [CCTScale]] { didSet { save(cctScales, Self.cctScalesKey); onChange?() } }
+    var cctScales: [String: [CCTScale]] { didSet { save(cctScales, Self.cctScalesKey); onChange?(); onScalesChanged?() } }
+    /// Called after the scales change (the model checks the one in use still has a range).
+    @ObservationIgnored var onScalesChanged: (() -> Void)?
     var activeCCTScale: [String: UUID] { didSet { save(activeCCTScale, Self.activeCCTScaleKey) } }
     /// Called after any change (the iPhone app passes the lists on to the watch).
     @ObservationIgnored var onChange: (() -> Void)?

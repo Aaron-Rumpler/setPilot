@@ -93,6 +93,7 @@ final class WidgetPublisher {
     // MARK: Library
 
     private var publishedLibrary: [Data?] = []
+    private var fadeReload: Task<Void, Never>?
     private var libraryScheduled = false
 
     /// The library or a setting they carry (the fades) changed: at most twice a second.
@@ -127,8 +128,19 @@ final class WidgetPublisher {
         let shown = [try? encoder.encode(model.library.presets), try? encoder.encode(model.library.summaries),
                      try? encoder.encode(params), try? encoder.encode(model.fadeForControls)]
         guard shown != publishedLibrary else { return }
+        let onlyFade = publishedLibrary.count == shown.count && Array(shown.dropLast()) == Array(publishedLibrary.dropLast())
         publishedLibrary = shown
-        reload()
+        fadeReload?.cancel()
+        if onlyFade {
+            // Only the controls' fade (being typed, say): once it's settled, not each keystroke.
+            fadeReload = Task {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                reload()
+            }
+        } else {
+            reload()
+        }
     }
 
     func reload() {

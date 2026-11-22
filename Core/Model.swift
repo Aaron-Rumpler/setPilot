@@ -307,6 +307,7 @@ final class Model {
             MainActor.assumeIsolated { self?.reloadSyncedSettings() }
         }
         Log.app.info("setPilot \(BuildInfo.summary, privacy: .public) started")
+        library.onScalesChanged = { [weak self] in self?.checkScaleInUse() }
         CloudSync.shared.start()
         adoptBulbInUse()
         CloudLibrary.shared.start(model: self)
@@ -957,6 +958,17 @@ final class Model {
         guard let mac = chosenMAC else { return }
         library.setActiveScale(id, for: mac)
         temperatureUsesScale = true
+    }
+
+    /// The scale in use lost its range (edited down to one point, or deleted, here or elsewhere):
+    /// Temperature goes to the bulb's own, at about the same kelvin, and says why, rather than
+    /// showing the bulb's own slider for a light that's still on the scale.
+    private func checkScaleInUse() {
+        guard mode == .custom, activeScale?.range == nil, link == .connected else { return }
+        let kelvin = customKelvin
+        temp = min(max((kelvin / 50).rounded() * 50, tempRange.lowerBound), tempRange.upperBound)
+        setMode(Mode.temp)
+        status = "The CCT scale in use needs at least two points, so Temperature is on the bulb's own"
     }
 
     func useTemperatureScale(_ id: UUID?) {
