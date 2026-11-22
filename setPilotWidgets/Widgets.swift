@@ -58,14 +58,44 @@ struct BulbProvider: TimelineProvider {
 
 // MARK: Presets (Home Screen)
 
+/// Which presets the Presets widget shows (Edit Widget): none chosen shows them all, in order.
+struct PresetsWidgetConfiguration: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Presets"
+    static let description = IntentDescription("Choose the presets to show, in order; none shows them all.")
+
+    @Parameter(title: "Presets")
+    var presets: [PresetEntity]?
+
+    init() {}
+}
+
+struct PresetsProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> BulbEntry { .sample }
+
+    func snapshot(for configuration: PresetsWidgetConfiguration, in context: Context) async -> BulbEntry {
+        context.isPreview ? .sample : entry(configuration)
+    }
+
+    /// The app reloads the widgets when the state or presets change; nothing changes by itself.
+    func timeline(for configuration: PresetsWidgetConfiguration, in context: Context) async -> Timeline<BulbEntry> {
+        Timeline(entries: [entry(configuration)], policy: .never)
+    }
+
+    private func entry(_ configuration: PresetsWidgetConfiguration) -> BulbEntry {
+        let all = SharedStore.presets
+        let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }
+        return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all : chosen)
+    }
+}
+
 struct PresetsWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "presets", provider: BulbProvider()) { entry in
+        AppIntentConfiguration(kind: "presets", intent: PresetsWidgetConfiguration.self, provider: PresetsProvider()) { entry in
             PresetsWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Presets")
-        .description("Your setPilot presets, with the bulb's power and brightness.")
+        .description("Your setPilot presets (all, or the ones you choose), with the bulb's power and brightness.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
