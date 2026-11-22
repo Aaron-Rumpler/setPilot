@@ -74,13 +74,14 @@ struct DeviceInfoView: View {
                 .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
                 .help(BulbAPI.method(method)?.summary ?? "")
 
-                if let error = model.infoErrors[method] {
+                // Being read again: that, rather than the last read's error.
+                if model.info[method] == nil || model.infoReading.contains(method) {
+                    ProgressView().controlSize(.mini)
+                } else if let error = model.infoErrors[method] {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .lineLimit(1)
-                } else if model.info[method] == nil || model.infoReading.contains(method) {
-                    ProgressView().controlSize(.mini)
                 }
                 Spacer()
                 if let text = model.info[method] {

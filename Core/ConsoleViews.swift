@@ -159,7 +159,7 @@ struct ConsoleComposer: View {
             } else if let p = try? parsed.get() {
                 raw = JSONText.pretty(["method": trimmedMethod, "params": p] as [String: Any])
             } else {
-                raw = "{\"method\": \"\(trimmedMethod)\", \"params\": \(params)}"
+                raw = "{\"method\": \(JSONText.compact(trimmedMethod)), \"params\": \(params)}" // the name escaped
             }
         } else if let obj = rawObject, let m = obj["method"] as? String {
             method = m
@@ -653,6 +653,8 @@ struct JSONEditor: UIViewRepresentable {
         view.accessibilityLabel = label
         guard view.text != text else { return }
         view.text = text
+        // As on the Mac: undo steps from the old text would go out of range in the new.
+        view.undoManager?.removeAllActions()
         Self.colour(view)
     }
 

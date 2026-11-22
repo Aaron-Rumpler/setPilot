@@ -217,16 +217,28 @@ struct CCTScaleEditor: View {
 /// One point: its kelvin and RGBCW values.
 struct PointEditor: View {
     @Binding var point: CCTScale.Point
+    @FocusState private var kelvinFocused: Bool
 
     var body: some View {
         HStack {
             Text("Kelvin").frame(width: 100, alignment: .leading)
             TextField("Kelvin", value: Binding(get: { point.kelvin }, set: { point.kelvin = min(max($0, 500), 20000) }),
                       format: .number.grouping(.never))
+                .focused($kelvinFocused)
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
                 #if os(iOS)
                 .keyboardType(.numberPad)
+                // The number pad has no Return: Done ends editing, which is when the kelvin is taken
+                // (not as it's typed, which would re-sort the point at every digit).
+                .toolbar {
+                    if kelvinFocused {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { kelvinFocused = false }
+                        }
+                    }
+                }
                 #endif
             Text("K").foregroundStyle(.secondary)
             RoundedRectangle(cornerRadius: 5)
