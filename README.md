@@ -363,8 +363,7 @@ collected or tracked) and a String Catalog, ready for translation.
   (System Settings › Privacy & Security › Local Network; on iPhone, Settings › Apps › setPilot).
 - **Export Diagnostics** (Settings): a text file for a bug report, with the versions, recent
   messages to and from the bulb, setPilot's own log (also in Console.app, subsystem
-  `nz.aaronrumpler.setPilot`) and any crash or hang reports; MAC addresses and signing keys are
-  taken out.
+  `nz.aaronrumpler.setPilot`) and any crash or hang reports; signing keys are taken out.
 - Custom scenes and light shows that change the light more than 3 times a second carry a warning
   for people sensitive to flashing light; Settings can turn it off.
 - Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen

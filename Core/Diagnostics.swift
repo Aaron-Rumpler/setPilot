@@ -7,8 +7,8 @@ import MetricKit
 #endif
 
 /// A report to attach to a bug: the app and system, recent messages to and from the bulb,
-/// setPilot's own log, and crash and hang reports the system has given it (MetricKit). MAC
-/// addresses, signing keys and signatures are taken out.
+/// setPilot's own log, and crash and hang reports the system has given it (MetricKit). Signing
+/// keys and signatures are taken out.
 @MainActor
 enum Diagnostics {
     static func report(model: Model) async -> String {
@@ -31,20 +31,10 @@ enum Diagnostics {
         return redact(out.joined(separator: "\n"))
     }
 
-    /// MACs (bare or with separators) and key-like values out.
+    /// Signing keys and signatures out (MAC and IP addresses stay: they help to debug).
     static func redact(_ text: String) -> String {
-        var t = text
-        let patterns = [
-            #"\b[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}\b"#, // aa:bb:cc:dd:ee:ff
-            #"\b[0-9A-Fa-f]{12}\b"#, // aabbccddeeff, as WiZ writes them
-            #""(mac|hmac|signingKey|key|udp_signing_key)"\s*:\s*"[^"]*""#,
-        ]
-        for (i, p) in patterns.enumerated() {
-            guard let re = try? NSRegularExpression(pattern: p) else { continue }
-            let range = NSRange(t.startIndex..., in: t)
-            t = re.stringByReplacingMatches(in: t, range: range, withTemplate: i == 2 ? "\"$1\":\"(removed)\"" : "(MAC removed)")
-        }
-        return t
+        guard let re = try? NSRegularExpression(pattern: #""(hmac|signingKey|key|udp_signing_key)"\s*:\s*"[^"]*""#) else { return text }
+        return re.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "\"$1\":\"(removed)\"")
     }
 
     nonisolated private static func systemLog() -> [String] {
@@ -166,7 +156,7 @@ struct DiagnosticsSection: View {
         } header: {
             Text("Diagnostics")
         } footer: {
-            Text("A text file for a bug report: the app and system versions, recent messages to and from the bulb, setPilot's log, and any crash reports. MAC addresses and signing keys are left out; bulb addresses are kept.")
+            Text("A text file for a bug report: the app and system versions, recent messages to and from the bulb, setPilot's log, and any crash reports. Signing keys are left out.")
                 #if os(macOS)
                 .font(.callout)
                 .foregroundStyle(.secondary)
