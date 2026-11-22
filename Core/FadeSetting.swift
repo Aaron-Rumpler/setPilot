@@ -26,7 +26,7 @@ struct FadeSetting: View {
                         .frame(maxWidth: 80)
                     Text("ms").foregroundStyle(.secondary)
                     Stepper("Fade time", value: Binding(get: { stored }, set: { stored = min(max($0, 0), 60_000) }),
-                            step: 100)
+                            in: 0...60_000, step: 100) // the range disables − and + at the ends
                         .labelsHidden()
                 }
             }

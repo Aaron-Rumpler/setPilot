@@ -295,7 +295,7 @@ final class PhoneRelay: NSObject {
         SharedStore.save(model.library.summaries, SharedStore.customScenesKey) // for custom scene swatches
         var params: [String: Data] = [:]
         for preset in model.library.presets {
-            if let p = model.pilotParams(for: preset), let d = try? JSONSerialization.data(withJSONObject: p) {
+            if let p = model.pilotParams(for: preset), let d = try? JSONSerialization.data(withJSONObject: p, options: .sortedKeys) { // compared below: unchanged must match
                 params[preset.id.uuidString] = d
             }
         }

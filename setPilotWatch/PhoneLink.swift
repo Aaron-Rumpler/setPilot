@@ -78,24 +78,25 @@ final class PhoneLink: NSObject {
     /// Sends a command; the reply updates `snapshot`. Errors show in `error`, unless `quiet`
     /// (background refreshes). A live change still waiting goes first, so it isn't lost or
     /// applied after this.
-    func send(_ command: WatchCommand, quiet: Bool = false) {
+    /// `done`: true once the iPhone has answered without an error.
+    func send(_ command: WatchCommand, quiet: Bool = false, done: (@MainActor (Bool) -> Void)? = nil) {
         if !quiet, let next = livePending {
             livePending = nil
             transmitLive(next.values, fields: next.fields)
         }
-        transmit(command, quiet: quiet)
+        transmit(command, quiet: quiet, done: done)
     }
 
-    private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor () -> Void)? = nil) {
+    private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor (Bool) -> Void)? = nil) {
         let session = WCSession.default
         // Not answered: `done` still comes afterwards, as a reply would.
         guard session.activationState == .activated, session.isReachable else {
             if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
-            Task { @MainActor in done?() }
+            Task { @MainActor in done?(false) }
             return
         }
         guard let data = try? JSONEncoder().encode(command) else {
-            Task { @MainActor in done?() }
+            Task { @MainActor in done?(false) }
             return
         }
         if !quiet {
@@ -110,13 +111,13 @@ final class PhoneLink: NSObject {
                 if !quiet { self.waiting -= 1 }
                 if let snapshot { self.apply(snapshot) }
                 if let info { self.deviceInfo = info }
-                done?()
+                done?(message == nil)
                 if let message, !quiet { self.error = message }
             }
         }, errorHandler: { error in
             let text = error.localizedDescription
             Task { @MainActor in
-                done?()
+                done?(false)
                 guard !quiet else { return }
                 self.waiting -= 1
                 self.error = "Your iPhone didn't answer: \(text)"

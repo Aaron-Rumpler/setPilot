@@ -246,8 +246,8 @@ struct WatchComposeView: View {
             }
             Section {
                 Button {
-                    link.send(.compose(change(s)))
-                    dismiss()
+                    // Closed once it's done: on an error the change stays to try again (as on iPhone).
+                    link.send(.compose(change(s))) { ok in if ok { dismiss() } }
                 } label: {
                     Label("Send", systemImage: "paperplane.fill")
                 }

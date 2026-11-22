@@ -136,10 +136,16 @@ struct MismatchText: View {
 
 struct PowerRow: View {
     let link: PhoneLink
+    /// The switch as tapped, until the iPhone answers (or its next state comes): it doesn't jump
+    /// back meanwhile.
+    @State private var asked: Bool?
 
     var body: some View {
         let s = link.snapshot
-        Toggle(isOn: Binding(get: { s?.isOn ?? false }, set: { link.send(.power($0)) })) {
+        Toggle(isOn: Binding(get: { asked ?? s?.isOn ?? false }, set: { on in
+            asked = on
+            link.send(.power(on)) { _ in asked = nil }
+        })) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(s?.bulbName ?? "Bulb").lineLimit(1)
                 Text(statusText)
@@ -276,7 +282,10 @@ struct BulbsView: View {
                     }
                 }
             }
-            Text(bulbs.isEmpty ? "Add a bulb in setPilot on your iPhone." : "Swipe a bulb to name it. Add bulbs in setPilot on your iPhone.")
+            // Naming needs a MAC: a typed address that never answered has no swipe.
+            Text(bulbs.isEmpty ? "Add a bulb in setPilot on your iPhone."
+                 : bulbs.contains { $0.mac != nil } ? "Swipe a bulb to name it. Add bulbs in setPilot on your iPhone."
+                 : "Add bulbs in setPilot on your iPhone.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .listRowBackground(Color.clear)
