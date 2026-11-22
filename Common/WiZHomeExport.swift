@@ -89,7 +89,8 @@ struct HomeImportPlan: Equatable, Sendable {
     init(_ export: WiZHomeExport, naming: HomeImportNaming, currentNames: [String: String], knownMACs: Set<String>,
          currentKeys: [String: String] = [:]) {
         homeName = export.name
-        key = export.udp_signing_key.flatMap(RequestSigning.normalised)
+        let homeKey = export.udp_signing_key.flatMap(RequestSigning.normalised)
+        key = homeKey
         let rooms = Dictionary((export.rooms ?? []).compactMap { r in r.room_id.flatMap { id in r.name.map { (id, $0) } } },
                                uniquingKeysWith: { a, _ in a })
         let lights = export.devices.filter { ($0.type ?? "light") == "light" }
@@ -105,7 +106,7 @@ struct HomeImportPlan: Equatable, Sendable {
                                   newName: naming.name(home: export.name, room: room, device: d.name, aloneInRoom: alone),
                                   currentName: currentNames[mac],
                                   known: knownMACs.contains(mac),
-                                  otherKey: currentKeys[mac].map { $0 != key } ?? false)
+                                  otherKey: currentKeys[mac].map { $0 != homeKey } ?? false)
         }
         // Bulbs used here first, then by name.
         items.sort { a, b in
