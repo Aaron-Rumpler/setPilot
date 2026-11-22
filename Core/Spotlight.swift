@@ -2,19 +2,17 @@ import AppIntents
 import CoreSpotlight
 import Foundation
 
-// Presets and custom scenes in Spotlight (iOS 18 and macOS 15 on): find one by name. A preset
-// opens setPilot; a custom scene opens its editor.
+// Presets and custom scenes in Spotlight: find one by name, and tapping it applies the preset or
+// plays the scene (opening setPilot, on the scene's editor for a custom scene).
 
-@available(iOS 18, macOS 15, *)
 extension PresetEntity: IndexedEntity {}
 
-@available(iOS 18, macOS 15, *)
 extension CustomSceneEntity: IndexedEntity {}
 
-/// Opening a custom scene from Spotlight (or Shortcuts' Open): its editor.
+/// A custom scene from Spotlight (or Shortcuts' Open): plays it, and opens its editor.
 struct OpenCustomSceneIntent: OpenIntent {
-    static let title: LocalizedStringResource = "Open Custom Scene"
-    static let description = IntentDescription("Opens a custom scene's editor in setPilot.")
+    static let title: LocalizedStringResource = "Play Custom Scene and Open It"
+    static let description = IntentDescription("Plays a custom scene on the bulb (switching it on) and opens its editor in setPilot.")
 
     @Parameter(title: "Custom Scene") var target: CustomSceneEntity
 
@@ -23,6 +21,24 @@ struct OpenCustomSceneIntent: OpenIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         HandoffRouter.shared.open(.customScene(target.id))
+        _ = try? await script(.customScene(target.id.uuidString, power: true))
+        return .result()
+    }
+}
+
+/// A preset from Spotlight (or Shortcuts' Open): applies it, and opens setPilot.
+struct OpenPresetIntent: OpenIntent {
+    static let title: LocalizedStringResource = "Apply Preset and Open setPilot"
+    static let description = IntentDescription("Applies one of your presets and opens setPilot.")
+
+    @Parameter(title: "Preset") var target: PresetEntity
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        HandoffRouter.shared.open(.controls)
+        _ = try? await script(.preset(target.id.uuidString))
         return .result()
     }
 }
@@ -35,7 +51,6 @@ enum SpotlightIndex {
     /// Indexes the presets and custom scenes as they are now, and takes out ones since deleted.
     /// Waits for edits to pause (a rename types a letter at a time).
     static func update(_ library: Library) {
-        guard #available(iOS 18, macOS 15, *) else { return }
         pending?.cancel()
         pending = Task {
             try? await Task.sleep(for: .seconds(2))

@@ -90,7 +90,7 @@ trademark of Signify.
   command-line tool's exit code. The dictionary is in Script Editor's Library.
 - **Siri, Spotlight and suggestions**: Get Light State, power and brightness actions show the light
   with power, brighter and dimmer buttons. Presets and custom scenes can be found by name in
-  Spotlight (on the Mac, macOS 15 on; a custom scene opens its editor). Applying presets tells Siri when
+  Spotlight: tapping a preset applies it, and a custom scene plays. Applying presets tells Siri when
   you use them, for Siri Suggestions and the Smart Stack.
 - **Import from the WiZ app** (Settings on the Mac, Bulb & Settings on iPhone): paste the WiZ app's
   home export link (or the JSON it opens) to name your bulbs by room ("Room - Name", or just the room
@@ -188,7 +188,7 @@ Enter the bulb's IP address or DNS name; a DNS name keeps working if the address
 
 The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to switch between.
 
-**Widgets and controls** (iPhone, and the Mac on macOS 26):
+**Widgets and controls** (iPhone and Mac):
 - **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. Edit Widget picks
   which presets it shows, in order.
 - **Bulb:** a small widget with the bulb's state, brighter, dimmer and power, for the Home Screen,
@@ -295,8 +295,7 @@ python3 tools/make_icon_layers.py 4800
 
 ## Requirements
 
-macOS 14 or later; iOS 26 (iPhone and iPad; it also runs on Vision Pro as the iPad app) and watchOS 26. Building needs Xcode 26 (for the Icon Composer app icon;
-Xcode 26 also generates the fallback icons for older macOS).
+macOS 26 or later; iOS 26 (iPhone and iPad; it also runs on Vision Pro as the iPad app) and watchOS 26. Building needs Xcode 26.
 
 ## Build and run
 

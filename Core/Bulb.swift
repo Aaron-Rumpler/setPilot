@@ -19,10 +19,7 @@ final class Bulb {
 
     /// The system refused the connection because Local Network access was denied.
     var localNetworkDenied: Bool {
-        if #available(macOS 15.0, iOS 18.0, *) {
-            return conn?.currentPath?.unsatisfiedReason == .localNetworkDenied
-        }
-        return false
+        conn?.currentPath?.unsatisfiedReason == .localNetworkDenied
     }
 
     func connect(to host: String) {

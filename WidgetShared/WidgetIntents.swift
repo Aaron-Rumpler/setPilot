@@ -62,7 +62,7 @@ enum WidgetPerformer {
             try await QuickBulb.perform(command)
         }
         WidgetCenter.shared.reloadAllTimelines()
-        if #available(macOS 26, iOS 18, *) { ControlCenter.shared.reloadAllControls() }
+        ControlCenter.shared.reloadAllControls()
     }
 }
 

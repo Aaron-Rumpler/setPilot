@@ -114,10 +114,8 @@ enum Net {
         }
         try? await Task.sleep(for: .seconds(1))
         var access = LocalNetworkAccess.unknown
-        if #available(macOS 15.0, *) {
-            if connections.contains(where: { $0.currentPath?.unsatisfiedReason == .localNetworkDenied }) {
-                access = .denied
-            }
+        if connections.contains(where: { $0.currentPath?.unsatisfiedReason == .localNetworkDenied }) {
+            access = .denied
         }
         connections.forEach { $0.cancel() }
         return access

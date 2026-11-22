@@ -128,6 +128,6 @@ final class WidgetPublisher {
 
     func reload() {
         WidgetCenter.shared.reloadAllTimelines()
-        if #available(macOS 26, iOS 18, *) { ControlCenter.shared.reloadAllControls() }
+        ControlCenter.shared.reloadAllControls()
     }
 }
