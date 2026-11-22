@@ -215,6 +215,9 @@ final class PhoneLink: NSObject {
             if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
         case "power":
             send(.togglePower) // the iPhone knows how it is now; our copy may be from last time
+        case "brightness":
+            // setpilot://brightness/up or /down, from the controls.
+            send(.dimDelta(url.lastPathComponent == "down" ? -10 : 10))
         default:
             refresh()
         }

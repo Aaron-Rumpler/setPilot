@@ -12,6 +12,62 @@ struct SetPilotWatchWidgets: WidgetBundle {
         BulbStatusWidget()
         PresetWidget()
         PowerWidget()
+        WatchPowerControl()
+        WatchPresetControl()
+        WatchBrightnessControl(up: true)
+        WatchBrightnessControl(up: false)
+    }
+}
+
+// MARK: Controls (Control Center, the Smart Stack, the Action button)
+
+// They open the watch app with a link (Common/WatchControls.swift), which asks the iPhone.
+
+struct WatchPowerControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "power-control") {
+            ControlWidgetButton(action: WatchLinkIntent(link: "setpilot://power/toggle")) {
+                Label("Bulb", systemImage: "lightbulb")
+            }
+        }
+        .displayName("Bulb Power")
+        .description("Switches the setPilot bulb on or off.")
+    }
+}
+
+struct WatchBrightnessControl: ControlWidget {
+    let up: Bool
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: up ? "brighter-control" : "dimmer-control") {
+            ControlWidgetButton(action: WatchLinkIntent(link: "setpilot://brightness/\(up ? "up" : "down")")) {
+                Label(up ? "Brighter" : "Dimmer", systemImage: up ? "sun.max.fill" : "sun.min")
+            }
+        }
+        .displayName(up ? "Brighter" : "Dimmer")
+        .description(up ? "Makes the setPilot bulb brighter by 10%." : "Makes the setPilot bulb dimmer by 10%.")
+    }
+}
+
+struct WatchPresetControlConfiguration: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Preset"
+
+    @Parameter(title: "Preset")
+    var preset: WatchPresetEntity?
+
+    init() {}
+}
+
+struct WatchPresetControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        AppIntentControlConfiguration(kind: "preset-control", intent: WatchPresetControlConfiguration.self) { config in
+            ControlWidgetButton(action: WatchLinkIntent(link: config.preset.map { "setpilot://preset/\($0.id.uuidString)" } ?? "setpilot://open")) {
+                Label(config.preset?.name ?? "Preset", systemImage: "square.grid.2x2")
+            }
+        }
+        .displayName("Preset")
+        .description("Applies one of your setPilot presets.")
+        .promptsForUserConfiguration()
     }
 }
 
