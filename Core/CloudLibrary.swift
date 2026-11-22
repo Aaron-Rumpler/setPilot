@@ -12,7 +12,8 @@ import CryptoKit
 ///
 /// Each preset, scene, scale or name is a record of its own, so edits to different items on two
 /// devices both survive, and a deletion deletes just that item. When the same item changes on both,
-/// the later change wins. The first sync (or the first after signing in to iCloud) uploads what's
+/// the later change wins: its content and its place in the list separately, so moving or deleting
+/// one item (which shifts the ones after it) doesn't override an edit to them made elsewhere. The first sync (or the first after signing in to iCloud) uploads what's
 /// here without overwriting what's already in iCloud: items in both keep iCloud's version.
 ///
 /// It notices local changes by comparing each item with what was last synced (a hash), so the
@@ -51,17 +52,29 @@ final class CloudLibrary {
     #if WIZ_ICLOUD
     /// Kept between launches for each record.
     private struct Meta: Codable {
+        /// The item's key here: a preset's, scene's or scale's UUID, or a bulb's MAC (which, unlike
+        /// the others, isn't in the record's name: that's a hash, since record names aren't encrypted).
+        var id: String
         var hash: Data
         var order: Double
-        /// When this item last changed here, or iCloud's stamp for the version taken from it.
+        /// When the item's content last changed here, or iCloud's stamp for the version taken from it.
         var modified: Date
+        /// The same for its place in its list, apart from its content: a delete or move shifts
+        /// every item after it, which mustn't make their content look newer than another device's
+        /// edit of it.
+        var orderModified: Date
         /// CloudKit's record bookkeeping (encodeSystemFields), so saves update rather than conflict.
         var systemFields: Data?
+        /// Not yet confirmed saved: queued again at launch, in case the app quit before the sync
+        /// engine kept its own record of the change.
+        var unsent = true
     }
 
     private struct Saved: Codable {
         var state: CKSyncEngine.State.Serialization?
         var meta: [String: Meta] = [:]
+        /// Deletions not yet confirmed (as `unsent`).
+        var deleting: Set<String> = []
         /// The library has been offered to iCloud since the last account change.
         var seeded = false
     }
@@ -72,6 +85,8 @@ final class CloudLibrary {
     private weak var model: Model?
     /// Set while applying iCloud's changes, so they aren't taken for local ones.
     private var applying = false
+    /// A save failed in the current round of sending (so it isn't called up to date).
+    private var sendFailed = false
 
     private static var fileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -87,8 +102,17 @@ final class CloudLibrary {
         if let data = try? Data(contentsOf: Self.fileURL), let s = try? JSONDecoder().decode(Saved.self, from: data) {
             saved = s
         }
-        makeEngine()
-        if !saved.seeded { seed() }
+        let container = CKContainer(identifier: Self.containerID)
+        var config = CKSyncEngine.Configuration(database: container.privateCloudDatabase,
+                                                stateSerialization: saved.state, delegate: self)
+        config.automaticallySync = true
+        engine = CKSyncEngine(config)
+        status = "Waiting for iCloud"
+        if !saved.seeded {
+            seed()
+        } else {
+            requeueUnsent()
+        }
         #endif
     }
 
@@ -96,18 +120,29 @@ final class CloudLibrary {
     func localChanged(_ kind: Kind) {
         #if WIZ_ICLOUD
         guard let engine, !applying else { return }
+        // Not offered to iCloud since its data was deleted: everything goes, not just this kind.
+        guard saved.seeded else { seed(); return }
         var pending: [CKSyncEngine.PendingRecordZoneChange] = []
         let now = current(kind)
         for (id, item) in now {
             let name = Self.recordName(kind, id)
             let hash = Self.hash(item)
-            if saved.meta[name]?.hash == hash, saved.meta[name]?.order == item.order { continue }
-            saved.meta[name] = Meta(hash: hash, order: item.order, modified: .now, systemFields: saved.meta[name]?.systemFields)
+            if var meta = saved.meta[name] {
+                guard meta.hash != hash || meta.order != item.order else { continue }
+                if meta.hash != hash { meta.hash = hash; meta.modified = .now }
+                if meta.order != item.order { meta.order = item.order; meta.orderModified = .now }
+                meta.unsent = true
+                saved.meta[name] = meta
+            } else {
+                saved.meta[name] = Meta(id: id, hash: hash, order: item.order, modified: .now, orderModified: .now)
+            }
+            saved.deleting.remove(name)
             pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
         }
         let prefix = kind.rawValue + "."
-        for name in saved.meta.keys where name.hasPrefix(prefix) && now[String(name.dropFirst(prefix.count))] == nil {
+        for (name, meta) in saved.meta where name.hasPrefix(prefix) && now[meta.id] == nil {
             saved.meta.removeValue(forKey: name)
+            saved.deleting.insert(name)
             pending.append(.deleteRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
         }
         guard !pending.isEmpty else { return }
@@ -124,8 +159,7 @@ final class CloudLibrary {
         do {
             try await engine.fetchChanges()
             try await engine.sendChanges()
-            lastSync = .now
-            status = "Up to date"
+            finishRound()
         } catch {
             status = Self.describe(error)
         }
@@ -135,15 +169,6 @@ final class CloudLibrary {
     #if WIZ_ICLOUD
     // MARK: Engine
 
-    private func makeEngine() {
-        let container = CKContainer(identifier: Self.containerID)
-        var config = CKSyncEngine.Configuration(database: container.privateCloudDatabase,
-                                                stateSerialization: saved.state, delegate: self)
-        config.automaticallySync = true
-        engine = CKSyncEngine(config)
-        status = "Waiting for iCloud"
-    }
-
     /// Offers everything here to iCloud, stamped as old so that anything iCloud already has wins.
     private func seed() {
         guard let engine else { return }
@@ -152,8 +177,8 @@ final class CloudLibrary {
         for kind in Kind.allCases {
             for (id, item) in current(kind) {
                 let name = Self.recordName(kind, id)
-                saved.meta[name] = Meta(hash: Self.hash(item), order: item.order, modified: .distantPast,
-                                        systemFields: saved.meta[name]?.systemFields)
+                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: .distantPast,
+                                        orderModified: .distantPast, systemFields: saved.meta[name]?.systemFields)
                 pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
             }
         }
@@ -162,11 +187,25 @@ final class CloudLibrary {
         persist()
     }
 
-    /// Signed out, or another account: forget what was synced (keeping the library), and start over.
+    /// Changes this device made that the engine may not have kept (the app quit straight after).
+    private func requeueUnsent() {
+        guard let engine else { return }
+        var pending: [CKSyncEngine.PendingRecordZoneChange] = saved.meta.filter(\.value.unsent).keys.map {
+            .saveRecord(CKRecord.ID(recordName: $0, zoneID: zoneID))
+        }
+        pending += saved.deleting.map { .deleteRecord(CKRecord.ID(recordName: $0, zoneID: zoneID)) }
+        guard !pending.isEmpty else { return }
+        engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
+        engine.state.add(pendingRecordZoneChanges: pending)
+    }
+
+    /// Signed out, or another account: forget what was synced (keeping the library here), and on
+    /// signing in offer it to the account. The engine keeps going: it resets its own state.
     private func reset(reseed: Bool) {
-        saved = Saved()
+        saved.meta = [:]
+        saved.deleting = []
+        saved.seeded = false
         persist()
-        makeEngine()
         if reseed { seed() }
     }
 
@@ -174,13 +213,26 @@ final class CloudLibrary {
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: Self.fileURL, options: .atomic) }
     }
 
+    /// After fetching or sending: up to date, unless a save failed (its reason stays shown until
+    /// the next round of sending).
+    private func finishRound() {
+        lastSync = .now
+        if !sendFailed { status = "Up to date" }
+    }
+
     // MARK: Items here
 
-    private static func recordName(_ kind: Kind, _ id: String) -> String { "\(kind.rawValue).\(id)" }
+    /// A record's name. Bulb names are filed under a hash of the MAC: record names are visible to
+    /// Apple (not end-to-end encrypted), unlike the MAC kept in the record's encrypted fields.
+    private static func recordName(_ kind: Kind, _ id: String) -> String {
+        guard kind == .bulbName else { return "\(kind.rawValue).\(id)" }
+        let digest = SHA256.hash(data: Data("setPilot bulb name \(id.lowercased())".utf8))
+        return "\(kind.rawValue)." + digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
 
-    private static func parse(_ name: String) -> (Kind, String)? {
-        guard let dot = name.firstIndex(of: "."), let kind = Kind(rawValue: String(name[..<dot])) else { return nil }
-        return (kind, String(name[name.index(after: dot)...]))
+    private static func kind(of name: String) -> Kind? {
+        guard let dot = name.firstIndex(of: ".") else { return nil }
+        return Kind(rawValue: String(name[..<dot]))
     }
 
     private static func hash(_ item: Item) -> Data {
@@ -215,7 +267,7 @@ final class CloudLibrary {
                 }
             }
         case .bulbName:
-            for (mac, name) in model.names { items[mac] = Item(data: Data(name.utf8), order: 0) }
+            for (mac, name) in model.names { items[mac] = Item(data: Data(name.utf8), order: 0, mac: mac) }
         }
         return items
     }
@@ -275,13 +327,14 @@ final class CloudLibrary {
     // MARK: Records
 
     private func record(for id: CKRecord.ID) -> CKRecord? {
-        guard let (kind, itemID) = Self.parse(id.recordName), let item = current(kind)[itemID],
-              let meta = saved.meta[id.recordName] else { return nil }
+        guard let kind = Self.kind(of: id.recordName), let meta = saved.meta[id.recordName],
+              let item = current(kind)[meta.id] else { return nil }
         let record = meta.systemFields.flatMap(Self.record(fromSystemFields:)) ?? CKRecord(recordType: kind.rawValue, recordID: id)
         record.encryptedValues["data"] = item.data
         record.encryptedValues["mac"] = item.mac
         record["order"] = item.order
         record["modified"] = meta.modified
+        record["orderModified"] = meta.orderModified
         return record
     }
 
@@ -299,29 +352,43 @@ final class CloudLibrary {
         return CKRecord(coder: coder)
     }
 
-    /// A record from iCloud, as an item here, if it's one of ours.
-    private static func item(from record: CKRecord) -> (Kind, String, Item, Date)? {
-        guard let (kind, id) = parse(record.recordID.recordName),
-              let data: Data = record.encryptedValues["data"] else { return nil }
-        let mac: String? = record.encryptedValues["mac"]
-        let item = Item(data: data, order: record["order"] as? Double ?? 0, mac: mac)
-        return (kind, id, item, record["modified"] as? Date ?? .distantPast)
+    /// The item key a record's name stands for (for a bulb name, from what's known here).
+    private func itemID(_ name: String, _ kind: Kind) -> String? {
+        if let meta = saved.meta[name] { return meta.id }
+        return kind == .bulbName ? nil : String(name.dropFirst(kind.rawValue.count + 1))
     }
 
-    /// iCloud's version of a record: taken unless this device's own change is newer.
-    /// Returns the change to apply, if any.
+    /// iCloud's version of a record. Its content and its place are each taken unless this
+    /// device's own change to that part is newer (then ours is sent again on top). A deletion here
+    /// still to go up wins over an edit from elsewhere. Returns the change to apply, if any.
     private func take(_ record: CKRecord) -> (Kind, String, Item)? {
-        guard let (kind, id, item, modified) = Self.item(from: record) else { return nil }
         let name = record.recordID.recordName
+        guard let kind = Self.kind(of: name), let data: Data = record.encryptedValues["data"] else { return nil }
+        let mac: String? = record.encryptedValues["mac"]
+        guard let id = kind == .bulbName ? mac : itemID(name, kind), !id.isEmpty else { return nil }
+        if saved.deleting.contains(name) { return nil }
+        let remote = Item(data: data, order: record["order"] as? Double ?? 0, mac: mac)
+        let modified = record["modified"] as? Date ?? .distantPast
+        let orderModified = record["orderModified"] as? Date ?? modified
+        let remoteHash = Self.hash(remote)
         let fields = Self.systemFields(of: record)
-        if let mine = saved.meta[name], mine.modified > modified, mine.hash != Self.hash(item) {
-            // Ours is newer: keep it, and send it again on top of iCloud's.
-            saved.meta[name]?.systemFields = fields
-            engine?.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])
-            return nil
+        guard var meta = saved.meta[name] else {
+            saved.meta[name] = Meta(id: id, hash: remoteHash, order: remote.order, modified: modified,
+                                    orderModified: orderModified, systemFields: fields, unsent: false)
+            return (kind, id, remote)
         }
-        saved.meta[name] = Meta(hash: Self.hash(item), order: item.order, modified: modified, systemFields: fields)
-        return (kind, id, item)
+        let keepContent = meta.modified > modified && meta.hash != remoteHash
+        let keepOrder = meta.orderModified > orderModified && meta.order != remote.order
+        meta.systemFields = fields
+        if !keepContent { meta.hash = remoteHash; meta.modified = modified }
+        if !keepOrder { meta.order = remote.order; meta.orderModified = orderModified }
+        meta.unsent = keepContent || keepOrder
+        saved.meta[name] = meta
+        if meta.unsent { engine?.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)]) }
+        if keepContent && keepOrder { return nil }
+        let mine = current(kind)[id]
+        let content = keepContent ? (mine ?? remote) : remote
+        return (kind, id, Item(data: content.data, order: meta.order, mac: content.mac))
     }
 
     private func handle(_ event: CKSyncEngine.Event) {
@@ -333,6 +400,7 @@ final class CloudLibrary {
         case .accountChange(let e):
             switch e.changeType {
             case .signIn: reset(reseed: true)
+            // Another Apple ID: what's here is offered to it as on signing in (see needs-you).
             case .switchAccounts: reset(reseed: true)
             case .signOut: reset(reseed: false); status = "Not signed in to iCloud"
             @unknown default: break
@@ -340,9 +408,10 @@ final class CloudLibrary {
 
         case .fetchedDatabaseChanges(let e):
             // The zone deleted (iCloud's data removed in Settings, say): forget what was synced.
-            // The library here stays, and goes up again with the next change.
+            // The library here stays, and all of it goes up again with the next change here.
             if e.deletions.contains(where: { $0.zoneID == zoneID }) {
                 saved.meta = [:]
+                saved.deleting = []
                 saved.seeded = false
                 persist()
             }
@@ -353,16 +422,26 @@ final class CloudLibrary {
                 if let (kind, id, item) = take(m.record) { changes[kind, default: [:]].updateValue(item, forKey: id) }
             }
             for d in e.deletions {
-                guard let (kind, id) = Self.parse(d.recordID.recordName) else { continue }
-                saved.meta.removeValue(forKey: d.recordID.recordName)
+                let name = d.recordID.recordName
+                saved.deleting.remove(name)
+                guard let kind = Self.kind(of: name), let id = itemID(name, kind) else { continue }
+                saved.meta.removeValue(forKey: name)
                 changes[kind, default: [:]].updateValue(nil, forKey: id)
             }
             for (kind, c) in changes { apply(kind, c) }
             persist()
 
+        case .willSendChanges:
+            sendFailed = false
+
         case .sentRecordZoneChanges(let e):
             for record in e.savedRecords {
                 saved.meta[record.recordID.recordName]?.systemFields = Self.systemFields(of: record)
+                saved.meta[record.recordID.recordName]?.unsent = false
+            }
+            for id in e.deletedRecordIDs { saved.deleting.remove(id.recordName) }
+            for (id, error) in e.failedRecordDeletes where error.code == .unknownItem || error.code == .zoneNotFound {
+                saved.deleting.remove(id.recordName) // already gone
             }
             var retry: [CKSyncEngine.PendingRecordZoneChange] = []
             var changes: [Kind: [String: Item?]] = [:]
@@ -370,7 +449,7 @@ final class CloudLibrary {
                 let id = failure.record.recordID
                 switch failure.error.code {
                 case .serverRecordChanged:
-                    // Changed elsewhere since we last saw it: the later change wins.
+                    // Changed elsewhere since we last saw it: the later change wins, part by part.
                     if let server = failure.error.serverRecord, let (kind, itemID, item) = take(server) {
                         changes[kind, default: [:]].updateValue(item, forKey: itemID)
                     }
@@ -385,6 +464,7 @@ final class CloudLibrary {
                      .operationCancelled, .requestRateLimited:
                     break // the engine tries again by itself
                 default:
+                    sendFailed = true
                     status = Self.describe(failure.error)
                 }
             }
@@ -393,8 +473,7 @@ final class CloudLibrary {
             persist()
 
         case .didFetchChanges, .didSendChanges:
-            lastSync = .now
-            status = "Up to date"
+            finishRound()
 
         default:
             break
@@ -426,7 +505,12 @@ extension CloudLibrary: CKSyncEngineDelegate {
         let scope = context.options.scope
         let changes = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { id in
-            await MainActor.run { self.record(for: id) }
+            await MainActor.run {
+                let record = self.record(for: id)
+                // Gone since it was queued (deleted here or elsewhere): drop it rather than offer it again.
+                if record == nil { syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(id)]) }
+                return record
+            }
         }
     }
 }
