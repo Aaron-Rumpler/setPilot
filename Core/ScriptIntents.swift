@@ -156,9 +156,10 @@ struct GetLightStateIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
-        let state = LightStateEntity(try await script(.get))
-        return .result(value: state, dialog: "\(state.summary)")
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog & ShowsSnippetView {
+        let raw = try await script(.get)
+        let state = LightStateEntity(raw)
+        return .result(value: state, dialog: "\(state.summary)", view: LightSnippet(state: raw))
     }
 }
 
