@@ -69,6 +69,23 @@ enum URLCommands {
         case "preset":
             guard let name = value("name") ?? value("id") else { return .failure(bad("Give name=… (or id=…).")) }
             return .success(.preset(name))
+        case "set":
+            // Several at once: rgb=r,g,b[,c,w] | temp (with scale) | scene | custom; speed,
+            // brightness, power=on|off.
+            let rgb = value("rgb").map { $0.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) } }
+            let power: Bool? = switch value("power")?.lowercased() {
+            case "on", "1", "true": true
+            case "off", "0", "false": false
+            default: nil
+            }
+            return .success(.set(ScriptChange(rgbcw: rgb, temp: int("temp") ?? int("kelvin"), scale: value("scale"),
+                                              scene: value("scene"), customScene: value("custom"), speed: int("speed"),
+                                              brightness: int("brightness"), power: power)))
+        case "list":
+            guard let kind = value("what").flatMap({ ScriptList(rawValue: $0.lowercased()) }) else {
+                return .failure(bad("Give what=presets, scenes, custom-scenes, scales or bulbs."))
+            }
+            return .success(.list(kind))
         case "switch", "bulb":
             guard let bulb = value("bulb") ?? value("name") else { return .failure(bad("Give bulb=… (a name, MAC or address).")) }
             return .success(.switchBulb(bulb))
@@ -78,6 +95,12 @@ enum URLCommands {
     }
 
     private static func bad(_ message: String) -> ScriptError { ScriptError(code: .badArguments, message: message) }
+
+    /// The fade a link asks for (fade=ms, for any change), if any.
+    static func fade(from url: URL) -> Int? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .first { $0.name.lowercased() == "fade" }?.value.flatMap { Int($0) }
+    }
 
     /// Schemes a callback may not open: a link (from a web page, say) mustn't use setPilot to open
     /// files or connect to servers without the prompt the browser would give.
@@ -98,6 +121,12 @@ enum URLCommands {
         if let error = result.error {
             extra = [URLQueryItem(name: "errorCode", value: error.code.rawValue),
                      URLQueryItem(name: "errorMessage", value: error.message)]
+        } else if let list = result.items {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            if let data = try? encoder.encode(list) {
+                extra = [URLQueryItem(name: "items", value: String(decoding: data, as: UTF8.self))]
+            }
         } else if var state = result.state {
             state.bulb.mac = nil
             state.bulb.address = nil

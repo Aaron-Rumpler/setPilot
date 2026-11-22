@@ -22,6 +22,24 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(encoded(command("setpilot://colour?r=255&w=10")), encoded(.colour(r: 255, g: 0, b: 0, c: 0, w: 10, power: nil)))
     }
 
+    func testSetAndFade() {
+        let url = URL(string: "setpilot://set?scene=Warm+white&brightness=40&power=on&fade=2000")!
+        XCTAssertEqual(encoded(try? URLCommands.command(from: url).get()),
+                       encoded(.set(ScriptChange(scene: "Warm white", brightness: 40, power: true))))
+        XCTAssertEqual(URLCommands.fade(from: url), 2000)
+        XCTAssertEqual(encoded(command("setpilot://set?rgb=255,0,10")), encoded(.set(ScriptChange(rgbcw: [255, 0, 10]))))
+        XCTAssertEqual(encoded(command("setpilot://list?what=presets")), encoded(.list(.presets)))
+    }
+
+    func testCallbacksRefuseFileURLs() {
+        let url = URL(string: "setpilot://get?x-success=file:///Applications/Calculator.app")!
+        let state = LightState(bulb: .init(name: "Desk", mac: "aabbcc000001", address: "192.168.1.2"), link: "connected", on: true, mode: "rgbcw", dimming: 50)
+        XCTAssertNil(URLCommands.callback(for: url, result: ScriptResult(state: state)))
+        let ok = URLCommands.callback(for: URL(string: "setpilot://get?x-success=app://ok")!, result: ScriptResult(state: state))
+        XCTAssertFalse(ok?.absoluteString.contains("aabbcc000001") ?? true, "no MAC in callbacks")
+        XCTAssertFalse(ok?.absoluteString.contains("192.168") ?? true, "no address in callbacks")
+    }
+
     func testBadLinks() {
         if case .failure(let e) = URLCommands.command(from: URL(string: "setpilot://setUserConfig?x=1")!) {
             XCTAssertEqual(e.code, .badArguments)

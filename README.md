@@ -53,7 +53,9 @@ trademark of Signify.
   errors flagged, and Expand All and Copy All.
 - **Shortcuts** (Mac too): apply a preset, switch on or off, set the brightness, brighter or dimmer,
   set a colour, colour temperature (on a CCT scale or the bulb's own), scene or custom scene, switch
-  to another of your bulbs, and Get Light State (each part usable in later actions, and as JSON);
+  to another of your bulbs, Set Light (any of a colour, temperature or scene, the brightness and the
+  power, in one change, as Compose sends), and Get Light State (each part usable in later actions,
+  and as JSON); each change can have a fade of its own (otherwise the controls' fade);
   from the Shortcuts app, Spotlight and Siri. A change counts as done once the bulb has answered and
   read back as asked; otherwise the action fails with why (not answering, refused, not applied).
   Colour, temperature and scene actions leave the power as it is unless Switch On is set.
@@ -64,12 +66,17 @@ trademark of Signify.
   `get`, `power` (`on=true|false|toggle`), `brightness` (`level`), `brighter`/`dimmer` (`step`),
   `colour` (`r g b c w`), `temperature` (`kelvin`, `scale` a CCT scale's name or `bulb`), `scene`
   (`name`, `speed`), `custom-scene` (`name`), `speed` (`value`), `preset` (`name`) and `switch` (`bulb`),
-  with `on=1` to switch the bulb on too. x-error gets `errorCode` and `errorMessage`. Only what the
+  with `on=1` to switch the bulb on too; `set` (any of `rgb=r,g,b[,c,w]`, `temp`+`scale`,
+  `scene`, `custom`, with `speed`, `brightness`, `power=on|off`) for several at once; `fade=ms` on
+  any change; and `list` (`what=presets|scenes|custom-scenes|scales|bulbs`, given to x-success as
+  `items`). x-error gets `errorCode` and `errorMessage`. Only what the
   app's controls do: no raw bulb methods, as web pages can open these links too.
 - **Command-line tool** (Mac): `setpilot get`, `on`, `off`, `toggle`, `brightness 40`, `brighter`,
   `colour 255 80 0`, `temp 2700 --scale bulb`, `scene Ocean --speed 150`, `custom <name>`,
-  `preset <name>`, `switch <bulb>`, `list presets` and `watch` (the state, one line each time it
-  changes); `--json` for JSON (JSON Lines for `watch`), `--on` to switch the bulb on too. It asks the
+  `preset <name>`, `switch <bulb>`, `set --scene Ocean --brightness 40 --on --fade 2000` (several at
+  once, in one change), `list presets` and `watch` (the state, one line each time it changes);
+  `--json` for JSON (JSON Lines for `watch`), `--on` to switch the bulb on too, `--fade <ms>` for
+  any change. It asks the
   app (launching it in the background if needed), with an exit code for each kind of failure (see
   `setpilot --help`). It's inside the app: link it onto your PATH, e.g.
   `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App
@@ -150,11 +157,13 @@ trademark of Signify.
 
 ## iPhone and Apple Watch
 
-The iPhone app has the same controls, presets and custom scenes (its own, kept on the iPhone), plus
-Shortcuts actions: apply a preset, switch on or off, set the brightness, and make it brighter or
-dimmer (a step from wherever the bulb is: read first, then sent as a level, so a resend can't
-step twice). Through the Shortcuts app those reach Siri,
-the Action button, and Control Center and the Lock Screen (a Shortcuts control). It has the console
+The iPhone app has the same controls, presets and custom scenes (its own, kept on the iPhone), the
+same Shortcuts actions as the Mac (above), and setpilot:// links. Through the Shortcuts app those
+reach Siri, the Action button, and Control Center and the Lock Screen (a Shortcuts control).
+Brighter and dimmer step from wherever the bulb is: read first, then sent as a level, so a resend
+can't step twice. The watch has Shortcuts actions of its own, going through the iPhone: apply a
+preset, switch on or off, brighter or dimmer, and the light's state, for Siri on the watch, its
+Action button and the Smart Stack. It has the console
 too (Bulb & Settings › Console).
 
 The iPhone app doesn't search the network: broadcasting needs Apple's multicast entitlement (paid

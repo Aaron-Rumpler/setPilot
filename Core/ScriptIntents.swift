@@ -4,8 +4,8 @@ import AppIntents
 // the URL scheme and the command-line tool), with the bulb's answer reported as an error.
 
 @MainActor
-private func script(_ command: ScriptCommand) async throws -> LightState {
-    let result = await Scripting.run(command, on: Shared.model)
+func script(_ command: ScriptCommand, fade: Int? = nil) async throws -> LightState {
+    let result = await Scripting.run(command, fade: fade, on: Shared.model)
     if let error = result.error { throw WizIntentError(localizedStringResource: "\(error.message)") }
     return result.state ?? Scripting.state(of: Shared.model)
 }
@@ -173,15 +173,17 @@ struct SetColourIntent: AppIntent {
     @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
     var switchOn: Bool
 
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the colour to \(\.$r), \(\.$g), \(\.$b), \(\.$c), \(\.$w)") { \.$switchOn }
+        Summary("Set the colour to \(\.$r), \(\.$g), \(\.$b), \(\.$c), \(\.$w)") { \.$switchOn; \.$fade }
     }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        .result(value: LightStateEntity(try await script(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil))))
+        .result(value: LightStateEntity(try await script(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)))
     }
 }
 
@@ -195,8 +197,10 @@ struct SetTemperatureIntent: AppIntent {
     var bulbOwn: Bool
     @Parameter(title: "Switch On", default: false) var switchOn: Bool
 
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the temperature to \(\.$kelvin) K") { \.$scale; \.$bulbOwn; \.$switchOn }
+        Summary("Set the temperature to \(\.$kelvin) K") { \.$scale; \.$bulbOwn; \.$switchOn; \.$fade }
     }
 
     init() {}
@@ -204,7 +208,7 @@ struct SetTemperatureIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
         let scaleQuery = bulbOwn ? "bulb" : scale?.id.uuidString
-        return .result(value: LightStateEntity(try await script(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil))))
+        return .result(value: LightStateEntity(try await script(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil), fade: fade)))
     }
 }
 
@@ -216,15 +220,17 @@ struct SetSceneIntent: AppIntent {
     @Parameter(title: "Speed", description: "10–200; empty leaves it as it is.") var speed: Int?
     @Parameter(title: "Switch On", default: false) var switchOn: Bool
 
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Play \(\.$scene)") { \.$speed; \.$switchOn }
+        Summary("Play \(\.$scene)") { \.$speed; \.$switchOn; \.$fade }
     }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        .result(value: LightStateEntity(try await script(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil))))
+        .result(value: LightStateEntity(try await script(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)))
     }
 }
 
@@ -235,13 +241,15 @@ struct PlayCustomSceneIntent: AppIntent {
     @Parameter(title: "Custom Scene") var scene: CustomSceneEntity
     @Parameter(title: "Switch On", default: false) var switchOn: Bool
 
-    static var parameterSummary: some ParameterSummary { Summary("Play \(\.$scene)") { \.$switchOn } }
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary { Summary("Play \(\.$scene)") { \.$switchOn; \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        .result(value: LightStateEntity(try await script(.customScene(scene.id.uuidString, power: switchOn ? true : nil))))
+        .result(value: LightStateEntity(try await script(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade)))
     }
 }
 
@@ -259,5 +267,87 @@ struct SwitchBulbIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
         let state = LightStateEntity(try await script(.switchBulb(bulb.id)))
         return .result(value: state, dialog: "Now on \(state.bulb).")
+    }
+}
+
+enum LightPower: String, AppEnum {
+    case leave, on, off
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Power"
+    static let caseDisplayRepresentations: [LightPower: DisplayRepresentation] = [
+        .leave: "leave as it is", .on: "on", .off: "off",
+    ]
+}
+
+enum LightColourKind: String, AppEnum {
+    case leave, colour, temperature, scene, customScene
+
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Colour"
+    static let caseDisplayRepresentations: [LightColourKind: DisplayRepresentation] = [
+        .leave: "leave as it is", .colour: "a colour (RGBCW)", .temperature: "a colour temperature",
+        .scene: "a scene", .customScene: "a custom scene",
+    ]
+}
+
+/// Several things at once, in one setPilot, as Compose sends them.
+struct SetLightIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Light"
+    static let description = IntentDescription("Changes any of the colour (or temperature, or scene), brightness and power at once, in one change, with an optional fade.")
+
+    @Parameter(title: "Colour", default: .leave) var kind: LightColourKind
+    @Parameter(title: "Red", default: 255, inclusiveRange: (0, 255)) var r: Int
+    @Parameter(title: "Green", default: 0, inclusiveRange: (0, 255)) var g: Int
+    @Parameter(title: "Blue", default: 0, inclusiveRange: (0, 255)) var b: Int
+    @Parameter(title: "Cool White", default: 0, inclusiveRange: (0, 255)) var c: Int
+    @Parameter(title: "Warm White", default: 0, inclusiveRange: (0, 255)) var w: Int
+    @Parameter(title: "Kelvin", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
+    @Parameter(title: "CCT Scale", description: "Empty: as Temperature was last used.") var scale: CCTScaleEntity?
+    @Parameter(title: "Scene") var scene: SceneEntity?
+    @Parameter(title: "Custom Scene") var customScene: CustomSceneEntity?
+    @Parameter(title: "Speed", description: "10–200, for a scene; empty leaves it.") var speed: Int?
+    @Parameter(title: "Brightness", description: "1–100; empty leaves it.") var brightness: Int?
+    @Parameter(title: "Power", default: .leave) var power: LightPower
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
+
+    static var parameterSummary: some ParameterSummary {
+        Switch(\.$kind) {
+            Case(.colour) {
+                Summary("Set the light to \(\.$r), \(\.$g), \(\.$b), \(\.$c), \(\.$w)") { \.$brightness; \.$power; \.$fade }
+            }
+            Case(.temperature) {
+                Summary("Set the light to \(\.$kelvin) K") { \.$scale; \.$brightness; \.$power; \.$fade }
+            }
+            Case(.scene) {
+                Summary("Set the light to \(\.$scene)") { \.$speed; \.$brightness; \.$power; \.$fade }
+            }
+            Case(.customScene) {
+                Summary("Set the light to \(\.$customScene)") { \.$speed; \.$brightness; \.$power; \.$fade }
+            }
+            DefaultCase {
+                Summary("Set the light: \(\.$kind)") { \.$brightness; \.$power; \.$fade }
+            }
+        }
+    }
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
+        var change = ScriptChange(speed: speed, brightness: brightness,
+                                  power: power == .on ? true : power == .off ? false : nil)
+        switch kind {
+        case .leave: break
+        case .colour: change.rgbcw = [r, g, b, c, w]
+        case .temperature:
+            change.temp = kelvin
+            change.scale = scale?.id.uuidString
+        case .scene:
+            guard let scene else { throw WizIntentError(localizedStringResource: "Choose a scene.") }
+            change.scene = String(scene.id)
+        case .customScene:
+            guard let customScene else { throw WizIntentError(localizedStringResource: "Choose a custom scene.") }
+            change.customScene = customScene.id.uuidString
+        }
+        return .result(value: LightStateEntity(try await script(.set(change), fade: fade)))
     }
 }

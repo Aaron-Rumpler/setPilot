@@ -13,7 +13,7 @@ extension URLCommands {
     static func handle(_ url: URL, model: Model) async {
         let result: ScriptResult
         switch command(from: url) {
-        case .success(let command): result = await Scripting.run(command, on: model)
+        case .success(let command): result = await Scripting.run(command, fade: fade(from: url), on: model)
         case .failure(let error): result = ScriptResult(state: nil, error: error)
         }
         // Without a callback, a failure shows as the status (there's nowhere else to say it).

@@ -82,6 +82,9 @@ enum ScriptCommand: Codable, Sendable {
     /// Another of your bulbs, by name, MAC or address.
     case switchBulb(String)
     case list(ScriptList)
+    /// Several things at once, in one setPilot (as Compose sends): a colour of one kind, a
+    /// brightness, the power.
+    case set(ScriptChange)
 }
 
 /// What a command gives back.
@@ -97,9 +100,35 @@ struct ScriptItem: Codable, Equatable, Sendable {
     var id: String
 }
 
+/// What `set` changes; anything left nil stays as it is.
+struct ScriptChange: Codable, Equatable, Sendable {
+    /// r, g, b, and optionally c and w (0–255).
+    var rgbcw: [Int]?
+    var temp: Int?
+    /// For `temp`: a CCT scale's name or ID, or "bulb"; nil for Temperature as last used.
+    var scale: String?
+    /// A built-in scene's name or number.
+    var scene: String?
+    /// One of your custom scenes, by name or ID.
+    var customScene: String?
+    /// A scene's speed (with `scene` or `customScene`, or the current scene's).
+    var speed: Int?
+    var brightness: Int?
+    /// true switches on, false off; nil leaves it.
+    var power: Bool?
+
+    init(rgbcw: [Int]? = nil, temp: Int? = nil, scale: String? = nil, scene: String? = nil, customScene: String? = nil,
+         speed: Int? = nil, brightness: Int? = nil, power: Bool? = nil) {
+        (self.rgbcw, self.temp, self.scale, self.scene, self.customScene) = (rgbcw, temp, scale, scene, customScene)
+        (self.speed, self.brightness, self.power) = (speed, brightness, power)
+    }
+}
+
 /// A line the command-line tool sends the app: one command, or a request for the state as it changes.
 struct ScriptRequest: Codable, Sendable {
     var command: ScriptCommand?
+    /// The fade for this change, in ms (setPilot's trans); nil for the controls' fade.
+    var fade: Int?
     /// Keep the connection open, the app writing the state (one LightState per line) when it changes.
     var watch: Bool?
 }

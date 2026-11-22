@@ -20,11 +20,16 @@ usage: setpilot [--json] <command> [arguments]
   speed <10–200>               the current scene's speed
   preset <name>                switches the bulb on, as applying a preset does
   switch <bulb>                another of your bulbs, by name, MAC or address
+  set [options]                several at once, in one change (as Compose sends):
+        --rgb r,g,b[,c,w] | --temp <kelvin> [--scale <name>|bulb]
+        | --scene <name|number> | --custom <name>
+        [--speed <10–200>] [--brightness <1–100>] [--on | --off]
   list presets|scenes|custom-scenes|scales|bulbs
   watch                        the state, one line each time it changes, until stopped
 
   --on     also switch the bulb on (colour, temp, scene, custom); otherwise
            the power is left as it is, as the app's controls do
+  --fade <ms>  this change's fade (0–60000); otherwise the controls' fade
   --json   JSON output (watch: one object per line)
 
 Changes are reported once the bulb has answered and read back as asked.
@@ -52,9 +57,17 @@ func takeOption(_ name: String) -> String? {
 }
 
 let json = takeFlag("--json")
-let switchOn: Bool? = takeFlag("--on") ? true : nil
+let onFlag = takeFlag("--on")
+let offFlag = takeFlag("--off")
+let switchOn: Bool? = onFlag ? true : nil
 let scaleOption = takeOption("--scale")
 let speedOption = takeOption("--speed")
+let fadeOption = takeOption("--fade")
+let rgbOption = takeOption("--rgb")
+let tempOption = takeOption("--temp")
+let sceneOption = takeOption("--scene")
+let customOption = takeOption("--custom")
+let brightnessOption = takeOption("--brightness")
 
 func fail(_ error: ScriptError) -> Never {
     if json {
@@ -119,6 +132,14 @@ case "list":
         badArguments("list takes one of: \(ScriptList.allCases.map(\.rawValue).joined(separator: ", ")).")
     }
     command = .list(kind)
+case "set":
+    guard !(onFlag && offFlag) else { badArguments("--on or --off, not both.") }
+    let rgb = rgbOption.map { $0.split(separator: ",").map { int(String($0).trimmingCharacters(in: .whitespaces), "Each channel") } }
+    command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "The kelvin") }, scale: scaleOption,
+                                scene: sceneOption, customScene: customOption,
+                                speed: speedOption.map { int($0, "The speed") },
+                                brightness: brightnessOption.map { int($0, "The brightness") },
+                                power: onFlag ? true : offFlag ? false : nil))
 case "watch":
     watching = true
     command = .get
@@ -202,7 +223,7 @@ if !watching {
     var wait = timeval(tv_sec: 30, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
 }
-let request = Array((encode(ScriptRequest(command: command, watch: watching ? true : nil)) + "\n").utf8)
+let request = Array((encode(ScriptRequest(command: command, fade: fadeOption.map { int($0, "The fade") }, watch: watching ? true : nil)) + "\n").utf8)
 // write(2) and read(2), not FileHandle: its methods raise (an abort, not an exit code) on an error.
 guard request.withUnsafeBytes({ Darwin.write(fd, $0.baseAddress, $0.count) }) == request.count else {
     fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection."))

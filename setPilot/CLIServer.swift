@@ -80,7 +80,7 @@ final class CLIServer {
         let done = DispatchSemaphore(value: 0)
         let box = ResultBox()
         Task { @MainActor in
-            box.result = await Scripting.run(command, on: model)
+            box.result = await Scripting.run(command, fade: request.fade, on: model)
             done.signal()
         }
         done.wait()

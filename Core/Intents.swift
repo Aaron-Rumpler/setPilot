@@ -23,39 +23,23 @@ struct WizIntentError: Error, CustomLocalizedStringResourceConvertible {
     static let noBulb = WizIntentError(localizedStringResource: "Choose a bulb in setPilot first.")
 }
 
-@MainActor
-private func controllableModel() async throws -> Model {
-    let model = Shared.model
-    guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { throw WizIntentError.noBulb }
-    guard await model.waitUntilControllable(timeout: 5) else {
-        // Answering but refusing to say how it is (a wrong signing key, say): that, not "isn't answering".
-        if model.link == .connected, !model.status.isEmpty { throw WizIntentError(localizedStringResource: "\(model.status)") }
-        throw WizIntentError.unreachable
-    }
-    return model
-}
-
 struct ApplyPresetIntent: AppIntent {
     static let title: LocalizedStringResource = "Apply Preset"
     static let description = IntentDescription("Sets the bulb to one of your setPilot presets, switching it on if it's off.")
 
     @Parameter(title: "Preset")
     var preset: PresetEntity
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Apply \(\.$preset)") }
+    static var parameterSummary: some ParameterSummary { Summary("Apply \(\.$preset)") { \.$fade } }
 
     init() {}
     init(preset: PresetEntity) { self.preset = preset }
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let model = try await controllableModel()
-        guard let p = model.library.presets.first(where: { $0.id == preset.id }) else {
-            throw WizIntentError(localizedStringResource: "That preset no longer exists.")
-        }
-        model.apply(p)
-        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: "Applied \(p.name).")
+        _ = try await script(.preset(preset.id.uuidString), fade: fade)
+        return .result(dialog: "Applied \(preset.name).")
     }
 }
 
@@ -74,22 +58,21 @@ struct PowerIntent: AppIntent {
 
     @Parameter(title: "Power", default: .toggle)
     var action: PowerAction
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Switch the bulb \(\.$action)") }
+    static var parameterSummary: some ParameterSummary { Summary("Switch the bulb \(\.$action)") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let model = try await controllableModel()
-        let on = switch action {
+        let on: Bool? = switch action {
         case .on: true
         case .off: false
-        case .toggle: !(model.isOn ?? false)
+        case .toggle: nil
         }
-        model.power(on)
-        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: on ? "Switched on." : "Switched off.")
+        let state = try await script(.power(on), fade: fade)
+        return .result(dialog: state.on == false ? "Switched off." : "Switched on.")
     }
 }
 
@@ -97,21 +80,20 @@ struct SetBrightnessIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Brightness"
     static let description = IntentDescription("Sets the bulb's brightness (10–100%), leaving its colour as it is.")
 
-    @Parameter(title: "Brightness", default: 100, inclusiveRange: (10, 100))
+    @Parameter(title: "Brightness", default: 100, inclusiveRange: (1, 100))
     var level: Int
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Set the brightness to \(\.$level)%") }
+    static var parameterSummary: some ParameterSummary { Summary("Set the brightness to \(\.$level)%") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let model = try await controllableModel()
-        model.setDimming(Double(level))
-        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: model.isOn == false
-                       ? "Brightness \(Int(model.dimming))%, for when the bulb's switched on (it's off)."
-                       : "Brightness \(Int(model.dimming))%.")
+        let state = try await script(.brightness(level), fade: fade)
+        return .result(dialog: state.on == false
+                       ? "Brightness \(state.dimming)%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(state.dimming)%.")
     }
 }
 
@@ -133,19 +115,18 @@ struct AdjustBrightnessIntent: AppIntent {
 
     @Parameter(title: "Step", default: 10, inclusiveRange: (1, 90))
     var step: Int
+    @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
-    static var parameterSummary: some ParameterSummary { Summary("Make the bulb \(\.$direction) by \(\.$step)%") }
+    static var parameterSummary: some ParameterSummary { Summary("Make the bulb \(\.$direction) by \(\.$step)%") { \.$fade } }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let model = try await controllableModel()
-        model.adjustDimming(by: direction == .brighter ? step : -step)
-        if let problem = await model.outcome() { throw WizIntentError(localizedStringResource: "\(problem)") }
-        return .result(dialog: model.isOn == false
-                       ? "Brightness \(Int(model.dimming))%, for when the bulb's switched on (it's off)."
-                       : "Brightness \(Int(model.dimming))%.")
+        let state = try await script(.adjustBrightness(direction == .brighter ? step : -step), fade: fade)
+        return .result(dialog: state.on == false
+                       ? "Brightness \(state.dimming)%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(state.dimming)%.")
     }
 }
 

@@ -9,20 +9,25 @@ import Foundation
 enum Scripting {
     /// One at a time, in the order they came: each change's outcome (its answer, its read-back) is
     /// only its own if no other change goes out meanwhile.
-    static func run(_ command: ScriptCommand, on model: Model) async -> ScriptResult {
+    /// `fade`: in ms, for this change (setPilot's trans); nil for the controls' fade, as the app's
+    /// own controls send.
+    static func run(_ command: ScriptCommand, fade: Int? = nil, on model: Model) async -> ScriptResult {
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
             _ = await previous?.value
-            return await runNow(command, on: model)
+            return await runNow(command, fade: fade, on: model)
         }
         queue = Task { @MainActor in _ = await task.value }
         return await task.value
     }
     private static var queue: Task<Void, Never>?
 
-    private static func runNow(_ command: ScriptCommand, on model: Model) async -> ScriptResult {
+    private static func runNow(_ command: ScriptCommand, fade: Int?, on model: Model) async -> ScriptResult {
+        if let fade, !(0...60_000).contains(fade) {
+            return ScriptResult(state: state(of: model), error: bad("The fade is 0–60000 ms."))
+        }
         do {
-            return try await perform(command, model)
+            return try await perform(command, fade, model)
         } catch let error as ScriptError {
             return ScriptResult(state: state(of: model), error: error)
         } catch {
@@ -67,7 +72,7 @@ enum Scripting {
 
     // MARK: Running
 
-    private static func perform(_ command: ScriptCommand, _ model: Model) async throws -> ScriptResult {
+    private static func perform(_ command: ScriptCommand, _ fade: Int?, _ model: Model) async throws -> ScriptResult {
         switch command {
         case .list(let kind):
             return ScriptResult(items: items(kind, model))
@@ -89,32 +94,28 @@ enum Scripting {
         model.mismatch = nil // an earlier change's: this one's own read-back says
         switch command {
         case .power(let on):
-            model.power(on ?? !(model.isOn ?? false))
+            let on = on ?? !(model.isOn ?? false)
+            // With a fade of its own: as Compose sends a switch; otherwise as the power switch does.
+            if fade != nil { try send(LightChange(power: on), fade, model) } else { model.power(on) }
         case .brightness(let level):
             guard (1...100).contains(level) else { throw bad("Brightness is 1–100.") }
-            model.setDimming(Double(level))
+            if fade != nil { try send(LightChange(dimming: level), fade, model) } else { model.setDimming(Double(level)) }
         case .adjustBrightness(let step):
             guard step != 0, abs(step) <= 100 else { throw bad("The step is −100 to 100, and not 0.") }
-            model.adjustDimming(by: step)
+            if fade != nil {
+                let level = Int(min(max(model.dimming + Double(step), model.minDimming), 100))
+                try send(LightChange(dimming: level), fade, model)
+            } else {
+                model.adjustDimming(by: step)
+            }
         case let .colour(r, g, b, c, w, power):
-            let channels = [r, g, b, c, w]
-            guard channels.allSatisfy({ (0...255).contains($0) }) else { throw bad("Each channel is 0–255.") }
-            guard channels.contains(where: { $0 > 0 }) else { throw bad("At least one channel has to be above 0 (the bulb refuses all zeros).") }
-            try send(LightChange(colour: .rgbcw(r: r, g: g, b: b, c: c, w: w), power: power), model)
+            try send(LightChange(colour: try rgbcw([r, g, b, c, w]), power: power), fade, model)
         case let .temperature(kelvin, scaleQuery, power):
-            try send(LightChange(colour: try temperature(kelvin, scaleQuery, model), power: power), model)
+            try send(LightChange(colour: try temperature(kelvin, scaleQuery, model), power: power), fade, model)
         case let .scene(query, speed, power):
-            let scenes = Scenes.all.filter { !(256...265).contains($0.id) } // the bulb's stored slots: not settable here
-            guard let scene = find(query, in: scenes, name: { $0.name }, id: { String($0.id) }) else {
-                throw ScriptError(code: .notFound, message: "No built-in scene called “\(query)”.")
-            }
-            if let speed, !(10...200).contains(speed) { throw bad("Speed is 10–200.") }
-            try send(LightChange(colour: .scene(id: scene.id, speed: speed), power: power), model)
+            try send(LightChange(colour: try scene(query, speed: speed), power: power), fade, model)
         case let .customScene(query, power):
-            guard let scene = find(query, in: model.library.customScenes, name: { $0.name }, id: { $0.id.uuidString }) else {
-                throw ScriptError(code: .notFound, message: "No custom scene called “\(query)”.")
-            }
-            try send(LightChange(colour: .custom(scene.id, speed: nil), power: power), model)
+            try send(LightChange(colour: try customScene(query, speed: nil, model), power: power), fade, model)
         case .speed(let speed):
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
@@ -128,7 +129,13 @@ enum Scripting {
             guard let preset = find(query, in: model.library.presets, name: { $0.name }, id: { $0.id.uuidString }) else {
                 throw ScriptError(code: .notFound, message: "No preset called “\(query)”.")
             }
-            guard model.apply(preset) else { throw ScriptError(code: .refused, message: model.refusal ?? model.status) }
+            if fade != nil {
+                try send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true), fade, model)
+            } else {
+                guard model.apply(preset) else { throw ScriptError(code: .refused, message: model.refusal ?? model.status) }
+            }
+        case .set(let change):
+            try send(try lightChange(change, model), fade, model)
         case .get, .list, .switchBulb:
             break
         }
@@ -138,11 +145,64 @@ enum Scripting {
 
     private static func bad(_ message: String) -> ScriptError { ScriptError(code: .badArguments, message: message) }
 
-    /// As the controls send: with their fade.
-    private static func send(_ change: LightChange, _ model: Model) throws {
+    /// With `fade`, or the controls' fade as they send.
+    private static func send(_ change: LightChange, _ fade: Int?, _ model: Model) throws {
         var change = change
-        change.fade = model.fadeForControls
+        change.fade = fade ?? model.fadeForControls
         guard model.send(change) else { throw ScriptError(code: .refused, message: model.refusal ?? model.status) }
+    }
+
+    private static func rgbcw(_ values: [Int]) throws -> LightColour {
+        guard (3...5).contains(values.count) else { throw bad("A colour is r, g, b, and optionally c and w.") }
+        let v = values + Array(repeating: 0, count: 5 - values.count)
+        guard v.allSatisfy({ (0...255).contains($0) }) else { throw bad("Each channel is 0–255.") }
+        guard v.contains(where: { $0 > 0 }) else { throw bad("At least one channel has to be above 0 (the bulb refuses all zeros).") }
+        return .rgbcw(r: v[0], g: v[1], b: v[2], c: v[3], w: v[4])
+    }
+
+    private static func scene(_ query: String, speed: Int?) throws -> LightColour {
+        let scenes = Scenes.all.filter { !(256...265).contains($0.id) } // the bulb's stored slots: not settable here
+        guard let scene = find(query, in: scenes, name: { $0.name }, id: { String($0.id) }) else {
+            throw ScriptError(code: .notFound, message: "No built-in scene called “\(query)”.")
+        }
+        if let speed, !(10...200).contains(speed) { throw bad("Speed is 10–200.") }
+        return .scene(id: scene.id, speed: speed)
+    }
+
+    private static func customScene(_ query: String, speed: Int?, _ model: Model) throws -> LightColour {
+        guard let scene = find(query, in: model.library.customScenes, name: { $0.name }, id: { $0.id.uuidString }) else {
+            throw ScriptError(code: .notFound, message: "No custom scene called “\(query)”.")
+        }
+        if let speed, !(10...200).contains(speed) { throw bad("Speed is 10–200.") }
+        return .custom(scene.id, speed: speed)
+    }
+
+    /// A combined change, checked: one kind of colour at most, and something to change.
+    private static func lightChange(_ c: ScriptChange, _ model: Model) throws -> LightChange {
+        let kinds = [c.rgbcw != nil, c.temp != nil, c.scene != nil, c.customScene != nil].filter { $0 }.count
+        guard kinds <= 1 else { throw bad("Set one of a colour, a temperature, a scene or a custom scene.") }
+        if c.scale != nil, c.temp == nil { throw bad("A scale goes with a temperature.") }
+        if c.speed != nil, c.rgbcw != nil || c.temp != nil { throw bad("A speed goes with a scene.") }
+        var colour: LightColour?
+        if let v = c.rgbcw { colour = try rgbcw(v) }
+        if let k = c.temp { colour = try temperature(k, c.scale, model) }
+        if let q = c.scene { colour = try scene(q, speed: c.speed) }
+        if let q = c.customScene { colour = try customScene(q, speed: c.speed, model) }
+        if colour == nil, let speed = c.speed {
+            // The scene it's on, at that speed.
+            guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
+            guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
+            if model.sceneId == Scenes.inlineCustom, let id = model.customSceneId, model.library.customScene(id) != nil {
+                colour = .custom(id, speed: speed)
+            } else if Scenes.isKnown(model.sceneId) {
+                colour = .scene(id: model.sceneId, speed: speed)
+            } else {
+                throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.")
+            }
+        }
+        if let b = c.brightness, !(1...100).contains(b) { throw bad("Brightness is 1–100.") }
+        guard colour != nil || c.brightness != nil || c.power != nil else { throw bad("Nothing to set.") }
+        return LightChange(colour: colour, dimming: c.brightness, power: c.power)
     }
 
     private static func temperature(_ kelvin: Int, _ scaleQuery: String?, _ model: Model) throws -> LightColour {
@@ -176,7 +236,11 @@ enum Scripting {
         guard await model.waitUntilControllable(timeout: 5) else {
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
             if model.link == .connected, !model.status.isEmpty { throw ScriptError(code: .refused, message: model.status) }
-            throw ScriptError(code: .notAnswering, message: "The bulb isn't answering.")
+            #if os(iOS)
+            throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
+            #else
+            throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your Mac.")
+            #endif
         }
     }
 
