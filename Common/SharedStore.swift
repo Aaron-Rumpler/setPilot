@@ -23,6 +23,13 @@ enum SharedStore {
     static let defaults = UserDefaults.standard
     #endif
 
+    /// Whether the App Group is there to share through (not in a Mac build without a team).
+    #if WIZ_APP_GROUPS
+    static let isShared = group != nil
+    #else
+    static let isShared = false
+    #endif
+
     static let snapshotKey = "shared.snapshot"
     static let presetsKey = "shared.presets"
     static let presetParamsKey = "shared.presetParams"

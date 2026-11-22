@@ -26,7 +26,9 @@ struct PresetEntity: AppEntity {
 
 struct PresetQuery: EntityQuery {
     func entities(for identifiers: [UUID]) async throws -> [PresetEntity] {
-        SharedStore.presets.filter { identifiers.contains($0.id) }.map(PresetEntity.init)
+        // In the order asked (a widget's chosen presets keep theirs).
+        let presets = SharedStore.presets
+        return identifiers.compactMap { id in presets.first { $0.id == id } }.map(PresetEntity.init)
     }
 
     func suggestedEntities() async throws -> [PresetEntity] {

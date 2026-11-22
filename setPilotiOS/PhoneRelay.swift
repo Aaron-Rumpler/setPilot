@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import WatchConnectivity
-import WidgetKit
 
 /// The iPhone end of the watch link. The watch can't talk to the bulb itself (watchOS only allows
 /// low-level networking while streaming audio), so it sends commands here; this runs them on the
@@ -245,7 +244,7 @@ final class PhoneRelay: NSObject {
         Task {
             try? await Task.sleep(for: .milliseconds(500))
             contextScheduled = false
-            WidgetPublisher.shared.libraryChanged()
+            WidgetPublisher.shared.publishLibrary() // already at most twice a second, here
             updateContext()
             SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
         }

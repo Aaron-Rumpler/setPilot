@@ -243,7 +243,7 @@ struct ShortcutsHelpView: View {
     var body: some View {
         List {
             Section {
-                Text("setPilot's actions are in the Shortcuts app: apply a preset, switch the bulb on or off, set or change its brightness. Use them from Siri, the Action button, or Control Center and the Lock Screen (add a Shortcuts control and pick the action). setPilot also has its own Control Center controls, for power and for a preset, a Home Screen widget and a Lock Screen status widget.")
+                Text("setPilot's actions are in the Shortcuts app: apply a preset, switch the bulb on or off, set or change its brightness, set a colour, colour temperature or scene, play a custom scene, switch bulbs, and get the light's state. Use them from Siri, the Action button, or Control Center and the Lock Screen (add a Shortcuts control and pick the action). setPilot also has its own Control Center controls (power, a preset, brighter and dimmer), Home Screen and StandBy widgets, and a Lock Screen status widget. Links (setpilot://) do the same from Safari or other apps.")
             }
             Section("Siri phrases") {
                 Text("“Apply a preset in setPilot”")

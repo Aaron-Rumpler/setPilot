@@ -31,13 +31,22 @@ enum WatchLinkInbox {
 
     static func post(_ link: String) {
         guard let url = URL(string: link) else { return }
-        if let handler { handler(url) } else { SharedStore.defaults.set(link, forKey: key) }
+        if let handler {
+            handler(url)
+        } else {
+            SharedStore.defaults.set(link, forKey: key)
+            SharedStore.defaults.set(Date.now.timeIntervalSince1970, forKey: key + ".at")
+        }
     }
 
-    /// A link left for the app, once.
+    /// A link left for the app, once, if it's recent: a tap from minutes ago isn't what's wanted now.
     static func take() -> URL? {
-        guard let link = SharedStore.defaults.string(forKey: key) else { return nil }
-        SharedStore.defaults.removeObject(forKey: key)
+        let defaults = SharedStore.defaults
+        guard let link = defaults.string(forKey: key) else { return nil }
+        let at = defaults.double(forKey: key + ".at")
+        defaults.removeObject(forKey: key)
+        defaults.removeObject(forKey: key + ".at")
+        guard Date.now.timeIntervalSince1970 - at < 30 else { return nil }
         return URL(string: link)
     }
 }

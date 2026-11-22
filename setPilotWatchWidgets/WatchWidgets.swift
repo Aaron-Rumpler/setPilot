@@ -41,7 +41,7 @@ struct WatchBrighterControl: ControlWidget {
 
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: up ? "brighter-control" : "dimmer-control") {
-            ControlWidgetButton(action: WatchLinkIntent(link: "setpilot://brightness/\(up ? "up" : "down")")) {
+            ControlWidgetButton(action: WatchLinkIntent(link: up ? "setpilot://brighter" : "setpilot://dimmer")) {
                 Label(up ? "Brighter" : "Dimmer", systemImage: up ? "sun.max.fill" : "sun.min")
             }
         }
@@ -56,7 +56,7 @@ struct WatchDimmerControl: ControlWidget {
 
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: up ? "brighter-control" : "dimmer-control") {
-            ControlWidgetButton(action: WatchLinkIntent(link: "setpilot://brightness/\(up ? "up" : "down")")) {
+            ControlWidgetButton(action: WatchLinkIntent(link: up ? "setpilot://brighter" : "setpilot://dimmer")) {
                 Label(up ? "Brighter" : "Dimmer", systemImage: up ? "sun.max.fill" : "sun.min")
             }
         }
@@ -193,7 +193,8 @@ struct WatchPresetEntity: AppEntity {
 
 struct WatchPresetQuery: EntityQuery {
     func entities(for identifiers: [UUID]) async throws -> [WatchPresetEntity] {
-        SharedStore.presets.filter { identifiers.contains($0.id) }.map(WatchPresetEntity.init)
+        let presets = SharedStore.presets // in the order asked
+        return identifiers.compactMap { id in presets.first { $0.id == id } }.map(WatchPresetEntity.init)
     }
 
     func suggestedEntities() async throws -> [WatchPresetEntity] {

@@ -12,7 +12,8 @@ final class WidgetPublisher {
     private var model: Model?
 
     func start(model: Model) {
-        guard self.model == nil else { return }
+        // No App Group (a Mac build without a team): nothing would read it.
+        guard self.model == nil, SharedStore.isShared else { return }
         self.model = model
         publishLibrary()
         observe()

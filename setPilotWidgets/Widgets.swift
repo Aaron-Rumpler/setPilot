@@ -17,6 +17,22 @@ struct SetPilotWidgets: WidgetBundle {
 // The same widgets and controls on iPhone (Home Screen, Lock Screen, StandBy, Control Center) and
 // the Mac (desktop, Notification Center, Control Center and the menu bar).
 
+/// The widget, or (in a Mac build without a development team, so no App Group to read) a note
+/// saying what it needs.
+struct NeedsSharing<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if SharedStore.isShared {
+            content()
+        } else {
+            Text("setPilot's widgets need a build with App Groups and a development team.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 // MARK: Timeline
 
 struct BulbEntry: TimelineEntry {
@@ -83,7 +99,8 @@ struct PresetsProvider: AppIntentTimelineProvider {
 
     private func entry(_ configuration: PresetsWidgetConfiguration) -> BulbEntry {
         let all = SharedStore.presets
-        let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }
+        var seen = Set<UUID>() // a preset chosen twice shows once
+        let chosen = (configuration.presets ?? []).compactMap { p in all.first { $0.id == p.id } }.filter { seen.insert($0.id).inserted }
         return BulbEntry(date: .now, snapshot: SharedStore.snapshot, presets: chosen.isEmpty ? all : chosen)
     }
 }
@@ -91,7 +108,7 @@ struct PresetsProvider: AppIntentTimelineProvider {
 struct PresetsWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "presets", intent: PresetsWidgetConfiguration.self, provider: PresetsProvider()) { entry in
-            PresetsWidgetView(entry: entry)
+            NeedsSharing { PresetsWidgetView(entry: entry) }
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Presets")
@@ -216,11 +233,11 @@ func statusText(_ s: LightSnapshot?) -> String {
 struct StatusWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "status", provider: BulbProvider()) { entry in
-            StatusWidgetView(entry: entry)
+            NeedsSharing { StatusWidgetView(entry: entry) }
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Bulb")
-        .description("Whether the bulb is on, and how bright, with a power switch.")
+        .description("Whether the bulb is on, and how bright, with power and brightness buttons.")
         #if os(iOS)
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .systemSmall])
         #else

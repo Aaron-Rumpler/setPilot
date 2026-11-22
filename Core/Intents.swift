@@ -174,7 +174,8 @@ struct SetPilotShortcuts: AppShortcutsProvider {
 
 #if os(macOS)
 // On iPhone, presets as Shortcuts parameters come from WidgetShared (shared with the widgets,
-// which read them from the App Group). The Mac has no widgets: they come from the app itself.
+// which read them from the App Group). The Mac app doesn't build WidgetShared (only its widget
+// extension does), so here they come from the app itself.
 
 struct PresetEntity: AppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Preset"

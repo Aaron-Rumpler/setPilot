@@ -9,8 +9,8 @@ name: Release
 #   NOTARY_APPLE_ID        the Apple ID to notarise with
 #   NOTARY_PASSWORD        an app-specific password for it
 # Without them it's the same ad-hoc build as CI's, which macOS will only open after right-click ›
-# Open (or System Settings › Privacy & Security › Open Anyway), and without the command-line tool's
-# App Group (that needs a team).
+# Open (or System Settings › Privacy & Security › Open Anyway), and without the App Group the
+# command-line tool and the Mac widgets need (it needs a team).
 
 on:
   push:

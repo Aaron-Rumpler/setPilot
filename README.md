@@ -232,7 +232,7 @@ compilation conditions, so the code that needs them is left out otherwise.
 
 | Switch | Default | What it gives | Needs |
 |---|---|---|---|
-| `WIZ_APP_GROUPS` | YES | The iPhone widgets, Control Center controls and watch complications (they read the apps' data through the group), and the Mac's command-line tool (it reaches the app through a Team-ID-prefixed group container) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps. The command-line tool also needs a development team on the Mac (an ad-hoc build has no Team ID, so no container) |
+| `WIZ_APP_GROUPS` | YES | The widgets and Control Center controls on iPhone and Mac, the watch complications and controls (they read the apps' data through the group), and the Mac's command-line tool (it reaches the app through the group container) | App Groups; free accounts seem to manage, but if Xcode won't sign, set NO and they're left out of the apps. On the Mac the group is Team-ID-prefixed, so the Mac widgets and the command-line tool also need a development team (an ad-hoc build has no Team ID, so no container) |
 | `WIZ_ICLOUD` | NO | iCloud sync of presets, custom scenes, CCT scales and bulb names between Mac and iPhone (key-value storage; last change wins per list) | A paid account |
 
 Not supported: storing scenes on the bulb (`setExtendedLightMode`: its 20 slots can't be read
@@ -294,10 +294,10 @@ file added to a folder is picked up without editing the project:
 | `setPilotiOS/` | the iPhone app (scheme "setPilot iOS", which also builds and embeds the watch app) |
 | `setPilotWatch/` | the Watch app |
 | `Core/` | Mac and iPhone: the bulb protocol, model, presets and custom scenes, shared views |
-| `Common/` | all five targets (apps and widgets): light types, colour maths, the watch messages, the build info, the icon |
-| `WidgetShared/` | the iPhone app and its widgets: sending to the bulb from a widget, the widget intents |
-| `setPilotWidgets/` | the iPhone widgets and Control Center controls |
-| `setPilotWatchWidgets/` | the watch complications |
+| `Common/` | all the apps and widget extensions, the command-line tool and the tests: light types, colour maths, the watch messages, the build info, the icon |
+| `WidgetShared/` | the iPhone app and the iPhone and Mac widget extensions: sending to the bulb from a widget, the widget intents |
+| `setPilotWidgets/` | the iPhone and Mac widgets and Control Center controls (targets "setPilot Widgets" and "setPilot Mac Widgets") |
+| `setPilotWatchWidgets/` | the watch complications and Control Center controls |
 | `Scripting/` | Mac and iPhone apps and the command-line tool: what scripting can ask for, and setpilot:// parsing |
 | `setpilotCLI/` | the command-line tool (target "setpilot CLI", built into the Mac app's `Contents/Helpers`) |
 | `Tests/` | unit tests (target "setPilotTests", with Common and Scripting), run in CI with `xctest` |

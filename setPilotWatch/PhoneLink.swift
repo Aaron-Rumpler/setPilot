@@ -154,7 +154,7 @@ final class PhoneLink: NSObject {
         if key != widgetKey {
             widgetKey = key
             reloadedDimming = Int(s.dimming)
-            WidgetCenter.shared.reloadAllTimelines()
+            reloadWidgets()
         } else if Int(s.dimming) != reloadedDimming {
             // The same step of 5, but they show the exact level: once it's settled (one more
             // reload per Crown turn, not one per step).
@@ -162,7 +162,7 @@ final class PhoneLink: NSObject {
                 try? await Task.sleep(for: .seconds(1.5))
                 guard !Task.isCancelled else { return }
                 reloadedDimming = Int(s.dimming)
-                WidgetCenter.shared.reloadAllTimelines()
+                reloadWidgets()
             }
         }
     }
@@ -215,9 +215,10 @@ final class PhoneLink: NSObject {
             if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
         case "power":
             send(.togglePower) // the iPhone knows how it is now; our copy may be from last time
-        case "brightness":
-            // setpilot://brightness/up or /down, from the controls.
-            send(.dimDelta(url.lastPathComponent == "down" ? -10 : 10))
+        case "brighter":
+            send(.dimDelta(10)) // from the controls
+        case "dimmer":
+            send(.dimDelta(-10))
         default:
             refresh()
         }
@@ -231,7 +232,7 @@ final class PhoneLink: NSObject {
             presets = p
             defaults.set(d, forKey: WatchKey.presets)
             SharedStore.save(p, SharedStore.presetsKey)
-            WidgetCenter.shared.reloadAllTimelines()
+            reloadWidgets()
             // The preset complication's choices are one suggestion per preset.
             WidgetCenter.shared.invalidateConfigurationRecommendations()
             // And Siri learns the preset names (Apply … in setPilot).
@@ -242,7 +243,7 @@ final class PhoneLink: NSObject {
             scenes = s
             defaults.set(d, forKey: WatchKey.customScenes)
             SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
-            WidgetCenter.shared.reloadAllTimelines()
+            reloadWidgets()
         }
         if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
             apply(s)
@@ -297,4 +298,10 @@ extension PhoneLink: WCSessionDelegate {
 private struct UncheckedContext: @unchecked Sendable {
     let value: [String: Any]
     init(_ value: [String: Any]) { self.value = value }
+
+    /// The complications and the controls (Control Center, the Smart Stack, the Action button).
+    private func reloadWidgets() {
+        WidgetCenter.shared.reloadAllTimelines()
+        ControlCenter.shared.reloadAllControls()
+    }
 }
