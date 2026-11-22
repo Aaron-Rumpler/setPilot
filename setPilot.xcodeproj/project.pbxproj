@@ -869,7 +869,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotiOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -902,7 +902,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotiOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -993,7 +993,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotWidgets-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1020,7 +1020,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotWidgets-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot talks to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

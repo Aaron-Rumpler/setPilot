@@ -25,3 +25,8 @@ WIZ_ENTITLEMENTS = Entitlements/groups-$(WIZ_APP_GROUPS)_icloud-$(WIZ_ICLOUD)
 WIZ_FLAG_GROUPS_YES = WIZ_APP_GROUPS
 WIZ_FLAG_ICLOUD_YES = WIZ_ICLOUD
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(WIZ_FLAG_GROUPS_$(WIZ_APP_GROUPS)) $(WIZ_FLAG_ICLOUD_$(WIZ_ICLOUD))
+
+// Text for translation: Xcode gathers each target's strings into its Localizable.xcstrings (String
+// Catalogs). English only for now.
+SWIFT_EMIT_LOC_STRINGS = YES
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
