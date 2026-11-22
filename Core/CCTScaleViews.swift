@@ -122,7 +122,7 @@ struct CCTScaleEditor: View {
             let scale = binding.wrappedValue
             Form {
                 Section {
-                    TextField("Name", text: binding.name)
+                    NameField(name: binding.name, untitled: "Untitled Scale")
                     ScaleStrip(scale: scale)
                         .frame(height: 14)
                         .clipShape(Capsule())

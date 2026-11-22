@@ -21,7 +21,7 @@ struct CustomSceneEditor: View {
         if let binding = sceneBinding {
             Form {
                 Section {
-                    TextField("Name", text: binding.name)
+                    NameField(name: binding.name, untitled: "Untitled Scene")
                     HStack {
                         Button {
                             // At speed 100, so the preview shows the steps as timed. On the Mac, a
@@ -412,8 +412,27 @@ struct StepChip: View {
 
     /// "1.5s", "0.4s", "12s".
     static func seconds(_ ms: Int) -> String {
-        let s = Double(ms) / 1000
+        let s = (Double(ms) / 100).rounded() / 10 // tenths first: 1999 is "2s", 9960 "10s"
         return s >= 10 || s == s.rounded() ? "\(Int(s.rounded()))s" : String(format: "%.1fs", s)
+    }
+}
+
+/// A name field that doesn't leave a name empty: emptied and left, it's given `untitled`
+/// (a blank row and picker item otherwise).
+struct NameField: View {
+    @Binding var name: String
+    let untitled: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name", text: $name)
+            .focused($focused)
+            .onChange(of: focused) { _, now in if !now { fill() } }
+            .onDisappear { fill() }
+    }
+
+    private func fill() {
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { name = untitled }
     }
 }
 

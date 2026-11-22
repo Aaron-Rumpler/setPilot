@@ -480,9 +480,13 @@ enum Stepping {
         return min(max(v, range.lowerBound), range.upperBound)
     }
 
-    /// The nearest multiple of `step`, within `range` (both ends stay reachable).
+    /// The nearest multiple of `step`, within `range`, or an end of the range if that's nearer
+    /// (so an end that isn't a multiple, a scale's 1541 K say, can still be dragged to).
     static func snap(_ value: Double, to step: Double, in range: ClosedRange<Double>) -> Double {
-        min(max((value / step).rounded() * step, range.lowerBound), range.upperBound)
+        let m = min(max((value / step).rounded() * step, range.lowerBound), range.upperBound)
+        if abs(value - range.lowerBound) < abs(m - value) { return range.lowerBound }
+        if abs(value - range.upperBound) < abs(m - value) { return range.upperBound }
+        return m
     }
 
     /// Settings: sliders (and the Digital Crown) snap to the round steps. On by default.
