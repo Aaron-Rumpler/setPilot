@@ -87,6 +87,7 @@ struct LibraryTransferSection: View {
             case .failure(let error): result = "Couldn't import: \(error.localizedDescription)"
             }
         }
+        .startsInCloudFolder()
         // The text kept while the alert closes (result is cleared first).
         .onChange(of: result) { _, text in if let text { shownResult = text } }
         .alert(result ?? shownResult, isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } })) {

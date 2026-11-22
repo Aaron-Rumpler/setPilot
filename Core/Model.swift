@@ -295,6 +295,7 @@ final class Model {
         }
         CloudSync.shared.start()
         CloudLibrary.shared.start(model: self)
+        CloudDocuments.shared.start()
     }
 
     /// Settings from another device (CloudSync) have been written to the defaults: take them.

@@ -55,6 +55,7 @@ private struct LightShowScreen: View {
             guard case .success(let url) = result else { return }
             if choosing == .show { player.openShow(url) } else { player.openMedia(url) }
         }
+        .startsInCloudFolder()
         .onDisappear { player.close() }
     }
 
