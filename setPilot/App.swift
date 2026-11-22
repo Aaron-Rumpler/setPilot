@@ -28,7 +28,7 @@ struct SetPilotApp: App {
     }
 
     var body: some Scene {
-        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model) }
+        Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard() }
             .windowResizability(.contentSize)
             // setpilot:// links go to the app delegate, not to opening this window.
             .handlesExternalEvents(matching: [])
@@ -45,7 +45,7 @@ struct SetPilotApp: App {
                 }
             }
         MenuBarExtra {
-            MenuBarPanel(model: model)
+            MenuBarPanel(model: model).flashingGuard()
         } label: {
             MenuBarIcon(isOn: model.isOn == true)
                 // The label exists from launch, even when no window opens (launched at login).
@@ -64,7 +64,7 @@ struct SetPilotApp: App {
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
-        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440).handoff(.lightShow) }
+        Window("Light Show", id: "lightshow") { LightShowView(model: model).frame(minWidth: 640, minHeight: 440).handoff(.lightShow).flashingGuard() }
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 960, height: 680)
             .keyboardShortcut("l", modifiers: [.command, .option])

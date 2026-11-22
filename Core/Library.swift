@@ -92,6 +92,12 @@ final class Library {
 
     func customScene(_ id: UUID) -> CustomScene? { customScenes.first { $0.id == id } }
 
+    /// The custom scene a colour plays, if it's one.
+    func customSceneOf(_ colour: LightColour) -> CustomScene? {
+        if case let .custom(id, _) = colour { return customScene(id) }
+        return nil
+    }
+
     /// A name not already taken by a preset: "Preset 3", or "Name 2" if `base` is.
     func uniquePresetName(_ base: String) -> String { unique(base, in: presets.map(\.name)) }
     func uniqueSceneName(_ base: String) -> String { unique(base, in: customScenes.map(\.name)) }

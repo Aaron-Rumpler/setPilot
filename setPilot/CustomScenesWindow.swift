@@ -2,6 +2,7 @@ import SwiftUI
 
 /// The Custom Scenes window: the scenes on the left, the selected one's steps on the right.
 struct CustomScenesWindow: View {
+    @Environment(\.confirmFlashing) private var confirmFlashing
     let model: Model
     @State private var selection: UUID?
     @State private var deleting: CustomScene?
@@ -21,7 +22,9 @@ struct CustomScenesWindow: View {
                                 // its field ends editing.
                                 NSApp.keyWindow?.makeFirstResponder(nil)
                                 DispatchQueue.main.async {
-                                    if let s = lib.customScene(scene.id) { model.playCustom(s) }
+                                    if let s = lib.customScene(scene.id) {
+                                        confirmFlashing(s.name, flashes: s.flashes) { model.playCustom(s) }
+                                    }
                                 }
                             }
                             .disabled(!model.canControl)
@@ -74,6 +77,7 @@ struct CustomScenesWindow: View {
             Text("Presets that use it will stop working.")
         }
         .onAppear { if selection == nil { selection = lib.customScenes.first?.id } }
+        .flashingGuard()
         // Handoff from another device (setPilot/App.swift opens this window).
         .onChange(of: HandoffRouter.shared.sceneToSelect, initial: true) { _, id in
             guard let id else { return }

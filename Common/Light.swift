@@ -159,6 +159,11 @@ enum Flashing {
     }
 }
 
+extension CustomScene {
+    /// Changes the light more than 3 times a second (Flashing).
+    var flashes: Bool { Flashing.flashes(self) }
+}
+
 extension CustomScene.Step {
     /// What it looks like (not its timing), to tell steps that change the light from ones that don't.
     fileprivate var look: [Int] { dark ? [0] : useTemp ? [1, temp, level] : [2, r, g, b, c, w, level] }

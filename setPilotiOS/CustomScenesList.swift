@@ -2,6 +2,7 @@ import SwiftUI
 
 /// The custom scenes, each opening its editor.
 struct CustomScenesList: View {
+    @Environment(\.confirmFlashing) private var confirmFlashing
     let model: Model
     /// A scene just created, opened straight away.
     @State private var created: UUID?
@@ -15,7 +16,7 @@ struct CustomScenesList: View {
             ForEach(lib.customScenes) { scene in
                 NavigationLink(value: scene.id) { CustomSceneRow(scene: scene) }
                     .swipeActions(edge: .leading) {
-                        Button { model.playCustom(scene) } label: { Label("Play", systemImage: "play.fill") }
+                        Button { confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene) } } label: { Label("Play", systemImage: "play.fill") }
                             .tint(.green)
                             .disabled(!model.canControl)
                     }
@@ -26,7 +27,7 @@ struct CustomScenesList: View {
                             .tint(.red)
                     }
                     .contextMenu {
-                        Button { model.playCustom(scene) } label: { Label("Play on Bulb", systemImage: "play.fill") }
+                        Button { confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
                         Button { lib.duplicate(scene) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                         Button(role: .destructive) { deleting = scene } label: { Label("Delete", systemImage: "trash") }

@@ -5,6 +5,7 @@ import AppKit
 
 /// Edits one custom scene: its name and steps (1–12), with a Play button.
 struct CustomSceneEditor: View {
+    @Environment(\.confirmFlashing) private var confirmFlashing
     let model: Model
     let sceneID: UUID
     /// The step being edited (the first, until one is chosen).
@@ -32,7 +33,9 @@ struct CustomSceneEditor: View {
                             NSApp.keyWindow?.makeFirstResponder(nil)
                             #endif
                             DispatchQueue.main.async {
-                                if let scene = model.library.customScene(sceneID) { model.playCustom(scene, speed: 100) }
+                                if let scene = model.library.customScene(sceneID) {
+                                    confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene, speed: 100) }
+                                }
                             }
                         } label: {
                             Label(isPlaying ? "Play Again" : "Play on Bulb", systemImage: "play.fill")

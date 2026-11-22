@@ -366,7 +366,8 @@ collected or tracked) and a String Catalog, ready for translation.
   messages to and from the bulb, setPilot's own log (also in Console.app, subsystem
   `nz.aaronrumpler.setPilot`) and any crash or hang reports; signing keys are taken out.
 - Custom scenes and light shows that change the light more than 3 times a second carry a warning
-  for people sensitive to flashing light; Settings can turn it off.
+  for people sensitive to flashing light, and playing one (Play, a preset of one, the light show's
+  Play) asks first; "Don't Ask Again" or Settings turns both off.
 - Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen
   by DNS name is resolved to its IPv4 address for them.
 - R, G, B, C and W don't correspond directly to LED drive: the firmware remaps them (with a white

@@ -21,6 +21,7 @@ struct LightShowView: View {
 }
 
 private struct LightShowScreen: View {
+    @Environment(\.confirmFlashing) private var confirmFlashing
     let model: Model
     let player: LightShowPlayer
     @State private var importing = false
@@ -200,7 +201,12 @@ private struct LightShowScreen: View {
     private var transport: some View {
         HStack(spacing: 12) {
             Button {
-                player.togglePlay()
+                if player.isPlaying {
+                    player.togglePlay()
+                } else {
+                    confirmFlashing(player.show?.title ?? player.showName ?? "This light show",
+                                    flashes: player.show?.flashes ?? false) { player.togglePlay() }
+                }
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2)

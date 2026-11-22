@@ -3,6 +3,7 @@ import SwiftUI
 /// The presets as a grid of tiles: tap to apply. A context menu renames, updates, moves and
 /// deletes them.
 struct PresetGrid: View {
+    @Environment(\.confirmFlashing) private var confirmFlashing
     let model: Model
     /// Fixed columns, or nil for as many as fit.
     var columns: Int? = nil
@@ -29,7 +30,10 @@ struct PresetGrid: View {
             } else {
                 LazyVGrid(columns: gridColumns, spacing: 8) {
                     ForEach(lib.presets) { preset in
-                        Button { model.apply(preset) } label: {
+                        Button {
+                            let flashes = lib.customSceneOf(preset.colour)?.flashes ?? false
+                            confirmFlashing(preset.name, flashes: flashes) { model.apply(preset) }
+                        } label: {
                             PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
                                        isScene: preset.colour.isScene)
                         }
