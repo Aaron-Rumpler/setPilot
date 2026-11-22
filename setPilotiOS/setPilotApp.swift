@@ -52,6 +52,7 @@ struct SetPilotMobileApp: App {
                 // setpilot:// links (Core/URLCommands.swift).
                 .onOpenURL { url in Task { await URLCommands.handle(url, model: model) } }
         }
+        .commands { LightCommands(model: model) } // an iPad's keyboard: ⇧⌘P, ⌘1–⌘9
         .onChange(of: phase) { _, new in
             if new == .active { model.resume() }
         }

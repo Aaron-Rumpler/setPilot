@@ -3,62 +3,103 @@ import SwiftUI
 struct RootView: View {
     let model: Model
     @AppStorage(Model.addressKey) private var address = ""
-    /// Where Handoff takes the app (the view-based links below aren't in it).
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// iPhone: the navigation stack, where Handoff and Spotlight take the app too.
     @State private var path = NavigationPath()
+    /// iPad (and wide windows): the screen beside the controls, and the stack within it.
+    @State private var pane: Pane? = .route(.customScenes)
+    @State private var detailPath = NavigationPath()
+
+    /// The screens beside the main controls.
+    enum Pane: Hashable {
+        case route(HandoffRoute)
+        case settings
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                bulbSection
-                if !address.isEmpty {
-                    presetsSection
-                    lightSection
-                    commandSection
+        Group {
+            if sizeClass == .regular {
+                // Two columns: the controls stay in view beside scenes, the light show, scales
+                // and settings.
+                NavigationSplitView {
+                    List(selection: $pane) { controls }
+                        .navigationTitle(model.currentName ?? "setPilot")
+                        .refreshable { await model.refresh() }
+                        .handoff(.controls)
+                        .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 480)
+                } detail: {
+                    NavigationStack(path: $detailPath) {
+                        Group {
+                            if let pane { paneView(pane) } else { Text("Choose from the list.").foregroundStyle(.secondary) }
+                        }
+                        .navigationDestination(for: HandoffRoute.self) { route in destination(route) }
+                    }
+                    .id(pane) // a new pane starts its own stack
                 }
-                Section {
-                    NavigationLink {
-                        CustomScenesList(model: model)
-                    } label: {
-                        Label("Custom Scenes", systemImage: "sparkles")
-                    }
-                    NavigationLink {
-                        // Its own title: the media's name, or "Light Show".
-                        LightShowView(model: model)
-                            .navigationBarTitleDisplayMode(.inline)
-                            .handoff(.lightShow)
-                    } label: {
-                        Label("Light Show", systemImage: "play.rectangle")
-                    }
-                    NavigationLink {
-                        CCTScalesList(model: model)
-                    } label: {
-                        Label("CCT Scales", systemImage: "thermometer.medium")
-                    }
-                    NavigationLink {
-                        BulbSettingsView(model: model)
-                    } label: {
-                        Label("Bulb & Settings", systemImage: "gearshape")
-                    }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                NavigationStack(path: $path) {
+                    List { controls }
+                        .navigationTitle(model.currentName ?? "setPilot")
+                        .refreshable { await model.refresh() }
+                        .handoff(.controls)
+                        .navigationDestination(for: Pane.self) { pane in paneView(pane) }
+                        .navigationDestination(for: HandoffRoute.self) { route in destination(route) }
                 }
             }
-            .navigationTitle(model.currentName ?? "setPilot")
-            .refreshable { await model.refresh() }
-            .handoff(.controls)
-            .navigationDestination(for: HandoffRoute.self) { route in destination(route) }
         }
         // Continued from another device (Handoff), or opened from Spotlight: go there.
         .onContinueHandoff { HandoffRouter.shared.open($0) }
         .onChange(of: HandoffRouter.shared.request, initial: true) { _, route in
             guard let route else { return }
             HandoffRouter.shared.request = nil
+            go(route)
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        bulbSection
+        if !address.isEmpty {
+            presetsSection
+            lightSection
+            commandSection
+        }
+        Section {
+            NavigationLink(value: Pane.route(.customScenes)) { Label("Custom Scenes", systemImage: "sparkles") }
+            NavigationLink(value: Pane.route(.lightShow)) { Label("Light Show", systemImage: "play.rectangle") }
+            NavigationLink(value: Pane.route(.cctScales)) { Label("CCT Scales", systemImage: "thermometer.medium") }
+            NavigationLink(value: Pane.settings) { Label("Bulb & Settings", systemImage: "gearshape") }
+        }
+    }
+
+    private func go(_ route: HandoffRoute) {
+        if sizeClass == .regular {
             var p = NavigationPath()
             switch route {
             case .controls: break
-            case .customScenes, .cctScales, .lightShow: p.append(route)
-            case .customScene: p.append(HandoffRoute.customScenes); p.append(route)
-            case .cctScale: p.append(HandoffRoute.cctScales); p.append(route)
+            case .customScenes, .customScene: pane = .route(.customScenes)
+            case .cctScales, .cctScale: pane = .route(.cctScales)
+            case .lightShow: pane = .route(.lightShow)
+            }
+            if case .customScene = route { p.append(route) }
+            if case .cctScale = route { p.append(route) }
+            detailPath = p
+        } else {
+            var p = NavigationPath()
+            switch route {
+            case .controls: break
+            case .customScenes, .cctScales, .lightShow: p.append(Pane.route(route))
+            case .customScene: p.append(Pane.route(.customScenes)); p.append(route)
+            case .cctScale: p.append(Pane.route(.cctScales)); p.append(route)
             }
             path = p
+        }
+    }
+
+    @ViewBuilder private func paneView(_ pane: Pane) -> some View {
+        switch pane {
+        case .route(let route): destination(route)
+        case .settings: BulbSettingsView(model: model)
         }
     }
 
@@ -69,6 +110,7 @@ struct RootView: View {
         case .customScene(let id): CustomSceneEditor(model: model, sceneID: id).handoff(route)
         case .cctScales: CCTScalesList(model: model)
         case .cctScale(let id): CCTScaleEditor(model: model, scaleID: id).handoff(route)
+        // Its own title: the media's name, or "Light Show".
         case .lightShow: LightShowView(model: model).navigationBarTitleDisplayMode(.inline).handoff(route)
         }
     }
@@ -78,9 +120,7 @@ struct RootView: View {
     @ViewBuilder private var bulbSection: some View {
         Section {
             if address.isEmpty {
-                NavigationLink {
-                    BulbSettingsView(model: model)
-                } label: {
+                NavigationLink(value: Pane.settings) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Add Your Bulb").font(.headline)
                         Text("Enter its IP address or DNS name.")

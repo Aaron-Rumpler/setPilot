@@ -32,6 +32,9 @@ struct PresetGrid: View {
                                        isScene: preset.colour.isScene)
                         }
                         .buttonStyle(.plain)
+                        #if os(iOS)
+                        .hoverEffect(.lift) // the iPad's pointer
+                        #endif
                         .disabled(model.link != .connected)
                         .accessibilityLabel(preset.name)
                         .accessibilityHint("Applies the preset: \(lib.name(of: preset.colour)), \(preset.dimming)%")
