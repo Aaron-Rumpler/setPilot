@@ -111,6 +111,9 @@ final class Model {
     /// (a firewall can block port 38900).
     var pushSeen = false
     var status = ""
+    /// The system refused to let setPilot reach the local network (the permission is off): the
+    /// apps show how to turn it on (LocalNetworkHelp).
+    var localNetworkDenied = false
     var liveStatus = "Live updates off"
     /// The last command's params as JSON, and its method (setPilot; setState only from the console).
     var lastSent = ""
@@ -247,6 +250,7 @@ final class Model {
                     link = .unreachable
                     live = false
                     if bulb.localNetworkDenied {
+                        localNetworkDenied = true
                         #if os(iOS)
                         status = "setPilot needs Local Network access: turn it on in Settings › Apps › setPilot, then try again"
                         #else
@@ -708,6 +712,7 @@ final class Model {
             result = await Task.detached { Net.discover(onFound: onFound) }.value
         }
         if result.blocked {
+            localNetworkDenied = true
             discoveryNote = Self.localNetworkHelp
             return []
         }
@@ -1516,6 +1521,8 @@ final class Model {
             // Back after not answering, as for a result below: what it showed may be out of date.
             if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
             link = .connected
+        localNetworkDenied = false
+            localNetworkDenied = false
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.
             // A read-back already on its way (the refusal came after it went out) will do.
@@ -1582,6 +1589,7 @@ final class Model {
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.
         if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
         link = .connected
+        localNetworkDenied = false
         retriedAt = nil
         switch method {
         case "getPilot":

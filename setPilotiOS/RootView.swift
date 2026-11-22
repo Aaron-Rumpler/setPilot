@@ -119,6 +119,7 @@ struct RootView: View {
 
     @ViewBuilder private var bulbSection: some View {
         Section {
+            LocalNetworkHelp(model: model)
             if address.isEmpty {
                 NavigationLink(value: Pane.settings) {
                     VStack(alignment: .leading, spacing: 4) {

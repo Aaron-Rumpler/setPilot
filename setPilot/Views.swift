@@ -13,6 +13,7 @@ struct ContentView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                LocalNetworkHelp(model: model)
                 bulbPanel
                 lightPanel
                 presetsPanel
