@@ -96,6 +96,8 @@ struct DurationField: View {
     @State private var unit = Unit.ms
     @State private var text = ""
     @FocusState private var focused: Bool
+    /// The number's width, growing with the text size (iPhone and iPad).
+    @ScaledMetric private var fieldWidth: CGFloat = 70
 
     enum Unit: Int, CaseIterable, Identifiable {
         case ms = 1, s = 1000, min = 60_000, h = 3_600_000
@@ -121,7 +123,7 @@ struct DurationField: View {
                 .focused($focused)
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
-                .frame(width: 70)
+                .frame(width: fieldWidth)
                 #if os(iOS)
                 .keyboardType(.decimalPad)
                 .toolbar {

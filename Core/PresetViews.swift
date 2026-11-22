@@ -15,6 +15,8 @@ struct PresetGrid: View {
     /// deciding by `renaming`, which closing clears, showed the delete prompt for a moment as a
     /// rename prompt faded out. Per tile, so another tile's prompt can't change it meanwhile.
     @State private var promptIsRename: [UUID: Bool] = [:]
+    /// The tiles' narrowest, wider with larger text so names have room (iPhone and iPad).
+    @ScaledMetric private var tileWidth: CGFloat = 96
 
     var body: some View {
         let lib = model.library
@@ -102,7 +104,7 @@ struct PresetGrid: View {
 
     private var gridColumns: [GridItem] {
         if let columns { return Array(repeating: GridItem(.flexible(), spacing: 8), count: columns) }
-        return [GridItem(.adaptive(minimum: 96), spacing: 8)]
+        return [GridItem(.adaptive(minimum: tileWidth), spacing: 8)]
     }
 
     @ViewBuilder private func menu(for preset: Preset) -> some View {

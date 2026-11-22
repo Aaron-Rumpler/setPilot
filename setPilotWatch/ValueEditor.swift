@@ -49,13 +49,15 @@ struct ValueEditor: View {
     /// it's turned: the Crown may round a value off its steps onto them, which isn't a turn.
     @State private var lineUp: Double?
     @State private var typing = false
+    /// The value's size, growing with the text size (it shrinks to fit when it must).
+    @ScaledMetric(relativeTo: .largeTitle) private var valueSize: CGFloat = 40
 
     var body: some View {
         VStack(spacing: 6) {
             Button { typing = true } label: {
                 Text(verbatim: "\(Int(value))\(unit)")
-                    .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
-                    .minimumScaleFactor(0.6)
+                    .font(.system(size: valueSize, weight: .semibold, design: .rounded).monospacedDigit())
+                    .minimumScaleFactor(0.4)
                     .lineLimit(1)
             }
             .buttonStyle(.plain)
@@ -153,6 +155,8 @@ struct NumberPad: View {
     /// Steps of 1 rather than the in-between step (where there is one).
     @State private var ones = false
     @Environment(\.dismiss) private var dismiss
+    /// − and +'s width, growing with the text size.
+    @ScaledMetric private var stepWidth: CGFloat = 34
 
     private var medium: Double? { Stepping.medium(for: range) }
     private var stepSize: Double { ones ? 1 : medium ?? 1 }
@@ -167,7 +171,7 @@ struct NumberPad: View {
             HStack(spacing: 4) {
                 Button { step(-stepSize) } label: { Image(systemName: "minus") }
                     .buttonStyle(.bordered)
-                    .frame(width: 34)
+                    .frame(width: stepWidth)
                     .accessibilityLabel("Down \(Int(stepSize))")
                 TextField(String("\(Int(range.lowerBound))–\(Int(range.upperBound))"), text: $text) // String: no "1,541"
                     .textContentType(.telephoneNumber)
@@ -185,7 +189,7 @@ struct NumberPad: View {
                     }
                 Button { step(stepSize) } label: { Image(systemName: "plus") }
                     .buttonStyle(.bordered)
-                    .frame(width: 34)
+                    .frame(width: stepWidth)
                     .accessibilityLabel("Up \(Int(stepSize))")
             }
             if let medium {

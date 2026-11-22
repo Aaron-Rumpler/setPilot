@@ -221,10 +221,12 @@ struct CCTScaleEditor: View {
 struct PointEditor: View {
     @Binding var point: CCTScale.Point
     @FocusState private var kelvinFocused: Bool
+    /// At least this wide, so it lines up with the other rows; wider with larger text (iPhone and iPad).
+    @ScaledMetric private var labelWidth: CGFloat = 100
 
     var body: some View {
         HStack {
-            Text("Kelvin").frame(width: 100, alignment: .leading)
+            Text("Kelvin").frame(minWidth: labelWidth, alignment: .leading)
             TextField("Kelvin", value: Binding(get: { point.kelvin }, set: { point.kelvin = min(max($0, 500), 20000) }),
                       format: .number.grouping(.never))
                 .focused($kelvinFocused)

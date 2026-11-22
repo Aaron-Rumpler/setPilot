@@ -11,6 +11,8 @@ struct FineValueEditor: View {
     @Binding var value: Double
     @State private var typed = ""
     @Environment(\.dismiss) private var dismiss
+    /// The field's width, growing with the text size.
+    @ScaledMetric(relativeTo: .title2) private var fieldWidth: CGFloat = 110
 
     private var typedValue: Double? {
         Double(typed.trimmingCharacters(in: .whitespaces)).flatMap { range.contains($0) ? $0.rounded() : nil }
@@ -25,7 +27,7 @@ struct FineValueEditor: View {
                     .keyboardType(range.lowerBound < 0 ? .numbersAndPunctuation : .numberPad)
                     .multilineTextAlignment(.center)
                     .font(.title2.monospacedDigit())
-                    .frame(width: 110)
+                    .frame(width: fieldWidth)
                     .foregroundStyle(typedValue == nil && !typed.isEmpty ? Color.orange : Color.primary)
                 if !unit.isEmpty { Text(unit.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary) }
             }

@@ -29,6 +29,8 @@ private struct LightShowScreen: View {
     /// The cue list (an inspector; on iPhone a sheet over the player, so off to start with).
     @AppStorage("lightShowCues") private var showsCues = LightShowScreen.cuesByDefault
     @AppStorage(Flashing.warnKey) private var warnsFlashing = true
+    /// The transport buttons' size, growing with the text size on iPhone and iPad.
+    @ScaledMetric(relativeTo: .title2) private var buttonSize: CGFloat = 28
     #if os(iOS)
     private static let cuesByDefault = false
     #else
@@ -201,7 +203,7 @@ private struct LightShowScreen: View {
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2)
-                    .frame(width: 28, height: 28)
+                    .frame(width: buttonSize, height: buttonSize)
                     .contentShape(Rectangle())
             }
             .keyboardShortcut(.space, modifiers: [])
@@ -213,7 +215,7 @@ private struct LightShowScreen: View {
             } label: {
                 Image(systemName: "stop.fill")
                     .font(.title3)
-                    .frame(width: 24, height: 28)
+                    .frame(width: buttonSize * 24 / 28, height: buttonSize)
                     .contentShape(Rectangle())
             }
             .disabled(player.mediaName == nil)

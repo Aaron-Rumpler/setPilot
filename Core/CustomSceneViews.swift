@@ -490,10 +490,12 @@ struct IntSliderRow: View {
 struct MillisecondsRow: View {
     let label: String
     @Binding var value: Int
+    /// At least this wide, so the rows line up; wider with larger text (iPhone and iPad).
+    @ScaledMetric private var labelWidth: CGFloat = 100
 
     var body: some View {
         HStack {
-            Text(label).frame(width: 100, alignment: .leading)
+            Text(label).frame(minWidth: labelWidth, alignment: .leading)
             MillisecondsField(label: label, value: $value, maximum: 999_999)
             Text("ms").foregroundStyle(.secondary)
         }
