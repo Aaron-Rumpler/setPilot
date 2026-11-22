@@ -172,10 +172,24 @@ Enter the bulb's IP address or DNS name; a DNS name keeps working if the address
 
 The iPhone remembers the bulbs you've used (Bulb & Settings › Your Bulbs) to switch between.
 
-**Widgets** (iPhone): a Presets widget for the Home Screen (tap a preset; power, and brighter/dimmer
-on the larger sizes), a Lock Screen bulb status (with a power toggle on the rectangular size), and Control Center controls for power and for a
-preset of your choice. Their actions run in the app in the background on its connection to the
-bulb (if the system runs them in the widget extension instead, it sends the request itself).
+**Widgets and controls** (iPhone, and the Mac on macOS 26):
+- **Presets:** tap a preset. It has power, and brighter/dimmer on the larger sizes. Edit Widget picks
+  which presets it shows, in order.
+- **Bulb:** a small widget with the bulb's state, brighter, dimmer and power, for the Home Screen,
+  StandBy and the Mac's desktop.
+- **Lock Screen** (iPhone): a bulb status, with a power toggle on the rectangular size.
+- **Control Center:** controls for power, a preset of your choice, brighter and dimmer. On iPhone
+  they also work from the Action button; on the Mac, from the menu bar.
+
+On iPhone their actions run in the app in the background, on its connection to the bulb. If the
+system runs them in the widget extension instead, the extension sends the request itself. On the
+Mac they always run in the extension. That needs App Groups and a development team, as the
+command-line tool does.
+
+The watch has complications (status, a preset, power) for watch faces and the Smart Stack, and
+Control Center controls (power, a preset, brighter, dimmer), which also work from the Smart Stack
+and the Action button. A tap opens the watch app, which asks the iPhone: watch widgets can't do it
+themselves.
 
 The Watch app's main screen is power and the presets (tap to apply). Below them:
 - **Controls**: mode, channels, temperature, Custom CCT (and which scale), scene (the bulb's and
