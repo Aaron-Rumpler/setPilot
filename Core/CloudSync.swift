@@ -26,7 +26,7 @@ final class CloudSync {
     static let settingKeys = [
         Model.fadeKey, Model.controlsFadeKey, Model.controlsFadeMsKey, ColourTemperature.adaptingWhiteKey,
         Stepping.snapKey, LightShowPlayer.sendKey, LightShowPlayer.restoreKey, Flashing.warnKey,
-        LastShow.mediaKey, LastShow.showKey,
+        LastShow.mediaKey, LastShow.showKey, BulbNudge.key,
         // Which CCT scale Temperature uses (per bulb), and whether it uses one.
         Library.activeCCTScaleKey, Model.temperatureScaleKey,
         // The log's and console's options (not what's being typed in the console).

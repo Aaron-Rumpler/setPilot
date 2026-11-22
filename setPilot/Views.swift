@@ -14,6 +14,7 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 LocalNetworkHelp(model: model)
+                BulbNudge(model: model)
                 bulbPanel
                 lightPanel
                 presetsPanel

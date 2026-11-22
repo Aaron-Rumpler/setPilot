@@ -101,7 +101,15 @@ final class Model {
     var consoleFailure: String?
     enum Link { case none, connecting, connected, unreachable }
     /// Whether the bulb has answered since the last Connect.
-    var link: Link = .none
+    var link: Link = .none {
+        didSet {
+            // Answering: the bulb your other devices are offered (BulbNudge), through iCloud.
+            if link == .connected, oldValue != .connected, let mac = chosenMAC,
+               let address = UserDefaults.standard.string(forKey: Self.addressKey) {
+                UserDefaults.standard.set("\(mac) \(address)", forKey: BulbNudge.key)
+            }
+        }
+    }
     /// Controls are usable: the bulb answers and its on/off state is known (a setPilot to a bulb
     /// that's off has to say so, or it switches on).
     var canControl: Bool { link == .connected && isOn != nil }
