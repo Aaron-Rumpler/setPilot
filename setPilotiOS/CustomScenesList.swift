@@ -62,12 +62,13 @@ struct CustomScenesList: View {
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible) {
+                            titleVisibility: .visible,
+                            presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                lib.customScenes.removeAll { $0.id == deleting?.id }
+                lib.customScenes.removeAll { $0.id == d.id }
                 deleting = nil
             }
-        } message: {
+        } message: { _ in
             Text("Presets that use it will stop working.")
         }
     }

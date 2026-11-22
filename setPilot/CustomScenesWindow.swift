@@ -61,15 +61,14 @@ struct CustomScenesWindow: View {
         .onDeleteCommand { if let id = selection { deleting = lib.customScene(id) } }
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
-                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                if let d = deleting {
-                    lib.customScenes.removeAll { $0.id == d.id }
-                    if selection == d.id { selection = nil }
-                }
+                lib.customScenes.removeAll { $0.id == d.id }
+                if selection == d.id { selection = nil }
                 deleting = nil
             }
-        } message: {
+        } message: { _ in
             Text("Presets that use it will stop working.")
         }
         .onAppear { if selection == nil { selection = lib.customScenes.first?.id } }

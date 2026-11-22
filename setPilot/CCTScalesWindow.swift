@@ -57,15 +57,16 @@ struct CCTScalesWindow: View {
         .onDeleteCommand { deleting = scales.first { $0.id == selection } }
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
-                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                if let d = deleting, let mac = model.chosenMAC {
+                if let mac = model.chosenMAC {
                     model.library.removeScale(d.id, for: mac)
                     if selection == d.id { selection = nil }
                 }
                 deleting = nil
             }
-        } message: {
+        } message: { _ in
             Text("Presets that use it will stop working.")
         }
         .onAppear { if selection == nil { selection = model.activeScale?.id ?? scales.first?.id } }

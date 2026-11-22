@@ -52,12 +52,13 @@ struct CCTScalesList: View {
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible) {
+                            titleVisibility: .visible,
+                            presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                if let d = deleting, let mac = model.chosenMAC { model.library.removeScale(d.id, for: mac) }
+                if let mac = model.chosenMAC { model.library.removeScale(d.id, for: mac) }
                 deleting = nil
             }
-        } message: {
+        } message: { _ in
             Text("Presets that use it will stop working.")
         }
     }

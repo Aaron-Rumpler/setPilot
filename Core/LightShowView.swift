@@ -167,7 +167,7 @@ private struct LightShowScreen: View {
     @ViewBuilder private var options: some View {
         Toggle("Send to bulb", isOn: Binding(get: { player.sendsToBulb }, set: { player.sendsToBulb = $0 }))
             .help("Off: play the show on screen only")
-        Toggle("Put the light back when stopped", isOn: Binding(get: { player.restores }, set: { player.restores = $0 }))
+        Toggle("Put the light back afterwards", isOn: Binding(get: { player.restores }, set: { player.restores = $0 }))
             .help("When the show is stopped or ends, the light goes back to how it was when it started")
     }
 

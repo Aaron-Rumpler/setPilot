@@ -149,9 +149,12 @@ struct ComposeToggle: View {
 /// Send. On iPhone each is a list row.
 struct ComposeControls: View {
     let model: Model
+    /// Watched so the preview follows a change to the fade time setting (Model.fade isn't observed).
+    @AppStorage(Model.fadeKey) private var fadeSetting = -1
 
     var body: some View {
         @Bindable var d = model.draft
+        let _ = fadeSetting
 
         #if os(macOS)
         HStack(spacing: 8) {

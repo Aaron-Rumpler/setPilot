@@ -61,4 +61,4 @@ is the late one (Bluetooth headphones, a TV's processing).
 
 Seeking, or starting part way through, first sends the state the show would be in at that point
 (the cues so far, combined), then carries on from there. The player can put the light back as it
-was when the show is stopped.
+was when the show is stopped or ends.

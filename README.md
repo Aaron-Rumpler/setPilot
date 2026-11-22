@@ -100,7 +100,7 @@ trademark of Signify.
   Light Show on the main screen): plays an audio or video file and sends the bulb the states in a
   light show file (`.lights.json`: setPilot params at times in the media) as it plays. A **Bulb
   delay** slider sends every cue that much early, to make up for the bulb's lag; seeking sends the
-  state at the new place first; and stopping can put the light back as it was. The format is in
+  state at the new place first; and stopping (or the end) can put the light back as it was. The format is in
   [docs/LIGHT-SHOW.md](docs/LIGHT-SHOW.md).
 - **Light menu** (Mac): switch on or off (⇧⌘P), sync, and the first nine presets on ⌘1–⌘9.
 - **Export and import** (Settings on the Mac, Bulb & Settings on iPhone): presets, custom scenes

@@ -543,7 +543,8 @@ final class LightShowPlayer {
     /// Roughly the colour the show has the bulb at now.
     var swatch: RGB? {
         if let k = (light["temp"] as? NSNumber)?.intValue { return LightColour.temp(k).swatch }
-        if let id = (light["sceneId"] as? NSNumber)?.intValue { return Scenes.swatch(id) }
+        // A scene with no colour known for it (one sent inline, say) is lit all the same.
+        if let id = (light["sceneId"] as? NSNumber)?.intValue { return Scenes.swatch(id) ?? LightColour.temp(3000).swatch }
         let ch = ["r", "g", "b", "c", "w"].map { (light[$0] as? NSNumber)?.intValue ?? 0 }
         return LightColour.rgbcw(r: ch[0], g: ch[1], b: ch[2], c: ch[3], w: ch[4]).swatch
     }
