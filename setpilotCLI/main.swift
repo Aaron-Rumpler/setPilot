@@ -47,6 +47,15 @@ func takeFlag(_ name: String) -> Bool {
 }
 func takeOption(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name) else { return nil }
+    // Given twice: which was meant isn't clear.
+    if args[(i + 1)...].contains(name) {
+        if CommandLine.arguments.contains("--json") {
+            print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) is given more than once.\"}}")
+        } else {
+            FileHandle.standardError.write(Data("setpilot: \(name) is given more than once\n".utf8))
+        }
+        exit(2)
+    }
     guard i + 1 < args.count else {
         if CommandLine.arguments.contains("--json") { // taken out of args already
             print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) needs a value.\"}}")
@@ -96,7 +105,12 @@ func encode<T: Encodable>(_ value: T) -> String {
     return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
 }
 
-guard let verb = args.first?.lowercased() else { print(usage); exit(0) }
+guard let verb = args.first?.lowercased() else {
+    // Options but no command (an empty variable in a script, say): a mistake, not a request for help.
+    if CommandLine.arguments.count > 1 { badArguments("No command given.") }
+    print(usage)
+    exit(0)
+}
 if offFlag, verb != "set" { badArguments("--off goes with set (for the others, use off).") }
 let rest = Array(args.dropFirst())
 
@@ -150,6 +164,16 @@ case "watch":
     command = .get
 default:
     badArguments("Unknown command “\(verb)”.")
+}
+
+// More words than the command takes (`temp 2700 bulb`, meaning --scale bulb): refused, not dropped.
+let maxWords: [String: Int] = [
+    "get": 0, "state": 0, "on": 0, "off": 0, "toggle": 0, "watch": 0, "set": 0,
+    "brightness": 1, "dim": 1, "dimming": 1, "brighter": 1, "dimmer": 1,
+    "temp": 1, "temperature": 1, "kelvin": 1, "speed": 1, "list": 1,
+]
+if let most = maxWords[verb], rest.count > most {
+    badArguments("\(verb) takes \(most == 0 ? "nothing after it" : "one value"); “\(rest[most])” isn't part of it.")
 }
 
 // An option the command doesn't use is a mistake, not something to drop without a word.

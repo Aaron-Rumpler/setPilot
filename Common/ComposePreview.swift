@@ -42,8 +42,10 @@ extension LightChange {
         return false
     }
 
+    static let allZeroNote = "The bulb refuses all five channels at 0: raise at least one to send this."
+
     func note(isOn: Bool?) -> String? {
-        if allChannelsZero { return "The bulb refuses all five channels at 0: raise at least one to send this." }
+        if allChannelsZero { return Self.allZeroNote }
         if power == false, fade != nil {
             return "The bulb may ignore the fade when switching off and use its own fade-out. To fade out slowly, fade the brightness down instead."
         }

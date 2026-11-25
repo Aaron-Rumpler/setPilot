@@ -243,7 +243,8 @@ struct PresetProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: PresetWidgetConfiguration, in context: Context) async -> Timeline<BulbEntry> {
         let e = entry(configuration)
-        return BulbEntry.timeline(preset: e.preset, keys: e.preset.map { [$0.id.uuidString] }, snapshot: e.snapshot)
+        // No preset chosen: nothing to bring forward (an empty set, not nil, which means any).
+        return BulbEntry.timeline(preset: e.preset, keys: e.preset.map { [$0.id.uuidString] } ?? [], snapshot: e.snapshot)
     }
 
     /// The watch has no widget configuration screen: one suggestion per preset.

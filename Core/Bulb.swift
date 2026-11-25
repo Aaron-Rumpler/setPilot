@@ -13,6 +13,9 @@ final class Bulb {
     var onReceived: ((String) -> Void)?
     /// The failed request's method (nil for the connection itself) and a message to show.
     var onError: ((String?, String) -> Void)?
+    /// The connection is ready again after waiting (Local Network access allowed, the network
+    /// back): what was sent meanwhile may not have gone.
+    var onReady: (() -> Void)?
     /// The bulb's signing key (32 hex digits), for firmware that wants signed requests: when set,
     /// every request but raw ones is signed.
     var signingKey: String?
@@ -22,10 +25,14 @@ final class Bulb {
         conn?.currentPath?.unsatisfiedReason == .localNetworkDenied
     }
 
+    /// The current connection has been left waiting (so becoming ready is news).
+    private var waited = false
+
     func connect(to host: String) {
         conn?.cancel()
         conn = nil
         replyCount = [:]
+        waited = false
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !host.isEmpty else { return }
         let c = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: Net.port)!, using: .udp)
@@ -50,10 +57,17 @@ final class Bulb {
             case .waiting(let error): "No way to reach the bulb right now (\(error))"
             default: nil
             }
-            guard let lost else { return }
+            let ready: Bool = { if case .ready = state { return true }; return false }()
+            let waiting: Bool = { if case .waiting = state { return true }; return false }()
             Task { @MainActor in
                 guard let self, c === self.conn else { return }
-                self.onError?(nil, lost)
+                if let lost {
+                    if waiting { self.waited = true }
+                    self.onError?(nil, lost)
+                } else if ready, self.waited {
+                    self.waited = false
+                    self.onReady?()
+                }
             }
         }
         c.start(queue: DispatchQueue(label: "wiz.udp"))
@@ -87,7 +101,11 @@ final class Bulb {
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
                 guard let error else { return }
                 // "" for a raw message without a method: nil is the connection itself failing.
-                Task { @MainActor in self?.onError?(method ?? "", "\(name): couldn't send (\(error))") }
+                // Not for a connection since replaced (its queued sends are cancelled with it).
+                Task { @MainActor in
+                    guard let self, self.conn === conn else { return }
+                    self.onError?(method ?? "", "\(name): couldn't send (\(error))")
+                }
             })
             return
         }

@@ -139,7 +139,7 @@ struct LibraryTransferSection: View {
         } header: {
             Text("Presets, Scenes and Scales")
         } footer: {
-            Text("A JSON file with your presets, custom scenes and CCT scales, to copy them between your Mac and iPhone. Importing adds to what's here; items exported from here before are updated.")
+            Text("A JSON file with your presets, custom scenes and CCT scales, to copy them between your Mac and iPhone. Importing adds to what's here; for items already here (exported from here before, say), it asks whether to replace them, keep both, or skip them.")
                 #if os(macOS)
                 .font(.callout)
                 .foregroundStyle(.secondary)

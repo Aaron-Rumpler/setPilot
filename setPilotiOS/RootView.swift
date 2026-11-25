@@ -194,7 +194,7 @@ struct RootView: View {
                             Text(model.status).font(.caption).foregroundStyle(.secondary)
                         }
                         if model.link == .unreachable {
-                            Button("Try Again") { model.resume() }
+                            Button("Try Again") { model.sync() } // tries now, keeping what's known
                                 .font(.caption)
                                 .buttonStyle(.borderless)
                         }

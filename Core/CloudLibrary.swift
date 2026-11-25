@@ -187,6 +187,7 @@ final class CloudLibrary {
         #if WIZ_ICLOUD
         guard let model else { return }
         saved.switchPending = nil
+        defer { Task { await findHousehold() } } // one this account joined elsewhere, now it's answered
         switch choice {
         case .merge:
             seed()
@@ -287,6 +288,7 @@ final class CloudLibrary {
     /// signing in offer it to the account. The engine keeps going: it resets its own state.
     private func reset(reseed: Bool) {
         saved.meta = [:]
+        saved.unreadable = nil // nothing taken from iCloud any more: all of it's this device's
         saved.deleting = []
         saved.seeded = false
         persist()
@@ -338,11 +340,13 @@ final class CloudLibrary {
     /// the household's zone in the shared database and take its library in place of theirs: theirs
     /// is the account's, which the device that joined already added (or chose to replace).
     private func findHousehold() async {
-        guard saved.shared == nil, engine != nil,
+        // Not while the question about another Apple ID is open: this device's library is
+        // decided on first (answering it looks again).
+        guard saved.shared == nil, saved.switchPending != true, engine != nil,
               let zones = try? await container.sharedCloudDatabase.allRecordZones(),
               let zone = zones.first(where: { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName })
         else { return }
-        guard saved.shared == nil else { return } // joined meanwhile
+        guard saved.shared == nil, saved.switchPending != true else { return } // joined (or switched) meanwhile
         clearLibraryHere()
         switchLibrary(to: SharedZone(zoneName: zone.zoneID.zoneName, ownerName: zone.zoneID.ownerName), offerMine: false)
     }
@@ -598,14 +602,18 @@ final class CloudLibrary {
 
         case .accountChange(let e):
             // A household belongs to the account that joined it: another account (or none) goes
-            // back to its own library, on the private database.
-            if saved.shared != nil {
+            // back to its own library, on the private database. Not on signing in: a new engine
+            // (a household just joined, say) reports the account it starts with as one.
+            var signingIn = false
+            if case .signIn = e.changeType { signingIn = true }
+            if saved.shared != nil, !signingIn {
                 saved = Saved()
                 persist()
                 makeEngine()
             }
             switch e.changeType {
-            case .signIn: reset(reseed: true)
+            // Not offered while the question about another Apple ID is still open.
+            case .signIn: reset(reseed: saved.switchPending != true)
             // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
             case .switchAccounts:
                 reset(reseed: false)
@@ -627,6 +635,7 @@ final class CloudLibrary {
             // The library here stays, and all of it goes up again with the next change here.
             if e.deletions.contains(where: { $0.zoneID == zoneID }) {
                 saved.meta = [:]
+                saved.unreadable = nil
                 saved.deleting = []
                 saved.seeded = false
                 persist()

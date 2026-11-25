@@ -254,7 +254,7 @@ struct WatchComposeView: View {
                 } label: {
                     Label("Send", systemImage: "paperplane.fill")
                 }
-                .disabled(s?.canControl != true || change(s).isEmpty)
+                .disabled(s?.canControl != true || change(s).isEmpty || change(s).allChannelsZero) // the bulb refuses all zeros
                 Button { load() } label: { Label("From Bulb", systemImage: "arrow.uturn.backward") }
             } footer: {
                 let ch = change(s)

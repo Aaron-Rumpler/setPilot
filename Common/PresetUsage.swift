@@ -64,13 +64,13 @@ enum PresetUsage {
     /// Adds uses from another device. Returns whether anything was new.
     @discardableResult
     static func merge(_ uses: [Use], into defaults: UserDefaults) -> Bool {
-        let before = defaults.data(forKey: key)
+        // Only uses recent enough to keep: older ones would be dropped as they're saved.
+        let since = Date.now.addingTimeInterval(-days * 86_400)
         let had = load(defaults)
-        let all = Set(had + uses)
+        let all = Set(had + uses.filter { $0.at > since })
         guard all.count != had.count else { return false }
         save(Array(all), in: defaults)
-        // Only too old to keep (dropped again as it's saved): nothing new.
-        return defaults.data(forKey: key) != before
+        return true
     }
 
     private static func save(_ uses: [Use], in defaults: UserDefaults) {

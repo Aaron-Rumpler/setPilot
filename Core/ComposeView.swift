@@ -79,7 +79,17 @@ extension Model {
     }
 
     /// Something to send that the bulb would take (not all five channels at 0).
-    var draftHasChange: Bool { !draftChange.isEmpty && !draftChange.allChannelsZero }
+    var draftHasChange: Bool { !draftChange.isEmpty && !draftAllZero }
+
+    /// All five channels at 0: as RGBCW, or a CCT scale's at that kelvin (a point made dark).
+    var draftAllZero: Bool {
+        let ch = draftChange
+        if ch.allChannelsZero { return true }
+        if case let .customCCT(id, k)? = ch.colour, let c = library.scale(id)?.scale.channels(at: k) {
+            return c.r == 0 && c.g == 0 && c.b == 0 && c.c == 0 && c.w == 0
+        }
+        return false
+    }
 
     /// Roughly what will be sent.
     var draftPreview: String {
@@ -88,7 +98,7 @@ extension Model {
         }
     }
 
-    var draftNote: String? { draftChange.note(isOn: isOn) }
+    var draftNote: String? { draftAllZero ? LightChange.allZeroNote : draftChange.note(isOn: isOn) }
 
     /// Starts the draft from the bulb's current state.
     func loadDraft() {

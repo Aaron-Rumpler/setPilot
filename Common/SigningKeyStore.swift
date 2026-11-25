@@ -61,6 +61,21 @@ enum SigningKeyStore {
 
     /// Every bulb's key (not "current"), by MAC.
     static func all() -> [String: String] {
+        // The login keychain (no data protection) can't return every item's data in one query:
+        // the accounts, then each one's key.
+        guard dataProtection else {
+            var q = base()
+            q[kSecReturnAttributes as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitAll
+            var out: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let items = out as? [[String: Any]] else { return [:] }
+            var keys: [String: String] = [:]
+            for item in items {
+                guard let account = item[kSecAttrAccount as String] as? String, account != current, let key = get(account) else { continue }
+                keys[account] = key
+            }
+            return keys
+        }
         var q = base()
         q[kSecReturnAttributes as String] = true
         q[kSecReturnData as String] = true

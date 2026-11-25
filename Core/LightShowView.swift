@@ -25,6 +25,8 @@ private struct LightShowScreen: View {
     let model: Model
     let player: LightShowPlayer
     @State private var importing = false
+    /// Open Last Show (or a Handoff), waiting for its files to download.
+    @State private var opening: Task<Void, Never>?
     /// What the file importer is choosing (kept apart from `importing`, which is cleared first).
     @State private var choosing = Choosing.media
     /// The cue list (an inspector; on iPhone a sheet over the player, so off to start with).
@@ -65,24 +67,35 @@ private struct LightShowScreen: View {
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: choosing == .show ? [.json] : [.audiovisualContent]) { result in
             guard case .success(let url) = result else { return }
+            opening?.cancel() // chosen by hand: a last show still downloading isn't wanted now
+            opening = nil
             if choosing == .show { player.openShow(url) } else { player.openMedia(url) }
         }
         .startsInCloudFolder()
-        .onDisappear { player.close() }
+        .onDisappear {
+            opening?.cancel()
+            opening = nil
+            player.close()
+        }
     }
 
     /// Opens a show and its media (the last ones, or another device's), and goes to a place in it.
     private func openLast(media: URL?, show: URL?, at position: Double?) {
-        Task {
-            // Not downloaded here yet (from another device): opened once it's down.
+        opening?.cancel() // the latest asked for
+        opening = Task {
+            // Not downloaded here yet (from another device): opened once it's down, unless
+            // something else was opened (or the screen left) meanwhile.
             if let media { await LastShow.downloaded(media) }
             if let show { await LastShow.downloaded(show) }
+            guard !Task.isCancelled else { return }
             if let media { player.openMedia(media) }
             if let show { player.openShow(show) }
-            guard let position, position > 0 else { return }
+            guard let position, position > 0 else { opening = nil; return }
             // Once the media's length is known (seeking before then is clamped to the start).
             for _ in 0..<50 where player.duration == 0 { try? await Task.sleep(for: .milliseconds(100)) }
+            guard !Task.isCancelled else { return }
             player.seek(to: position)
+            opening = nil
         }
     }
 

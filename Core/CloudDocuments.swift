@@ -58,7 +58,7 @@ enum LastShow {
     /// Waits (up to half a minute) for a file resolve asked iCloud for, until it's down here.
     /// Returns at once for one that's already here, or isn't in iCloud.
     static func downloaded(_ url: URL) async {
-        for _ in 0..<60 {
+        for _ in 0..<60 where !Task.isCancelled {
             if FileManager.default.fileExists(atPath: url.path) { return }
             let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]).ubiquitousItemDownloadingStatus
             if status == nil || status == .current || status == .downloaded { return }

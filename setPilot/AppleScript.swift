@@ -110,13 +110,26 @@ extension AppDelegate {
     func application(_ sender: NSApplication, delegateHandlesKey key: String) -> Bool { Self.scriptKeys.contains(key) }
 
     @objc var scriptPower: Bool {
-        get { Shared.model.isOn ?? false }
+        get { stateKnown() ? Shared.model.isOn == true : false }
         set { runForScript(.power(newValue)) }
     }
 
     @objc var scriptBrightness: Int {
-        get { Int(Shared.model.dimming) }
+        get { stateKnown() ? Int(Shared.model.dimming) : 0 }
         set { runForScript(.brightness(newValue)) }
+    }
+
+    /// The bulb's state is known (it's answered since connecting). Otherwise the script gets the
+    /// not-answering error rather than a made-up value (`set power to not power` on a bulb not
+    /// read yet would go the wrong way).
+    private func stateKnown() -> Bool {
+        guard Shared.model.isOn == nil else { return true }
+        let command = NSScriptCommand.current()
+        command?.scriptErrorNumber = 1000 + Int(ScriptError(code: .notAnswering, message: "").exitCode)
+        command?.scriptErrorString = Shared.model.link == .connecting
+            ? "The bulb's state isn't known yet: try again in a moment."
+            : "The bulb isn't answering, so its state isn't known."
+        return false
     }
 
     /// A property set by a script: the script waits for the change, and gets its failure as an

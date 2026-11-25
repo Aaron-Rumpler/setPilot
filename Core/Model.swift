@@ -106,7 +106,7 @@ final class Model {
             // Answering: the bulb your other devices are offered (BulbNudge), through iCloud.
             if link == .connected, oldValue != .connected, let mac = chosenMAC,
                let address = UserDefaults.standard.string(forKey: Self.addressKey) {
-                UserDefaults.standard.set("\(mac) \(address)", forKey: BulbNudge.key)
+                UserDefaults.standard.set(BulbNudge.value(mac: mac, address: address), forKey: BulbNudge.key)
             }
         }
     }
@@ -276,8 +276,12 @@ final class Model {
                 verifyingSeq = nil
                 return
             }
+            // The connection itself: connectionLost says it (once, not at every retry).
+            if method == nil {
+                connectionLost()
+                return
+            }
             status = message
-            if method == nil { connectionLost() }
             switch method {
             case "getPilot"?:
                 quietReads = 0 // the reads aren't coming
@@ -326,6 +330,13 @@ final class Model {
         }
         // Another network, a VPN, back from sleep: the connection's made afresh.
         network.onChange = { [weak self] in self?.networkChanged() }
+        // Ready after waiting (Local Network access just allowed, say): not left until the next retry.
+        bulb.onReady = { [weak self] in
+            guard let self, self.link == .unreachable else { return }
+            self.quietReads = 0
+            self.bulb.send("getPilot", retry: true)
+            self.registerOnce()
+        }
         network.start()
         // iCloud sync (builds with WIZ_ICLOUD): settings through key-value storage, the library
         // and names item by item.
@@ -346,9 +357,8 @@ final class Model {
         let defaults = UserDefaults.standard
         guard (defaults.string(forKey: Self.addressKey) ?? "").isEmpty,
               let value = defaults.string(forKey: BulbNudge.key) else { return }
-        let parts = value.split(separator: " ", maxSplits: 1).map(String.init)
-        guard parts.count == 2, !parts[1].isEmpty else { return }
-        choose(parts[1], mac: parts[0])
+        guard let bulb = BulbNudge.offered(value) else { return }
+        choose(bulb.address, mac: bulb.mac)
     }
 
     /// Settings from another device (CloudSync) have been written to the defaults: take them.
@@ -739,7 +749,9 @@ final class Model {
         if bulb.localNetworkDenied {
             localNetworkDenied = true
             status = Self.localNetworkStatus
-        } else if was != .unreachable {
+        } else if was == .connecting {
+            status = "Can't reach the bulb from this network; trying again…"
+        } else if was == .connected {
             status = "Lost the connection to the bulb; trying again…"
         }
         recover()
@@ -778,12 +790,28 @@ final class Model {
 
     /// A fresh connection to the same bulb, keeping what's known of it, with its state read and
     /// live updates registered on it.
-    private func retryConnection(_ a: String) {
+    /// `quiet`: the read's answer doesn't need the status line (the bulb was answering anyway).
+    private func retryConnection(_ a: String, quiet: Bool = false) {
         lastConnect = .now
-        bulb.connect(to: a)
-        quietReads = 0
+        bulb.connect(to: a) // the old connection's retries stop, unanswered: asked again below
+        if consoleWaiting != nil {
+            consoleWaiting = nil
+            consoleFailure = "The connection was made afresh before a reply came: send it again"
+        }
+        let unread = BulbAPI.deviceInfo.filter { infoReading.contains($0) && $0 != "getPilot" }
+        if !unread.isEmpty {
+            configTask?.cancel()
+            configTask = Task {
+                for m in unread {
+                    guard !Task.isCancelled else { return }
+                    bulb.send(m, retry: true)
+                    try? await Task.sleep(for: .milliseconds(60))
+                }
+            }
+        }
+        if quiet { quietReads += 1 } else { quietReads = 0 }
         bulb.send("getPilot", retry: true)
-        registerOnce()
+        if !wrongBulb { registerOnce() } // not with another device at the address
     }
 
     /// Answering again after not: no more retrying; live updates registered again straight away
@@ -804,7 +832,7 @@ final class Model {
         guard started, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
         switch link {
         case .connected:
-            retryConnection(a)
+            retryConnection(a, quiet: true)
         case .unreachable:
             retryNow(a)
         default:
@@ -912,7 +940,8 @@ final class Model {
         Task {
             defer { relocating = false }
             let label = name(for: saved) ?? saved
-            status = "Looking for \(label) on the network…"
+            // Local Network access off: that's what needs saying, not the search.
+            if !localNetworkDenied { status = "Looking for \(label) on the network…" }
             let found = await discover()
             guard UserDefaults.standard.string(forKey: Self.addressKey) == address else { return } // user chose another
             if let bulb = found.first(where: { $0.mac.lowercased() == saved }), bulb.ip != address {
@@ -920,8 +949,8 @@ final class Model {
                 rememberBulb(address: bulb.ip, mac: saved)
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
-            } else if link == .connected {
-                return // answered meanwhile
+            } else if link == .connected || localNetworkDenied {
+                return // answered meanwhile, or the search couldn't have found it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
                 status = "\(label) answers searches but not requests at \(address); trying again…"
             } else {

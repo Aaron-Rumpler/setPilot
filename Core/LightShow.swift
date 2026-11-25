@@ -389,8 +389,13 @@ final class LightShowPlayer {
         // Cues the media ended before reaching (with a delay at or below 0 the show runs behind
         // the media, and a cue at the very end may fall after the last tick): sent now, as they'd
         // have been, unless the light's put back anyway.
-        if !restores, sentUpTo != nil, let show, nextCue < show.cues.count {
-            let end = duration + max(delay, 0) / 1000 + Self.slack
+        let end = duration + max(delay, 0) / 1000
+        if sentUpTo == nil, let show, !show.cues.isEmpty {
+            // A seek still landing as it ended (dragged or tapped to the very end): the state
+            // there, sent unless the light's put back anyway, and shown either way.
+            if restores { showPosition(at: duration) } else { catchUp(to: end, in: show) }
+        } else if !restores, sentUpTo != nil, let show, nextCue < show.cues.count {
+            let end = end + Self.slack
             let next = show.cues[nextCue...].firstIndex { $0.time > end } ?? show.cues.count
             if next > nextCue {
                 let due = show.cues[nextCue..<next]
@@ -413,9 +418,13 @@ final class LightShowPlayer {
     /// Puts the light back if anything was sent (`saved` is set then), even if sending has since
     /// been turned off.
     private func restore() {
-        speedTask?.cancel() // a speed still to come would switch the bulb back on
-        speedTask = nil
-        pendingSpeed = nil
+        // A speed still to come would switch the bulb back on once it's put back; left as the
+        // show has it, the speed still goes (the scene's, sent just before the end).
+        if restores {
+            speedTask?.cancel()
+            speedTask = nil
+            pendingSpeed = nil
+        }
         guard let saved else { return }
         self.saved = nil
         if restores { restoreNote = model.restore(saved) }
