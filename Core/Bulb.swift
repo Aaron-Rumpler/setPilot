@@ -42,6 +42,20 @@ final class Bulb {
                 if let error { self.onError?(nil, "Lost the connection to the bulb (\(error))") }
             }
         }
+        // Failed, or left waiting (no route: the network changed or went away, Local Network
+        // access off): this connection won't come back by itself, so the model makes another.
+        c.stateUpdateHandler = { [weak self] state in
+            let lost: String? = switch state {
+            case .failed(let error): "Lost the connection to the bulb (\(error))"
+            case .waiting(let error): "No way to reach the bulb right now (\(error))"
+            default: nil
+            }
+            guard let lost else { return }
+            Task { @MainActor in
+                guard let self, c === self.conn else { return }
+                self.onError?(nil, lost)
+            }
+        }
         c.start(queue: DispatchQueue(label: "wiz.udp"))
     }
 
@@ -100,6 +114,29 @@ final class Bulb {
             handler(data, error)
             if error == nil { Bulb.receive(c, handler) }
         }
+    }
+}
+
+/// Says when the network changes (another network, a VPN coming or going, back from sleep), so
+/// the bulb's connection can be made afresh.
+@MainActor
+final class NetworkWatcher {
+    private let monitor = NWPathMonitor()
+    private var last: String?
+    var onChange: (() -> Void)?
+
+    func start() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let usable = path.status == .satisfied
+            let key = "\(usable) " + path.availableInterfaces.map(\.name).joined(separator: ",")
+            Task { @MainActor in
+                guard let self else { return }
+                let changed = self.last != nil && self.last != key
+                self.last = key // the first is how it is at launch: nothing to redo
+                if changed, usable { self.onChange?() }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "wiz.path"))
     }
 }
 

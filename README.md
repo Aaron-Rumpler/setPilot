@@ -42,7 +42,10 @@ trademark of Signify.
   cloud, not on the bulb).
 - The chosen bulb is also remembered by MAC: a different bulb answering at the saved address is
   ignored, and if the bulb stops answering (for example its IP changed) the app finds it again by
-  MAC and reconnects (addresses entered as DNS names are left to DNS).
+  MAC and reconnects (addresses entered as DNS names are left to DNS). Until it answers, it keeps
+  trying (after a few seconds, then every 30 s), and straight away when the network changes or
+  the Mac wakes; Sync (⌘R) or Try Again tries now. A bulb that goes quiet while connected is
+  noticed within about a minute.
 - **Live updates**: registers with the bulb for `syncPilot` pushes (UDP 38900) so the controls
   follow changes made from the WiZ app or a remote. The status shows "none yet" until the first
   push arrives, since registering doesn't prove pushes get through a firewall.

@@ -72,6 +72,11 @@ struct ContentView: View {
                         Text(!model.live ? "No live updates" : model.pushSeen ? "Live updates" : "Live updates (none yet)")
                             .foregroundStyle(.secondary)
                             .help(model.liveStatus)
+                    } else if model.link == .unreachable {
+                        // It keeps trying by itself; this is for now.
+                        Button("Try Again") { model.sync() }
+                            .buttonStyle(.link)
+                            .help("Try reaching the bulb again now (⌘R)")
                     }
                     Spacer()
                 }

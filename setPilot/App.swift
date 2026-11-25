@@ -174,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Back from sleep: the bulb's connection made afresh (the network watcher may not see a
+        // change, on a wired network say).
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { Shared.model.networkChanged() }
+        }
         #if WIZ_ICLOUD
         NSApp.registerForRemoteNotifications() // iCloud tells the sync engine about changes this way
         #endif

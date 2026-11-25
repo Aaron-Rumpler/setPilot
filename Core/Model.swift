@@ -205,10 +205,23 @@ final class Model {
     /// The power state before the last switch (or the console's setState), restored if the bulb
     /// never answers it.
     @ObservationIgnored private var powerBefore: Bool?
-    /// A different bulb (MAC) answered at the address: ignore everything from it until the next connect.
+    /// A different bulb (MAC) answered at the address: ignore everything from it, until the next
+    /// connect or the chosen bulb (by its MAC) answers there again.
     @ObservationIgnored private var wrongBulb = false
+    /// Trying to reach the bulb again after it stopped answering (recover).
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var recoveryRound = 0
+    private let network = NetworkWatcher()
     @ObservationIgnored private var discoveryTask: Task<[DiscoveredBulb], Never>?
-    private let phoneMac = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
+    /// This device's id in live-update registrations: kept, so each launch registers as the same
+    /// device rather than as yet another one.
+    private let phoneMac: String = {
+        let key = "registrationID"
+        if let id = UserDefaults.standard.string(forKey: key), id.count == 12 { return id }
+        let id = String((0..<12).map { _ in "0123456789abcdef".randomElement()! })
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }()
 
     init() {
         // Bulb names sync through iCloud too (in builds with it), keyed by MAC. Older builds kept
@@ -256,6 +269,13 @@ final class Model {
             // replies: connecting sends four at once, and the others failing would replace
             // getPilot's "isn't answering" (or Local Network access) message with theirs.
             if let method, method != "getPilot", BulbAPI.deviceInfo.contains(method) { return }
+            // A retry's read (recover) going unanswered: still not answering, as already said.
+            if method == "getPilot", link == .unreachable {
+                quietReads = 0
+                pending = false
+                verifyingSeq = nil
+                return
+            }
             status = message
             if method == nil { connectionLost() }
             switch method {
@@ -267,15 +287,11 @@ final class Model {
                     live = false
                     if bulb.localNetworkDenied {
                         localNetworkDenied = true
-                        #if os(iOS)
-                        status = "setPilot needs Local Network access: turn it on in Settings › Apps › setPilot, then try again"
-                        #else
-                        status = "setPilot needs Local Network access: turn it on in System Settings › Privacy & Security › Local Network"
-                        #endif
+                        status = Self.localNetworkStatus
                     } else {
-                        status = "The bulb isn't answering"
-                        relocate()
+                        status = "The bulb isn't answering; trying again…"
                     }
+                    recover()
                 }
                 pending = false
                 verifyingSeq = nil
@@ -304,10 +320,13 @@ final class Model {
             self?.handlePush(obj)
         }
         push.onFailure = { [weak self] reason in
-            self?.registerTask?.cancel()
+            // The listener's started again with the next registration (registerOnce), in 20 s.
             self?.live = false
             self?.liveStatus = "Live updates off — \(reason)"
         }
+        // Another network, a VPN, back from sleep: the connection's made afresh.
+        network.onChange = { [weak self] in self?.networkChanged() }
+        network.start()
         // iCloud sync (builds with WIZ_ICLOUD): settings through key-value storage, the library
         // and names item by item.
         NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] _ in
@@ -606,16 +625,12 @@ final class Model {
     var chosenMAC: String? { savedMAC ?? mac?.lowercased() }
 
     @ObservationIgnored private var relocating = false
-    /// The address relocate last reconnected to because the bulb answered a search there, so that
-    /// a bulb that answers searches but not requests is tried once, not round and round.
-    @ObservationIgnored private var retriedAt: String?
 
     /// The bulb the user picked or typed: saved, then connected to. `mac` is known for a bulb
     /// picked from discovery; for a typed address it's learnt from the bulb's first reply.
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
-        retriedAt = nil // chosen by hand: worth another try if it doesn't answer
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
            mac == nil || mac?.lowercased() == chosenMAC { return }
@@ -645,6 +660,8 @@ final class Model {
     func connect(_ ip: String) {
         lastConnect = .now
         connectGeneration += 1
+        recoveryTask?.cancel() // this connection gets its own, if it comes to that
+        recoveryTask = nil
         let generation = connectGeneration
         bulb.connect(to: ip)
         verifyTask?.cancel()
@@ -708,73 +725,139 @@ final class Model {
         }
     }
 
-    @ObservationIgnored private var lastAutoReconnect = Date.distantPast
-
-    /// The connection to the bulb failed (it takes no more replies): say so, and make a new one,
-    /// at most every 30 s; failing again within that, search for it (Mac). Otherwise the next
-    /// foreground, Shortcut or watch command reconnects, as the link is unreachable.
+    /// The connection to the bulb failed or was left waiting (the network changed or went away,
+    /// sleep, Local Network access off): say so, and keep trying (recover).
     private func connectionLost() {
-        link = .unreachable
-        live = false
+        guard link != .none else { return }
         // A change that never got its answer didn't take as far as we know (Shortcuts say so).
         if pending, !pilotAnswered, refusal == nil { refusal = "Lost the connection to the bulb before it answered." }
         pending = false
         verifyingSeq = nil
-        guard let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
-        let since = Date.now.timeIntervalSince(lastAutoReconnect)
-        guard since > 30 else {
-            // Lost again straight after reconnecting: on the Mac, look for the bulb elsewhere (it
-            // may have a new address, and another device its old one), and try again once the 30 s
-            // are up (the lost connection hears nothing more, even if the bulb comes back).
-            relocate()
-            reconnect(a, after: 30 - since)
-            return
+        let was = link
+        link = .unreachable
+        live = false
+        if bulb.localNetworkDenied {
+            localNetworkDenied = true
+            status = Self.localNetworkStatus
+        } else if was != .unreachable {
+            status = "Lost the connection to the bulb; trying again…"
         }
-        lastAutoReconnect = .now
-        let generation = connectGeneration
-        status += "; reconnecting…"
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            guard connectGeneration == generation, UserDefaults.standard.string(forKey: Self.addressKey) == a else { return }
-            connect(a)
+        recover()
+    }
+
+    #if os(iOS)
+    static let localNetworkStatus = "setPilot needs Local Network access: turn it on in Settings › Apps › setPilot, then try again"
+    #else
+    static let localNetworkStatus = "setPilot needs Local Network access: turn it on in System Settings › Privacy & Security › Local Network"
+    #endif
+
+    /// The bulb stopped answering: keep trying until it does, each time on a fresh connection (one
+    /// left waiting by a network change doesn't come back by itself), after 2, 5, 10 and 20 s, then
+    /// every 30 s; on the Mac also looking for it at a new address, at first and every 2 minutes.
+    /// Stops once it answers, or another bulb (or the same one, by hand) is connected.
+    private func recover() {
+        guard recoveryTask == nil, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
+        recoveryRound += 1
+        let round = recoveryRound
+        let waits: [Double] = [2, 5, 10, 20]
+        recoveryTask = Task { [weak self] in
+            var attempt = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(attempt < waits.count ? waits[attempt] : 30))
+                guard let self, !Task.isCancelled, self.link == .unreachable,
+                      UserDefaults.standard.string(forKey: Self.addressKey) == a else { break }
+                attempt += 1
+                self.retryConnection(a)
+                #if os(macOS)
+                if attempt == 1 || attempt % 4 == 0 { self.relocate() }
+                #endif
+            }
+            if let self, self.recoveryRound == round { self.recoveryTask = nil }
         }
     }
 
-    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
+    /// A fresh connection to the same bulb, keeping what's known of it, with its state read and
+    /// live updates registered on it.
+    private func retryConnection(_ a: String) {
+        lastConnect = .now
+        bulb.connect(to: a)
+        quietReads = 0
+        bulb.send("getPilot", retry: true)
+        registerOnce()
+    }
 
-    /// A new connection to `address` after `seconds`, unless the bulb is back by then (or another
-    /// was chosen). The latest call wins: one for a connection lost since replaces it.
-    private func reconnect(_ address: String, after seconds: Double) {
-        reconnectTask?.cancel()
-        reconnectTask = Task {
-            try? await Task.sleep(for: .seconds(seconds))
-            guard !Task.isCancelled, link == .unreachable,
-                  UserDefaults.standard.string(forKey: Self.addressKey) == address else { return }
-            lastAutoReconnect = .now
-            connect(address)
+    /// Answering again after not: no more retrying; live updates registered again straight away
+    /// (the bulb may have restarted, or this device have another address), and what was never
+    /// read (it wasn't answering from the start) read now.
+    private func regained() {
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        if registerTask == nil, let liveHost { startLiveUpdates(liveHost) } else { registerOnce() }
+        if firmware == nil {
+            for method in ["getModelConfig", "getSystemConfig", "getUserConfig"] { bulb.send(method, retry: true) }
         }
     }
 
-    /// pywizlight's push method: tell the bulb our IP every 20 s; it sends syncPilot to port 38900.
+    /// The network changed (another network, a VPN, back from sleep): a fresh connection, since the
+    /// old one may be left waiting, registered from this device's address now.
+    func networkChanged() {
+        guard started, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty else { return }
+        switch link {
+        case .connected:
+            retryConnection(a)
+        case .unreachable:
+            retryNow(a)
+        default:
+            break // connecting already, or no bulb
+        }
+    }
+
+    /// Not answering, but worth trying now (the network's changed, a watch or Shortcut wants it),
+    /// and from the start of the waits again.
+    private func retryNow(_ a: String) {
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        retryConnection(a)
+        recover()
+    }
+
+    /// Live updates, and keeping an eye on the bulb: registers now and every 20 s (the bulb answers
+    /// each one), and if nothing's been heard from it for 45 s, reads its state quietly. No answer
+    /// to that is how a bulb that's gone away is noticed: otherwise it would show as connected
+    /// until it was next used.
     private func startLiveUpdates(_ ip: String) {
         liveHost = ip
-        lastRegistration = .now
         registerTask?.cancel()
+        registerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.registerOnce()
+                try? await Task.sleep(for: .seconds(20))
+                guard !Task.isCancelled, let self else { return }
+                self.checkStillThere()
+            }
+        }
+    }
+
+    /// pywizlight's push method: tells the bulb this device's address (worked out each time, so a
+    /// new one after a network change is used), and it sends syncPilot to port 38900. Starts the
+    /// push listener again if it stopped.
+    private func registerOnce() {
+        guard let ip = liveHost else { return }
+        lastRegistration = .now
         push.startIfNeeded()
-        guard push.isRunning else { return }
+        guard push.isRunning else { return } // its failure says why
         guard let phoneIp = Net.sourceIP(toward: ip.trimmingCharacters(in: .whitespaces)) else {
             liveStatus = "Live updates off — couldn't find an IPv4 address for the bulb"
             return
         }
-        liveStatus = "Registering for live updates…"
-        let params: [String: Any] = ["phoneIp": phoneIp, "register": true, "phoneMac": phoneMac]
-        registerTask = Task { [weak self] in
-            while !Task.isCancelled {
-                self?.lastRegistration = .now
-                self?.bulb.send("registration", params)
-                try? await Task.sleep(for: .seconds(20))
-            }
-        }
+        if !live { liveStatus = "Registering for live updates…" }
+        bulb.send("registration", ["phoneIp": phoneIp, "register": true, "phoneMac": phoneMac])
+    }
+
+    private func checkStillThere() {
+        guard link == .connected, !pending, Date.now.timeIntervalSince(lastHeard) > 45 else { return }
+        quietReads += 1 // its answer doesn't need the status line
+        bulb.send("getPilot", retry: true)
     }
 
     /// Whether a reply comes from the chosen bulb. Learns the MAC the first time (for a typed
@@ -798,7 +881,7 @@ final class Model {
             verifyingSeq = nil
             pending = false
             status = "A different bulb answered at this address"
-            relocate()
+            recover()
             return false
         }
         return true
@@ -837,21 +920,18 @@ final class Model {
                 rememberBulb(address: bulb.ip, mac: saved)
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
-            } else if found.contains(where: { $0.mac.lowercased() == saved }), retriedAt != address {
-                // It answered the search, so try once more, with a new connection in case the old
-                // one is what failed (a further failure doesn't come back here).
-                retriedAt = address
-                connect(address)
-                status = "\(label) is on the network; trying again" // after connect, which clears it
+            } else if link == .connected {
+                return // answered meanwhile
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
-                status = "\(label) answers searches but not requests at \(address)"
+                status = "\(label) answers searches but not requests at \(address); trying again…"
             } else {
-                status = "Couldn't find \(label) on the network"
+                status = "Couldn't find \(label) on the network; trying again…"
             }
         }
         #else
         // No discovery on iOS (no broadcasts without the multicast entitlement): a bulb chosen by
-        // DNS name is found again by name, and one chosen by IP has to be chosen again.
+        // DNS name is found again by name (each retry looks it up), and one chosen by IP is tried
+        // there until it answers, or is chosen again at another.
         #endif
     }
 
@@ -926,6 +1006,11 @@ final class Model {
     /// Reads the state again. `quiet`: without saying "Synced" (a read the user didn't ask for,
     /// which shouldn't replace what the status says).
     func sync(quiet: Bool = false) {
+        // Not answering: Sync tries again now, on a fresh connection.
+        if link == .unreachable, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty {
+            retryNow(a)
+            return
+        }
         verifyingSeq = nil
         pending = false
         if quiet { quietReads += 1 } else { quietReads = 0 } // asked for: this one says so
@@ -1565,7 +1650,11 @@ final class Model {
         }
         // Already on its way (just launched, say); a connect left hanging by a suspension is redone.
         if link == .connecting, Date.now.timeIntervalSince(lastConnect) < 5 { return }
-        if !push.isRunning || link != .connected { connect(a) } else { sync() }
+        guard link == .connected else { connect(a); return }
+        sync()
+        // Registered again now (pushes sent while suspended are lost), the listener restarted if
+        // it stopped.
+        if registerTask == nil, let liveHost { startLiveUpdates(liveHost) } else { registerOnce() }
     }
 
     /// getPilot replies so far, so a refresh can wait for the next one.
@@ -1604,7 +1693,12 @@ final class Model {
         // so starting another on every watch poll only restarts them). One left stuck connecting
         // (the app suspended part way) is redone.
         if link != .connected {
-            if link == .none || Date.now.timeIntervalSince(lastConnect) > 15 { connect(a) }
+            // Not answering: tried again now on a fresh connection, keeping what's known of it.
+            if link == .unreachable, Date.now.timeIntervalSince(lastConnect) > 3 {
+                retryNow(a)
+            } else if link == .none || Date.now.timeIntervalSince(lastConnect) > 15 {
+                connect(a)
+            }
             return true
         }
         var reading = false
@@ -1615,7 +1709,10 @@ final class Model {
         }
         // Registering again also restarts the push listener if it stopped; the bulb link itself is
         // fine, so no need to reconnect for that.
-        if let liveHost, !push.isRunning || Date.now.timeIntervalSince(lastRegistration) > 15 { startLiveUpdates(liveHost) }
+        if let liveHost {
+            if registerTask == nil { startLiveUpdates(liveHost) }
+            else if !push.isRunning || Date.now.timeIntervalSince(lastRegistration) > 15 { registerOnce() }
+        }
         return reading
     }
 
@@ -1719,13 +1816,20 @@ final class Model {
     // MARK: Incoming
 
     private func handleReply(_ reply: [String: Any]) {
-        guard !wrongBulb else { return }
+        if wrongBulb {
+            // Only the chosen bulb, back at the address, by its MAC.
+            guard let m = (reply["result"] as? [String: Any])?["mac"] as? String, m.lowercased() == savedMAC else { return }
+            wrongBulb = false
+        }
         lastHeard = .now
         let method = reply["method"] as? String ?? "?"
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
             // Back after not answering, as for a result below: what it showed may be out of date.
-            if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
+            if link == .unreachable {
+                if method != "getPilot" { bulb.send("getPilot", retry: true) }
+                regained()
+            }
             link = .connected
             localNetworkDenied = false
             // A refused change or read-back: nothing to read back (a read that works unsigned would
@@ -1792,10 +1896,12 @@ final class Model {
         }
         guard let result = anyResult as? [String: Any] else { return }
         // Back after not answering (e.g. the 20 s registration got through): re-read its state.
-        if link == .unreachable && method != "getPilot" { bulb.send("getPilot", retry: true) }
+        if link == .unreachable {
+            if method != "getPilot" { bulb.send("getPilot", retry: true) }
+            regained()
+        }
         link = .connected
         localNetworkDenied = false
-        retriedAt = nil
         switch method {
         case "getPilot":
             pilotReads += 1
