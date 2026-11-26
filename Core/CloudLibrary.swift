@@ -592,24 +592,20 @@ final class CloudLibrary {
                 guard let data: Data = r.encryptedValues["join"] else { return nil }
                 return try? JSONDecoder().decode(HouseholdJoin.self, from: data)
             }
-            if replacing {
-                // A new join: the households left before it kept, for devices still in them.
-                merged.leaves = old?.leaves
-            } else if existing != nil {
+            if !replacing, existing != nil {
                 // Another household's or join's (one joined since on another device), or one this
-                // build can't read, or left meanwhile: left as it is, not overwritten with this one's.
+                // build can't read: left as it is, not overwritten with this one's.
                 guard let old, old.zone == join.zone, join.joinID == nil || old.joinID == join.joinID else { return }
                 merged.addMine = old.addMine
                 merged.joinID = old.joinID
                 merged.at = old.at
-                merged.leaves = old.leaves
                 merged.items = old.items.merging(join.items) { max($0, $1) }
             }
             guard let data = try? JSONEncoder().encode(merged) else { return }
             let record = existing ?? CKRecord(recordType: Self.joinRecordType, recordID: id)
             record.encryptedValues["join"] = data
             do {
-                // Only if unchanged since read, replacing too: a leave claimed meanwhile is kept.
+                // Only if unchanged since read (two devices following at once each add theirs).
                 let (results, _) = try await db.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged)
                 if case .failure(let error as CKError)? = results[id], error.code == .serverRecordChanged { continue }
                 return
