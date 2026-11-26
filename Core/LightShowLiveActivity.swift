@@ -28,7 +28,7 @@ final class LightShowLiveActivity {
             lastUpdate = .now
             LightShowControl.handler = { [weak player] action in
                 switch action {
-                case .toggle: player?.togglePlay()
+                case .toggle: player?.togglePlayFromOutside()
                 case .stop: player?.stop()
                 }
             }

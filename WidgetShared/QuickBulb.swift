@@ -71,18 +71,17 @@ enum QuickBulb {
         SharedStore.save(s, SharedStore.snapshotKey)
     }
 
-    /// Tried as the app tries (BulbTiming), up to `deadline`: nothing goes out after it.
+    /// Tried as the app tries (BulbTiming), up to `deadline`: nothing goes out after it. One
+    /// connection for all the tries, so a reply to any of them counts, until the deadline.
     static func send(_ host: String, _ method: String, _ params: [String: Any], by deadline: Date) async throws -> [String: Any] {
         let key = SigningKeyStore.get(SigningKeyStore.current)
-        for planned in BulbTiming.tryWaits {
-            let left = deadline.timeIntervalSinceNow
-            guard left > 0.05 else { break }
-            let wait = min(planned, left)
-            // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
-            guard let data = RequestSigning.message(method, params: params, key: key) else {
-                throw WidgetError(localizedStringResource: "Couldn't make the request.")
-            }
-            guard let reply = await attempt(host, data, wait: wait) else { continue }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: 38899, using: .udp)
+        let inbox = ReplyInbox()
+        conn.start(queue: .global())
+        receive(conn, into: inbox)
+        defer { conn.cancel() }
+        func answered() throws -> [String: Any]? {
+            guard let reply = inbox.reply else { return nil }
             // An answer, but a refusal (a parameter this firmware doesn't take, say): no use retrying.
             if let error = reply["error"] as? [String: Any] {
                 let message = error["message"] as? String ?? (error["code"] as? Int).map { "error \($0)" } ?? "an error"
@@ -90,43 +89,50 @@ enum QuickBulb {
             }
             return reply
         }
+        for planned in BulbTiming.tryWaits {
+            let left = deadline.timeIntervalSinceNow
+            guard left > 0.05 else { break }
+            // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
+            guard let data = RequestSigning.message(method, params: params, key: key) else {
+                throw WidgetError(localizedStringResource: "Couldn't make the request.")
+            }
+            conn.send(content: data, completion: .idempotent)
+            let until = Date.now.addingTimeInterval(min(planned, left))
+            while Date.now < until {
+                if let reply = try answered() { return reply }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        // The last try's answer, if it comes before the deadline.
+        while Date.now < deadline {
+            if let reply = try answered() { return reply }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if let reply = try answered() { return reply }
         throw WidgetError(localizedStringResource: "The bulb didn't answer.")
     }
 
-    private static func attempt(_ host: String, _ data: Data, wait: Double) async -> [String: Any]? {
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: 38899, using: .udp)
-        let box = ReplyBox()
-        return await withCheckedContinuation { (cont: CheckedContinuation<[String: Any]?, Never>) in
-            box.set(cont)
-            conn.start(queue: .global())
-            conn.send(content: data, completion: .idempotent)
-            conn.receiveMessage { reply, _, _, _ in
-                let obj = reply.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                box.finish(obj)
-                conn.cancel()
-            }
-            DispatchQueue.global().asyncAfter(deadline: .now() + wait) {
-                box.finish(nil)
-                conn.cancel()
-            }
+    private static func receive(_ conn: NWConnection, into inbox: ReplyInbox) {
+        conn.receiveMessage { data, _, _, error in
+            if let obj = data.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) { inbox.take(obj) }
+            if error == nil { receive(conn, into: inbox) }
         }
     }
 }
 
-/// Resumes a continuation once, from whichever of the reply and the timeout comes first.
-private final class ReplyBox: @unchecked Sendable {
+/// The first reply on a request's connection, from whichever try it answers.
+private final class ReplyInbox: @unchecked Sendable {
     private let lock = NSLock()
-    private var cont: CheckedContinuation<[String: Any]?, Never>?
+    private var first: [String: Any]?
 
-    func set(_ c: CheckedContinuation<[String: Any]?, Never>) {
-        lock.lock(); cont = c; lock.unlock()
+    var reply: [String: Any]? {
+        lock.lock(); defer { lock.unlock() }
+        return first
     }
 
-    func finish(_ value: [String: Any]?) {
+    func take(_ value: [String: Any]) {
         lock.lock()
-        let c = cont
-        cont = nil
+        if first == nil { first = value }
         lock.unlock()
-        c?.resume(returning: value)
     }
 }

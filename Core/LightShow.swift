@@ -308,7 +308,7 @@ final class LightShowPlayer {
             // A flashing one opened while playing: paused, for Play to ask first.
             if s.flashes, Flashing.asks, player.rate != 0 {
                 player.pause()
-                restoreNote = "This show flashes quickly: press Play to start it, so you're asked first."
+                restoreNote = Self.flashingNote
             }
             showName = url.lastPathComponent
             LastShow.remember(show: url)
@@ -328,6 +328,19 @@ final class LightShowPlayer {
 
     func togglePlay() { isPlaying ? pause() : play() }
 
+    static let flashingNote = "This show flashes quickly: press Play to start it, so you're asked first."
+
+    /// Play or pause from outside the window (the Live Activity), where there's no asking: a
+    /// flashing show not yet confirmed waits for Play in the window.
+    func togglePlayFromOutside() {
+        if isPlaying { pause(); return }
+        if show?.flashes == true, Flashing.asks, !confirmed {
+            restoreNote = Self.flashingNote
+            return
+        }
+        play()
+    }
+
     func play() {
         guard player.currentItem != nil else { return }
         confirmed = true // Play: asked about flashing first, where it flashes (LightShowView)
@@ -339,7 +352,7 @@ final class LightShowPlayer {
             pendingSpeed = nil
         }
         runOver = false
-        if saved == nil { restoreNote = nil } // a new run (not resuming): the last one's note is done
+        if saved == nil || restoreNote == Self.flashingNote { restoreNote = nil } // a new run's, or the note asking for Play
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
         player.play()
     }
@@ -483,7 +496,7 @@ final class LightShowPlayer {
             // paused until Play.
             if playing, !confirmed, show?.flashes == true, Flashing.asks {
                 player.pause()
-                restoreNote = "This show flashes quickly: press Play to start it, so you're asked first."
+                restoreNote = Self.flashingNote
                 return
             }
             if playing, runOver {

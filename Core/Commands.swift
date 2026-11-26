@@ -267,22 +267,28 @@ enum Scripting {
         let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
         let started = Date.now
         guard await model.waitUntilControllable(timeout: max(left, 0)) else {
-            // Answering but refusing to say how it is (a wrong signing key, say): that reason.
-            // Not if it's just been found not answering (it may still show as connected).
-            if !model.recentlyNotAnswering, model.link == .connected, model.isOn == nil, !model.status.isEmpty {
-                throw ScriptError(code: .refused, message: model.status)
-            }
-            // Its time ran out waiting its turn or travelling while the bulb was answering: not
-            // the bulb's fault.
-            if left < Model.answerTimeout - 0.01, model.heardSince(started), model.link == .connected {
-                throw ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
-            }
-            #if os(iOS)
-            throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
-            #else
-            throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your Mac.")
-            #endif
+            throw notReady(model, left: left, waitStarted: started)
         }
+    }
+
+    /// Why a wait for the bulb (of `left` seconds, from `waitStarted`) came to nothing, the same
+    /// for everything that waits (the runner, the watch relay).
+    static func notReady(_ model: Model, left: Double, waitStarted started: Date) -> ScriptError {
+        // Answering but refusing to say how it is (a wrong signing key, say): that reason.
+        // Not if it's just been found not answering (it may still show as connected).
+        if !model.recentlyNotAnswering, model.link == .connected, model.isOn == nil, !model.status.isEmpty {
+            return ScriptError(code: .refused, message: model.status)
+        }
+        // Its time ran out waiting its turn or travelling while the bulb was answering: not the
+        // bulb's fault.
+        if left < Model.answerTimeout - 0.01, model.heardSince(started), model.link == .connected {
+            return ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
+        }
+        #if os(iOS)
+        return ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
+        #else
+        return ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your Mac.")
+        #endif
     }
 
     /// Taken, read back and as asked: or the bulb's refusal, no answer, what it didn't apply, or

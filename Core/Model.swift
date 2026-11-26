@@ -219,6 +219,7 @@ final class Model {
         ticket += 1
         refusal = nil
         pilotAnswered = false
+        speedAwaited = false
         // The last change's retries stop: one landing after this would undo it.
         bulb.cancelRetries("setPilot")
         bulb.cancelRetries("setState")
@@ -753,6 +754,8 @@ final class Model {
         connectGeneration += 1
         recoveryTask?.cancel() // this connection gets its own, if it comes to that
         recoveryTask = nil
+        delayedSpeed?.cancel() // the last connection's (and bulb's)
+        delayedSpeed = nil
         let generation = connectGeneration
         bulb.connect(to: ip)
         dropPending("Another bulb was chosen (or reconnected) before it answered.")
@@ -1246,7 +1249,15 @@ final class Model {
         consoleReply = nil
         consoleFailure = nil
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
-        if method == "setPilot" || method == "setState" { startChange() }
+        if method == "setPilot" || method == "setState" {
+            startChange()
+            // The last change's read-back and delayed speed aren't this one's.
+            verifyTask?.cancel()
+            delayedSpeed?.cancel()
+            delayedSpeed = nil
+            verifyingSeq = nil
+            pending = false
+        }
         bulb.sendRaw(text, method: method, retry: retry)
         endConsoleWait(after: retry && method != nil)
         if method == "setPilot" || method == "setState" {
@@ -1317,7 +1328,7 @@ final class Model {
             pending = true
             bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
-            scheduleVerify()
+            scheduleVerify(retried: retry)
         case "setState":
             startChange() // a new change, as for setPilot
             powerBefore = isOn // what a refusal puts back, whatever this one carries
@@ -1448,8 +1459,17 @@ final class Model {
                 let change = ticket
                 delayedSpeed = Task {
                     try? await Task.sleep(for: .milliseconds(400))
+                    // Once the scene's been answered (its retries done): the speed's own reply would
+                    // otherwise stop them, and a scene that hadn't gone would never go.
+                    let end = Date().addingTimeInterval(BulbTiming.replyWindow)
+                    while !Task.isCancelled, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
                     // Switched off meanwhile: on its own it would switch it back on. Owed instead.
-                    guard !Task.isCancelled, connectGeneration == generation else { return }
+                    guard !Task.isCancelled else { return }
+                    guard connectGeneration == generation, pending, pilotAnswered else {
+                        lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
+                        delayedSpeed = nil
+                        return
+                    }
                     guard isOn != false else {
                         speedOwed = true
                         lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
@@ -1457,12 +1477,13 @@ final class Model {
                         return
                     }
                     speedSentAt = .now
+                    speedAwaited = true // the next setPilot reply is its
                     bulb.send("setPilot", speedParams, retry: retry, tag: change)
-                    delayedSpeed = nil // sent: the read-back can go once it's had a moment
+                    delayedSpeed = nil // sent: the read-back waits for its answer
                 }
             }
         }
-        scheduleVerify()
+        scheduleVerify(retried: retry)
     }
 
     /// Sets the brightness straight away, with retries (Shortcuts; sliders go through `changed`).
@@ -1937,14 +1958,15 @@ final class Model {
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
     /// (it replies "success" to some setPilots it doesn't fully apply).
-    private func scheduleVerify() {
+    /// `retried`: the change is sent with retries, so the read-back waits for its answer (a retry
+    /// still to go would land after the read); sent once (a slider drag), nothing more is coming.
+    private func scheduleVerify(retried: Bool = true) {
         verifyTask?.cancel()
         verifyTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
-            // Not before the change is answered (a retry still to go would land after the read,
-            // and be taken as not applied), nor before a scene's speed has gone and had a moment.
+            // Not before the change is answered, nor before a scene's speed has gone and been.
             let end = Date().addingTimeInterval(BulbTiming.replyWindow)
-            while !Task.isCancelled, pending, !pilotAnswered || delayedSpeed != nil, Date() < end {
+            while retried, !Task.isCancelled, pending, !pilotAnswered || delayedSpeed != nil || speedAwaited, Date() < end {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             if let sent = speedSentAt, Date.now.timeIntervalSince(sent) < 0.3 {
@@ -1959,8 +1981,10 @@ final class Model {
         }
     }
 
-    /// When a scene's delayed speed went (scheduleVerify gives it a moment before reading back).
+    /// When a scene's delayed speed went (scheduleVerify gives it a moment before reading back),
+    /// and whether its answer is still awaited.
     @ObservationIgnored private var speedSentAt: Date?
+    @ObservationIgnored private var speedAwaited = false
 
     private func verify(_ result: [String: Any]) {
         var diffs: [String] = []
@@ -2107,6 +2131,7 @@ final class Model {
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
             pilotSwitches = false // answered
+            if pilotAnswered { speedAwaited = false } // the scene's was before: this is its speed's
             pilotAnswered = true
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":

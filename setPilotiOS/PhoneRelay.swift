@@ -145,7 +145,12 @@ final class PhoneRelay: NSObject {
         default:
             break
         }
-        guard await bulbReady(model, asked: asked) else { return .failed(model.snapshot, Self.notAnswering) }
+        let left = Model.answerTimeout - Date.now.timeIntervalSince(asked)
+        let waitStarted = Date.now
+        guard await bulbReady(model, asked: asked) else {
+            // Why, as Shortcuts say it (a refusal, too late, or not answering), with its kind.
+            return .scripted(ScriptResult(state: Scripting.state(of: model), error: Scripting.notReady(model, left: left, waitStarted: waitStarted)))
+        }
         sentFrom = model.ticket // after the wait: a change made meanwhile (a Shortcut) isn't this one's
         var pause = Duration.zero
         switch command {
@@ -355,7 +360,7 @@ extension PhoneRelay: WCSessionDelegate {
             Task {
                 try? await Task.sleep(for: pause)
                 // A change waits on its own result below; anything else, for things to settle.
-                if ticket == nil { await model?.waitUntilSettled() }
+                if ticket == nil, !sends { await model?.waitUntilSettled() } // a change that sent nothing: done now
                 // What became of the change it sent, as Shortcuts say it: refused, not answered,
                 // not applied, or not known (another change went before it was answered).
                 var why: String?

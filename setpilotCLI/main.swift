@@ -39,6 +39,8 @@ Exit codes: 0 done, 2 bad arguments, 3 app unavailable, 4 no bulb chosen,
 
 // MARK: Arguments
 
+// When the command was given: the app counts its waits from then (launching it counts).
+let started = Date()
 var args = Array(CommandLine.arguments.dropFirst())
 func takeFlag(_ name: String) -> Bool {
     guard let i = args.firstIndex(of: name) else { return false }
@@ -258,7 +260,7 @@ if !watching {
     var wait = timeval(tv_sec: 30, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
 }
-let request = Array((encode(ScriptRequest(command: command, fade: fade, watch: watching ? true : nil)) + "\n").utf8)
+let request = Array((encode(ScriptRequest(command: command, fade: fade, watch: watching ? true : nil, asked: started.timeIntervalSince1970)) + "\n").utf8)
 // write(2) and read(2), not FileHandle: its methods raise (an abort, not an exit code) on an error.
 guard request.withUnsafeBytes({ Darwin.write(fd, $0.baseAddress, $0.count) }) == request.count else {
     fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection."))

@@ -70,7 +70,9 @@ final class CLIServer {
         let done = DispatchSemaphore(value: 0)
         let box = ResultBox()
         Task { @MainActor in
-            box.result = await Scripting.run(command, fade: request.fade, on: model)
+            // From when the command was given (launching the app counts), unless that looks off.
+            let asked = request.asked.map(Date.init(timeIntervalSince1970:)).flatMap { $0 <= .now && Date.now.timeIntervalSince($0) < 60 ? $0 : nil } ?? .now
+            box.result = await Scripting.run(command, fade: request.fade, asked: asked, on: model)
             done.signal()
         }
         done.wait()

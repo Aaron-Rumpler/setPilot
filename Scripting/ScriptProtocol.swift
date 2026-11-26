@@ -131,6 +131,9 @@ struct ScriptRequest: Codable, Sendable {
     var fade: Int?
     /// Keep the connection open, the app writing the state (one LightState per line) when it changes.
     var watch: Bool?
+    /// When the command was given (seconds since 1970): waits for the bulb count from then (the
+    /// app may have had to be launched first), and a change too late to send isn't.
+    var asked: Double?
 }
 
 /// Where the Mac app and the command-line tool meet: a socket in their shared App Group container.
