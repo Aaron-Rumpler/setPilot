@@ -89,7 +89,9 @@ enum QuickBulb {
             }
             return reply
         }
+        var sent = false
         for planned in BulbTiming.tryWaits {
+            try Task.checkCancellation() // the action's ended: nothing more goes
             let left = deadline.timeIntervalSinceNow
             guard left > 0.05 else { break }
             // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
@@ -97,16 +99,19 @@ enum QuickBulb {
                 throw WidgetError(localizedStringResource: "Couldn't make the request.")
             }
             conn.send(content: data, completion: .idempotent)
+            sent = true
             let until = Date.now.addingTimeInterval(min(planned, left))
             while Date.now < until {
                 if let reply = try answered() { return reply }
-                try? await Task.sleep(for: .milliseconds(50))
+                try await Task.sleep(for: .milliseconds(50)) // throws if the action's cancelled
             }
         }
+        // Nothing went: the read before it took all the time there was.
+        guard sent else { throw WidgetError(localizedStringResource: "That came too late to send (reading the bulb took all the time there was); try again.") }
         // The last try's answer, if it comes before the deadline.
         while Date.now < deadline {
             if let reply = try answered() { return reply }
-            try? await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(50))
         }
         if let reply = try answered() { return reply }
         throw WidgetError(localizedStringResource: "The bulb didn't answer.")

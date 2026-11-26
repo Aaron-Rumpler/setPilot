@@ -97,10 +97,11 @@ final class Bulb {
     /// at about 5.7 s, replyWindow) until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     /// `tag`: the change it's for, given back with an error about it.
-    func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false, tag: Int? = nil) {
+    /// `until`: no try goes after it.
+    func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false, tag: Int? = nil, until: Date? = nil) {
         let key = signingKey
         // Signed afresh for each try: a retry gets its own sigTs, in case the bulb refuses a repeat.
-        transmit(method: method, retry: retry, tag: tag) { RequestSigning.message(method, params: params, key: key) }
+        transmit(method: method, retry: retry, tag: tag, until: until) { RequestSigning.message(method, params: params, key: key) }
     }
 
     /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON, and
@@ -109,11 +110,11 @@ final class Bulb {
     /// that method.
     func sendRaw(_ text: String, method: String?, retry: Bool) {
         let data = Data(text.utf8)
-        transmit(method: method, retry: retry && method != nil, tag: nil) { data }
+        transmit(method: method, retry: retry && method != nil, tag: nil, until: nil) { data }
     }
 
     /// `message` makes the bytes to send, for each try (the log shows the first).
-    private func transmit(method: String?, retry: Bool, tag: Int?, message: @escaping () -> Data?) {
+    private func transmit(method: String?, retry: Bool, tag: Int?, until: Date?, message: @escaping () -> Data?) {
         guard let conn, let data = message() else { return }
         let name = method ?? "Raw message"
         // Not queued on a connection that can't send now (see `blocked`): failed straight away.
@@ -147,6 +148,7 @@ final class Bulb {
                     self.onError?(method, "\(method): couldn't send (no way to reach the bulb right now)", tag)
                     return
                 }
+                if attempt > 0, let until, Date.now >= until { break } // its time's up: no more tries
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))

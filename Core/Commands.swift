@@ -19,10 +19,15 @@ enum Scripting {
     static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, on model: Model) async -> ScriptResult {
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
+            let queued = Date.now
             _ = await previous?.value
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
+                // Why it's late: waiting behind another, or before it got here (launching the app, say).
+                let behindAnother = Date.now.timeIntervalSince(queued) > 0.1
                 return ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering,
-                    message: "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."))
+                    message: behindAnother
+                        ? "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."
+                        : "That took too long to reach setPilot (it may have been starting up), so it wasn't sent; try again."))
             }
             // Waits from here are what's left of the one timeout, counted from when it was asked
             // for (switching bulbs, which lands elsewhere, gets the whole of it).

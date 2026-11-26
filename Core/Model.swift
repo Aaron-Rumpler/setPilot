@@ -214,8 +214,13 @@ final class Model {
     /// answered, its read-back being this one's now; otherwise not known to be done).
     private func startChange() {
         if ticket > 0, results[ticket] == nil {
-            settle(ticket, pilotAnswered ? .done : .notKnown("Another change went before this one was answered, so it isn't known to be done."))
+            // Its scene answered but its speed not gone (or not answered): not known either.
+            let speedOutstanding = delayedSpeed != nil || speedAwaited
+            settle(ticket, pilotAnswered && !speedOutstanding ? .done : .notKnown("Another change went before this one was answered, so it isn't known to be done."))
         }
+        delayedSpeed?.cancel() // the last change's speed doesn't go after this one
+        delayedSpeed = nil
+        changeStarted = .now
         ticket += 1
         refusal = nil
         pilotAnswered = false
@@ -1450,7 +1455,9 @@ final class Model {
             delayedSpeed = nil
             // On its own, or with only switching on (a speed owed from while it was off): at the
             // same moment. After a scene: once it's started (see below).
-            if !p.keys.contains(where: { $0 != "state" && $0 != "trans" }) {
+            // A speed alone goes at once; with anything (a switch on, say), after that's answered,
+            // so the two don't share retries (a reply to either ends both).
+            if p.isEmpty {
                 bulb.send("setPilot", speedParams, retry: retry, tag: ticket)
             } else {
                 // After the scene has started (and so retries of the two don't overlap). Not if
@@ -1461,7 +1468,7 @@ final class Model {
                     try? await Task.sleep(for: .milliseconds(400))
                     // Once the scene's been answered (its retries done): the speed's own reply would
                     // otherwise stop them, and a scene that hadn't gone would never go.
-                    let end = Date().addingTimeInterval(BulbTiming.replyWindow)
+                    let end = changeStarted.addingTimeInterval(BulbTiming.replyWindow)
                     while !Task.isCancelled, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
                     // Switched off meanwhile: on its own it would switch it back on. Owed instead.
                     guard !Task.isCancelled else { return }
@@ -1478,7 +1485,8 @@ final class Model {
                     }
                     speedSentAt = .now
                     speedAwaited = true // the next setPilot reply is its
-                    bulb.send("setPilot", speedParams, retry: retry, tag: change)
+                    // Tried only within the change's time: none lands after it's been read back.
+                    bulb.send("setPilot", speedParams, retry: retry, tag: change, until: changeStarted.addingTimeInterval(BulbTiming.replyWindow))
                     delayedSpeed = nil // sent: the read-back waits for its answer
                 }
             }
@@ -1933,7 +1941,9 @@ final class Model {
         let ready = canControl && (!reading || pilotReads != reads)
         // Not answering, after a whole wait: the hold starts. Not for a short wait (what was left
         // of a change's time) or a bulb that's answering but refusing.
-        if !ready, timeout >= Self.answerTimeout - 0.01, link != .connected { markNotAnswering() }
+        // Found not answering (its own retries gave up: unreachable): the hold starts. Not for a
+        // wait cut short (what was left of a change's time) while the bulb's still being tried.
+        if !ready, link == .unreachable { markNotAnswering() }
         return ready
     }
 
@@ -1964,8 +1974,9 @@ final class Model {
         verifyTask?.cancel()
         verifyTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
-            // Not before the change is answered, nor before a scene's speed has gone and been.
-            let end = Date().addingTimeInterval(BulbTiming.replyWindow)
+            // Not before the change is answered, nor before a scene's speed has gone and been: all
+            // within the change's time.
+            let end = changeStarted.addingTimeInterval(BulbTiming.replyWindow)
             while retried, !Task.isCancelled, pending, !pilotAnswered || delayedSpeed != nil || speedAwaited, Date() < end {
                 try? await Task.sleep(for: .milliseconds(100))
             }
@@ -1973,6 +1984,7 @@ final class Model {
                 try? await Task.sleep(for: .seconds(0.3 - Date.now.timeIntervalSince(sent)))
             }
             guard !Task.isCancelled, pending else { return } // settled meanwhile (refused, or no answer)
+            bulb.cancelRetries("setPilot") // none of the change's own lands after it's read back
             verifyingSeq = sendSeq
             // This read settles the state; a quiet read still owed for an earlier refusal would
             // only keep a later Sync from saying so.
@@ -1985,6 +1997,9 @@ final class Model {
     /// and whether its answer is still awaited.
     @ObservationIgnored private var speedSentAt: Date?
     @ObservationIgnored private var speedAwaited = false
+    /// When the latest change started: all of it (a scene's speed, the read-back) within the one
+    /// timeout from then.
+    @ObservationIgnored private var changeStarted = Date.distantPast
 
     private func verify(_ result: [String: Any]) {
         var diffs: [String] = []
