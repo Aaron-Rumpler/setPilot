@@ -207,6 +207,8 @@ final class Model {
     @ObservationIgnored private(set) var ticket = 0
     /// What became of recent changes, by number.
     @ObservationIgnored private var results: [Int: ChangeResult] = [:]
+    /// Results this old have been let go (only so many are kept).
+    @ObservationIgnored private var forgottenUpTo = 0
 
     /// A change is going out: the one before, if still unsettled, is settled now (done if it was
     /// answered, its read-back being this one's now; otherwise not known to be done).
@@ -217,6 +219,9 @@ final class Model {
         ticket += 1
         refusal = nil
         pilotAnswered = false
+        // The last change's retries stop: one landing after this would undo it.
+        bulb.cancelRetries("setPilot")
+        bulb.cancelRetries("setState")
     }
 
     /// Records what became of a change (the first word on it counts). No answer at all starts the
@@ -224,7 +229,10 @@ final class Model {
     private func settle(_ t: Int, _ result: ChangeResult) {
         guard t > 0, results[t] == nil else { return }
         results[t] = result
-        if results.count > 64, let oldest = results.keys.min() { results.removeValue(forKey: oldest) }
+        if results.count > 64, let oldest = results.keys.min() {
+            results.removeValue(forKey: oldest)
+            forgottenUpTo = max(forgottenUpTo, oldest)
+        }
         if case .notAnswered = result { markNotAnswering() }
     }
 
@@ -237,8 +245,11 @@ final class Model {
     /// refused, not answered, or not known (another change went before it was answered). Settled
     /// by the bulb's own retries giving up, so the wait is a backstop.
     func result(of t: Int, timeout: Double = Model.answerTimeout * 2) async -> ChangeResult {
+        // Let go of already (many changes since): long settled, but what as isn't kept.
+        if t <= forgottenUpTo, results[t] == nil { return .notKnown("Many changes followed, so what became of this one isn't known.") }
         let end = Date().addingTimeInterval(timeout)
-        while results[t] == nil, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        while results[t] == nil, t > forgottenUpTo, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        if t <= forgottenUpTo, results[t] == nil { return .notKnown("Many changes followed, so what became of this one isn't known.") }
         if results[t] == nil { settle(t, t == ticket ? unanswered : .notAnswered("The bulb didn't answer.")) }
         return results[t] ?? .notAnswered("The bulb didn't answer.")
     }
@@ -304,7 +315,7 @@ final class Model {
                 consoleReply = text
             }
         }
-        bulb.onError = { [weak self] method, message in
+        bulb.onError = { [weak self] method, message, tag in
             guard let self else { return }
             appendLog(.failure, method: method ?? "", text: message)
             Log.bulb.error("\(message, privacy: .public)")
@@ -328,9 +339,11 @@ final class Model {
             // replies: connecting sends four at once, and the others failing would replace
             // getPilot's "isn't answering" (or Local Network access) message with theirs.
             if let method, method != "getPilot", BulbAPI.deviceInfo.contains(method) { return }
+            // About a change since replaced (a superseded one's request): it's been settled already.
+            if let tag, tag != ticket { return }
             // A retry's read (recover) going unanswered: still not answering, as already said.
             if method == "getPilot", link == .unreachable {
-                if verifyingSeq != nil { settle(ticket, unanswered) }
+                if tag == ticket, verifyingSeq != nil { settle(ticket, unanswered) }
                 quietReads = 0
                 pending = false
                 verifyingSeq = nil
@@ -358,7 +371,7 @@ final class Model {
                     }
                     recover()
                 }
-                if verifyingSeq != nil { settle(ticket, unanswered) } // its read-back
+                if tag == ticket, verifyingSeq != nil { settle(ticket, unanswered) } // its read-back
                 pending = false
                 verifyingSeq = nil
             case "setPilot"?:
@@ -458,12 +471,14 @@ final class Model {
 
     /// Called before a change: keeps how the light is now, unless a change was made in the last
     /// moment and a half (then it's part of the same one).
-    func noteUndoPoint() {
+    /// `before`: the light as it was, if it's been changed here already (taken before the change,
+    /// kept only once the change is sure to go).
+    func noteUndoPoint(before: SavedLight? = nil) {
         guard !undoing, canControl else { return }
         let now = Date.now
         defer { lastUndoPoint = now }
         guard now.timeIntervalSince(lastUndoPoint) > 1.5 else { return }
-        undoHistory.append(savedLight)
+        undoHistory.append(before ?? savedLight)
         if undoHistory.count > 20 { undoHistory.removeFirst() }
         redoHistory = []
         registerWithManager(redo: false)
@@ -1230,6 +1245,8 @@ final class Model {
         consoleWaiting = method ?? ""
         consoleReply = nil
         consoleFailure = nil
+        // A change of its own: whatever was waiting on the last one isn't told this one's answer.
+        if method == "setPilot" || method == "setState" { startChange() }
         bulb.sendRaw(text, method: method, retry: retry)
         endConsoleWait(after: retry && method != nil)
         if method == "setPilot" || method == "setState" {
@@ -1298,7 +1315,7 @@ final class Model {
             lastState = isOn
             sendSeq += 1
             pending = true
-            bulb.send(method, sent(p), retry: retry)
+            bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
             scheduleVerify()
         case "setState":
@@ -1310,7 +1327,7 @@ final class Model {
             }
             lastMethod = "setState"
             lastSent = JSONText.compact(p)
-            bulb.send(method, sent(p), retry: retry)
+            bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
         default:
             bulb.send(method, sent(p), retry: retry)
@@ -1411,7 +1428,7 @@ final class Model {
         startChange()
         sendSeq += 1
         pending = true
-        if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
+        if !p.isEmpty { bulb.send("setPilot", p, retry: retry, tag: ticket) }
         // A new colour replaces the scene a delayed speed was for.
         if p.keys.contains(where: { $0 != "state" && $0 != "trans" && $0 != "dimming" }) {
             delayedSpeed?.cancel()
@@ -1423,11 +1440,12 @@ final class Model {
             // On its own, or with only switching on (a speed owed from while it was off): at the
             // same moment. After a scene: once it's started (see below).
             if !p.keys.contains(where: { $0 != "state" && $0 != "trans" }) {
-                bulb.send("setPilot", speedParams, retry: retry)
+                bulb.send("setPilot", speedParams, retry: retry, tag: ticket)
             } else {
                 // After the scene has started (and so retries of the two don't overlap). Not if
                 // another bulb has been chosen meanwhile.
                 let generation = connectGeneration
+                let change = ticket
                 delayedSpeed = Task {
                     try? await Task.sleep(for: .milliseconds(400))
                     // Switched off meanwhile: on its own it would switch it back on. Owed instead.
@@ -1435,9 +1453,12 @@ final class Model {
                     guard isOn != false else {
                         speedOwed = true
                         lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
+                        delayedSpeed = nil
                         return
                     }
-                    bulb.send("setPilot", speedParams, retry: retry)
+                    speedSentAt = .now
+                    bulb.send("setPilot", speedParams, retry: retry, tag: change)
+                    delayedSpeed = nil // sent: the read-back can go once it's had a moment
                 }
             }
         }
@@ -1472,7 +1493,9 @@ final class Model {
     /// False if nothing could be sent (the status, and `refusal`, say why).
     @discardableResult
     func send(_ change: LightChange) -> Bool {
-        if !change.isEmpty { noteUndoPoint() }
+        // The undo point only once it's sure to go: a change that can't be sent leaves undo and
+        // redo as they were.
+        let before = savedLight
         guard !change.isEmpty else {
             status = "Nothing to send"
             refusal = status
@@ -1502,6 +1525,7 @@ final class Model {
         if let fade = change.fade, !p.isEmpty || change.power != nil { p["trans"] = fade }
         // A speed owed from while it was off goes too (transmit holds it again if it stays off).
         if speed == nil, change.colour == nil, speedOwed, mode == .scene { speed = Int(self.speed) }
+        noteUndoPoint(before: before)
         transmit(p, speed: speed, power: change.power, retry: true)
         return true
     }
@@ -1640,7 +1664,7 @@ final class Model {
         sendSeq += 1
         pending = true
         pilotSwitches = false
-        bulb.send("setPilot", p, retry: true)
+        bulb.send("setPilot", p, retry: true, tag: ticket)
         scheduleVerify()
     }
 
@@ -1892,6 +1916,9 @@ final class Model {
         return ready
     }
 
+    /// Whether anything's been heard from the bulb since `date`.
+    func heardSince(_ date: Date) -> Bool { lastHeard > date }
+
     /// A wait for the bulb (or for its answer to a change) came to nothing: for a while, waits
     /// for it fail at once (recentlyNotAnswering).
     func markNotAnswering() {
@@ -1914,14 +1941,26 @@ final class Model {
         verifyTask?.cancel()
         verifyTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
-            guard !Task.isCancelled else { return }
+            // Not before the change is answered (a retry still to go would land after the read,
+            // and be taken as not applied), nor before a scene's speed has gone and had a moment.
+            let end = Date().addingTimeInterval(BulbTiming.replyWindow)
+            while !Task.isCancelled, pending, !pilotAnswered || delayedSpeed != nil, Date() < end {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            if let sent = speedSentAt, Date.now.timeIntervalSince(sent) < 0.3 {
+                try? await Task.sleep(for: .seconds(0.3 - Date.now.timeIntervalSince(sent)))
+            }
+            guard !Task.isCancelled, pending else { return } // settled meanwhile (refused, or no answer)
             verifyingSeq = sendSeq
             // This read settles the state; a quiet read still owed for an earlier refusal would
             // only keep a later Sync from saying so.
             quietReads = 0
-            bulb.send("getPilot", retry: true)
+            bulb.send("getPilot", retry: true, tag: ticket)
         }
     }
+
+    /// When a scene's delayed speed went (scheduleVerify gives it a moment before reading back).
+    @ObservationIgnored private var speedSentAt: Date?
 
     private func verify(_ result: [String: Any]) {
         var diffs: [String] = []
@@ -1964,8 +2003,9 @@ final class Model {
             // replace the error below with "didn't apply"), and nothing is pending any more.
             // A read-back already on its way (the refusal came after it went out) will do.
             let readOut = verifyingSeq != nil && verifyingSeq == sendSeq
-            let wasReadBack = method == "getPilot" && verifyingSeq != nil
-            if method == "setPilot" || method == "setState" || method == "getPilot" {
+            let wasReadBack = method == "getPilot" && readOut
+            // (A refused getPilot only ends the wait if it's the current change's read-back.)
+            if method == "setPilot" || method == "setState" || (method == "getPilot" && readOut) {
                 verifyTask?.cancel()
                 pending = false
                 verifyingSeq = nil

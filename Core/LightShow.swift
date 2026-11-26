@@ -304,6 +304,12 @@ final class LightShowPlayer {
         switch LightShow.parse(data) {
         case .success(let s):
             show = s
+            confirmed = false // this show's flashing hasn't been asked about
+            // A flashing one opened while playing: paused, for Play to ask first.
+            if s.flashes, Flashing.asks, player.rate != 0 {
+                player.pause()
+                restoreNote = "This show flashes quickly: press Play to start it, so you're asked first."
+            }
             showName = url.lastPathComponent
             LastShow.remember(show: url)
             error = nil
@@ -324,6 +330,7 @@ final class LightShowPlayer {
 
     func play() {
         guard player.currentItem != nil else { return }
+        confirmed = true // Play: asked about flashing first, where it flashes (LightShowView)
         if runOver {
             // A new run: the last one's speed still to come (the light left as the show had it)
             // isn't this one's.
@@ -429,9 +436,13 @@ final class LightShowPlayer {
     /// been turned off.
     /// The run has ended or stopped (restore ran) and not started again.
     @ObservationIgnored private var runOver = false
+    /// This show was started with Play (which asks about flashing) since it was opened and last
+    /// stopped.
+    @ObservationIgnored private var confirmed = false
 
     private func restore() {
         runOver = true
+        confirmed = false
         // A speed still to come would switch the bulb back on once it's put back; left as the
         // show has it, the speed still goes (the scene's, sent just before the end).
         if restores {
@@ -468,12 +479,14 @@ final class LightShowPlayer {
         let playing = player.rate != 0
         if playing != isPlaying {
             // Started some other way than Play (a media key, Control Center): still a run.
+            // A flashing show started without Play (a media key, Control Center), which asks first:
+            // paused until Play.
+            if playing, !confirmed, show?.flashes == true, Flashing.asks {
+                player.pause()
+                restoreNote = "This show flashes quickly: press Play to start it, so you're asked first."
+                return
+            }
             if playing, runOver {
-                // A flashing show started without Play (which asks first): paused until Play.
-                if show?.flashes == true, Flashing.asks {
-                    player.pause()
-                    return
-                }
                 runOver = false
                 if saved == nil { restoreNote = nil }
             }

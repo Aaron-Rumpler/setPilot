@@ -80,6 +80,8 @@ final class PhoneRelay: NSObject {
         }
     }
 
+    /// The change number before the command in hand sent its change (set once the bulb's ready).
+    private var sentFrom: Int?
     private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
 
     /// The bulb can take a command now. As everywhere (Model.waitUntilControllable): waits as long
@@ -144,6 +146,7 @@ final class PhoneRelay: NSObject {
             break
         }
         guard await bulbReady(model, asked: asked) else { return .failed(model.snapshot, Self.notAnswering) }
+        sentFrom = model.ticket // after the wait: a change made meanwhile (a Shortcut) isn't this one's
         var pause = Duration.zero
         switch command {
         case .sync:
@@ -337,10 +340,10 @@ extension PhoneRelay: WCSessionDelegate {
         }
         // Not the runner's (it keeps its own): a reason from before isn't this one's.
         if sends, Self.scripted(message.command) == nil { model?.forgetRefusal() }
-        let before = model?.ticket
+        sentFrom = nil
         let outcome = await run(message.command, asked: message.asked)
         // The change this sent, if it sent one (its result is its own, whatever follows).
-        let ticket = model.flatMap { m in before.flatMap { m.ticket != $0 ? m.ticket : nil } }
+        let ticket = model.flatMap { m in sentFrom.flatMap { m.ticket != $0 ? m.ticket : nil } }
         switch outcome {
         case .now(let snapshot):
             finish(message, snapshot)
@@ -351,7 +354,8 @@ extension PhoneRelay: WCSessionDelegate {
         case .settle(let pause):
             Task {
                 try? await Task.sleep(for: pause)
-                await model?.waitUntilSettled()
+                // A change waits on its own result below; anything else, for things to settle.
+                if ticket == nil { await model?.waitUntilSettled() }
                 // What became of the change it sent, as Shortcuts say it: refused, not answered,
                 // not applied, or not known (another change went before it was answered).
                 var why: String?

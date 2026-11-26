@@ -265,15 +265,17 @@ enum Scripting {
             throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
         }
         let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
+        let started = Date.now
         guard await model.waitUntilControllable(timeout: max(left, 0)) else {
-            // Its time ran out waiting its turn or travelling, not the bulb's fault.
-            if left < Model.answerTimeout - 0.01, !model.recentlyNotAnswering, model.link == .connected {
-                throw ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
-            }
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
             // Not if it's just been found not answering (it may still show as connected).
-            if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty {
+            if !model.recentlyNotAnswering, model.link == .connected, model.isOn == nil, !model.status.isEmpty {
                 throw ScriptError(code: .refused, message: model.status)
+            }
+            // Its time ran out waiting its turn or travelling while the bulb was answering: not
+            // the bulb's fault.
+            if left < Model.answerTimeout - 0.01, model.heardSince(started), model.link == .connected {
+                throw ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
             }
             #if os(iOS)
             throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")

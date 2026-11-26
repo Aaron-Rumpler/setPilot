@@ -21,6 +21,10 @@ struct SetPilotMobileApp: App {
         // Through the shared runner, as Shortcuts are: one at a time with them, waiting for the
         // bulb as everything does, and done only once read back as asked (or why not).
         WidgetPerformer.handler = { command in
+            // A preset deleted since the widget last updated: said as the widget would.
+            if case .applyPreset(let id) = command, !Shared.model.library.presets.contains(where: { $0.id == id }) {
+                throw WidgetError(localizedStringResource: "That preset no longer exists.")
+            }
             let script: ScriptCommand = switch command {
             case .applyPreset(let id): .preset(id.uuidString)
             case .power(let on): .power(on)

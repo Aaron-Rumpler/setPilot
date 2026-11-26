@@ -244,7 +244,7 @@ private struct LightShowScreen: View {
                     player.togglePlay()
                 } else {
                     confirmFlashing(player.show?.title ?? player.showName ?? "This light show",
-                                    flashes: player.show?.flashes ?? false) { player.togglePlay() }
+                                    flashes: player.show?.flashes ?? false) { player.play() } // play, whatever it's doing by now
                 }
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")

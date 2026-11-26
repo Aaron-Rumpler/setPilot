@@ -11,8 +11,16 @@ final class Bulb {
     /// Every request as sent (once, not each retry) and every message received, as text, for the log.
     var onSent: ((String, String) -> Void)?
     var onReceived: ((String) -> Void)?
-    /// The failed request's method (nil for the connection itself) and a message to show.
-    var onError: ((String?, String) -> Void)?
+    /// The failed request's method (nil for the connection itself), a message to show, and the
+    /// tag it was sent with (the change it was for).
+    var onError: ((String?, String, Int?) -> Void)?
+    /// Bumped to stop a method's retries still going (a newer change replaces them: a retry
+    /// landing after it would undo it).
+    private var retryGenerations: [String: Int] = [:]
+
+    /// Stops the retries of `method` still under way, without an error: what they were for has
+    /// been replaced.
+    func cancelRetries(_ method: String) { retryGenerations[method, default: 0] += 1 }
     /// The connection is ready again after waiting (Local Network access allowed, the network
     /// back): what was sent meanwhile may not have gone.
     var onReady: (() -> Void)?
@@ -54,7 +62,7 @@ final class Bulb {
                     if let method = obj["method"] as? String { self.replyCount[method, default: 0] += 1 }
                     self.onReply?(obj)
                 }
-                if let error { self.onError?(nil, "Lost the connection to the bulb (\(error))") }
+                if let error { self.onError?(nil, "Lost the connection to the bulb (\(error))", nil) }
             }
         }
         // Failed, or left waiting (no route: the network changed or went away, Local Network
@@ -72,7 +80,7 @@ final class Bulb {
                 if let lost {
                     if waiting { self.waited = true }
                     self.blocked = true
-                    self.onError?(nil, lost)
+                    self.onError?(nil, lost, nil)
                 } else if ready {
                     self.blocked = false
                     if self.waited {
@@ -88,10 +96,11 @@ final class Bulb {
     /// `retry` sends up to 5 times (tryWaits: 0.4 s apart, doubling, capped at 1.5 s; given up on
     /// at about 5.7 s, replyWindow) until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
-    func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
+    /// `tag`: the change it's for, given back with an error about it.
+    func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false, tag: Int? = nil) {
         let key = signingKey
         // Signed afresh for each try: a retry gets its own sigTs, in case the bulb refuses a repeat.
-        transmit(method: method, retry: retry) { RequestSigning.message(method, params: params, key: key) }
+        transmit(method: method, retry: retry, tag: tag) { RequestSigning.message(method, params: params, key: key) }
     }
 
     /// Sends `text` exactly as given (the console's raw mode: it needn't even be valid JSON, and
@@ -100,16 +109,16 @@ final class Bulb {
     /// that method.
     func sendRaw(_ text: String, method: String?, retry: Bool) {
         let data = Data(text.utf8)
-        transmit(method: method, retry: retry && method != nil) { data }
+        transmit(method: method, retry: retry && method != nil, tag: nil) { data }
     }
 
     /// `message` makes the bytes to send, for each try (the log shows the first).
-    private func transmit(method: String?, retry: Bool, message: @escaping () -> Data?) {
+    private func transmit(method: String?, retry: Bool, tag: Int?, message: @escaping () -> Data?) {
         guard let conn, let data = message() else { return }
         let name = method ?? "Raw message"
         // Not queued on a connection that can't send now (see `blocked`): failed straight away.
         guard !blocked else {
-            Task { @MainActor [weak self] in self?.onError?(method ?? "", "\(name): couldn't send (no way to reach the bulb right now)") }
+            Task { @MainActor [weak self] in self?.onError?(method ?? "", "\(name): couldn't send (no way to reach the bulb right now)", tag) }
             return
         }
         onSent?(method ?? "", String(decoding: data, as: UTF8.self))
@@ -121,27 +130,30 @@ final class Bulb {
                 // Not for a connection since replaced (its queued sends are cancelled with it).
                 Task { @MainActor in
                     guard let self, self.conn === conn else { return }
-                    self.onError?(method ?? "", "\(name): couldn't send (\(error))")
+                    self.onError?(method ?? "", "\(name): couldn't send (\(error))", tag)
                 }
             })
             return
         }
 
         let before = replyCount[method, default: 0]
+        let generation = retryGenerations[method, default: 0]
         Task { [weak self] in
             for (attempt, wait) in Bulb.tryWaits.enumerated() {
-                guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
+                guard let self, self.conn === conn, self.replyCount[method, default: 0] == before,
+                      self.retryGenerations[method, default: 0] == generation else { return }
                 guard !self.blocked else {
                     // Can't go now: say so, not "no reply after 5 tries".
-                    self.onError?(method, "\(method): couldn't send (no way to reach the bulb right now)")
+                    self.onError?(method, "\(method): couldn't send (no way to reach the bulb right now)", tag)
                     return
                 }
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))
             }
-            guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
-            self.onError?(method, "\(method): no reply after 5 tries")
+            guard let self, self.conn === conn, self.replyCount[method, default: 0] == before,
+                  self.retryGenerations[method, default: 0] == generation else { return }
+            self.onError?(method, "\(method): no reply after 5 tries", tag)
         }
     }
 

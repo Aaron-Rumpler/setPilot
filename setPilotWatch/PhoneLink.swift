@@ -229,12 +229,21 @@ final class PhoneLink: NSObject {
         // The launch race (the session's on its way), or the iPhone out of reach, often only for a
         // moment: kept until the tap's time is up, then said and dropped, never sent after that.
         guard session.activationState == .activated, session.isReachable else {
+            // Only opening the app (no change): nothing to send later, and nothing to say.
+            guard Self.isChange(url) else { return }
             waitingURLs.append((url, at))
             if let key = Self.pendingKey(url) { pendingCounts[key, default: 0] += 1 }
             dropWhenDue(url, at: at)
             return
         }
+        // Earlier taps still waiting go first, in order (the iPhone's just come back).
+        if !waitingURLs.isEmpty { openWaitingURL() }
         perform(url, at: at)
+    }
+
+    /// Whether a link changes the light (not just opening the app).
+    private static func isChange(_ url: URL) -> Bool {
+        ["preset", "power", "brighter", "dimmer"].contains(url.host() ?? "")
     }
 
     /// The waiting tap, if it's still waiting once its time is up: dropped, saying why.

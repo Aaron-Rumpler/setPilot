@@ -8,6 +8,9 @@ enum QuickBulb {
         guard let host = SharedStore.defaults.string(forKey: SharedStore.addressKey), !host.isEmpty else {
             throw WidgetError(localizedStringResource: "Choose a bulb in setPilot first.")
         }
+        // One timeout for the whole tap, reading included (as anything waits): a change that went
+        // out later would land late.
+        let deadline = Date.now.addingTimeInterval(BulbTiming.answerTimeout)
         var isOn = SharedStore.snapshot?.isOn
         var level = SharedStore.snapshot?.dimming
         // Read it, rather than trust the app's last state (it may have been switched since, from
@@ -18,7 +21,7 @@ enum QuickBulb {
         default: false
         }
         if needsPower {
-            let reply = try await send(host, "getPilot", [:])
+            let reply = try await send(host, "getPilot", [:], by: deadline)
             let result = reply["result"] as? [String: Any]
             isOn = result?["state"] as? Bool
             if let d = (result?["dimming"] as? NSNumber)?.doubleValue { level = d }
@@ -35,7 +38,7 @@ enum QuickBulb {
                 }
                 throw WidgetError(localizedStringResource: "Open setPilot once to update its presets.")
             }
-            _ = try await send(host, "setPilot", params) // no "state": switches the bulb on
+            _ = try await send(host, "setPilot", params, by: deadline) // no "state": switches the bulb on
             remember { s in
                 s.isOn = true
                 if let d = (params["dimming"] as? NSNumber)?.doubleValue { s.dimming = d }
@@ -45,7 +48,7 @@ enum QuickBulb {
             // As the app: setPilot with the controls' fade (setState has none).
             var params: [String: Any] = ["state": on]
             if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
-            _ = try await send(host, "setPilot", params)
+            _ = try await send(host, "setPilot", params, by: deadline)
             remember { $0.isOn = on }
         case .dimDelta(let delta):
             // The new level, worked out from the one just read, not dimDelta: a retry would add the
@@ -55,7 +58,7 @@ enum QuickBulb {
             var params: [String: Any] = ["dimming": Int(target)]
             if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
             if isOn == false { params["state"] = false }
-            _ = try await send(host, "setPilot", params)
+            _ = try await send(host, "setPilot", params, by: deadline)
             remember { $0.dimming = target }
         }
     }
@@ -68,10 +71,13 @@ enum QuickBulb {
         SharedStore.save(s, SharedStore.snapshotKey)
     }
 
-    /// Tried as the app tries (BulbTiming): given up on at the same point.
-    static func send(_ host: String, _ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+    /// Tried as the app tries (BulbTiming), up to `deadline`: nothing goes out after it.
+    static func send(_ host: String, _ method: String, _ params: [String: Any], by deadline: Date) async throws -> [String: Any] {
         let key = SigningKeyStore.get(SigningKeyStore.current)
-        for wait in BulbTiming.tryWaits {
+        for planned in BulbTiming.tryWaits {
+            let left = deadline.timeIntervalSinceNow
+            guard left > 0.05 else { break }
+            let wait = min(planned, left)
             // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
             guard let data = RequestSigning.message(method, params: params, key: key) else {
                 throw WidgetError(localizedStringResource: "Couldn't make the request.")
