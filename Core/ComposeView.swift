@@ -137,6 +137,15 @@ extension Model {
     /// If it can't be sent (a scene or scale in it deleted meanwhile), the draft stays, and the
     /// status says why.
     func sendDraft() {
+        // A flashing custom scene: asked first, as everywhere a person starts one.
+        if case .custom(let id, _)? = draftChange.colour, let scene = library.customScene(id), scene.flashes, Flashing.asks {
+            FlashingRequests.shared.ask(scene.name) { [weak self] in self?.sendDraftNow() }
+            return
+        }
+        sendDraftNow()
+    }
+
+    private func sendDraftNow() {
         guard send(draftChange) else { return }
         draft.loaded = false
         composing = false

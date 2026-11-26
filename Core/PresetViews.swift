@@ -252,7 +252,14 @@ extension Model {
             set: { choice in
                 switch choice {
                 case .builtin(let id): self.setScene(id)
-                case .custom(let id): if let s = self.library.customScene(id) { self.playCustom(s) }
+                case .custom(let id):
+                    guard let s = self.library.customScene(id) else { return }
+                    // Asked first if it flashes, as everywhere a person starts one.
+                    if s.flashes, Flashing.asks {
+                        FlashingRequests.shared.ask(s.name) { _ = self.playCustom(s) }
+                    } else {
+                        _ = self.playCustom(s)
+                    }
                 }
             }
         )

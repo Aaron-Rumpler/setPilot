@@ -639,7 +639,7 @@ struct JSONEditor: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
+        let view = OwnUndoTextView()
         view.delegate = context.coordinator
         view.font = Self.font
         view.backgroundColor = .clear
@@ -701,4 +701,11 @@ struct JSONEditor: UIViewRepresentable {
         }
     }
 }
+/// A text view with an undo manager of its own: replacing its text clears only its own undo, not
+/// the window's (which holds the light's changes).
+private final class OwnUndoTextView: UITextView {
+    private let ownUndo = UndoManager()
+    override var undoManager: UndoManager? { ownUndo }
+}
+
 #endif

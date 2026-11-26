@@ -427,8 +427,9 @@ struct StepChip: View {
         .help(ownTiming ? "Hold \(Self.seconds(step.hold)), then fade \(Self.seconds(step.fade))" : "")
     }
 
-    /// "1.5s", "0.4s", "12s".
+    /// "1.5s", "0.4s", "12s"; under a tenth of a second, "40ms" (not "0s").
     static func seconds(_ ms: Int) -> String {
+        if ms > 0, ms < 100 { return "\(ms)ms" }
         let s = (Double(ms) / 100).rounded() / 10 // tenths first: 1999 is "2s", 9960 "10s"
         return s >= 10 || s == s.rounded() ? "\(Int(s.rounded()))s" : String(format: "%.1fs", s)
     }
