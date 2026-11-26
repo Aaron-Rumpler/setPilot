@@ -91,10 +91,10 @@ final class Model {
         guard !retry else { return }
         let request = consoleRequest
         Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(BulbTiming.answerTimeout)) // as long as anything waits
             guard consoleRequest == request, consoleWaiting != nil else { return }
             consoleWaiting = nil
-            consoleFailure = "No reply within 3 s (sent once: Retry was off, or the message has no method to retry by)"
+            consoleFailure = "No reply within \(Int(BulbTiming.answerTimeout.rounded())) s (sent once: Retry was off, or the message has no method to retry by)"
         }
     }
     var consoleReply: String?
@@ -335,7 +335,7 @@ final class Model {
             guard let self, self.link == .unreachable else { return }
             self.quietReads = 0
             self.bulb.send("getPilot", retry: true)
-            self.registerOnce()
+            if !self.wrongBulb { self.registerOnce() } // not with another device at the address
         }
         network.start()
         // iCloud sync (builds with WIZ_ICLOUD): settings through key-value storage, the library
@@ -641,6 +641,7 @@ final class Model {
     func choose(_ address: String, mac: String? = nil) {
         let a = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !a.isEmpty else { return }
+        notAnsweringSince = nil // chosen (again): worth waiting for
         // Picking the bulb that's already connected changes nothing.
         if a == UserDefaults.standard.string(forKey: Self.addressKey), link == .connected,
            mac == nil || mac?.lowercased() == chosenMAC { return }
@@ -1037,11 +1038,18 @@ final class Model {
     func sync(quiet: Bool = false) {
         // Not answering: Sync tries again now, on a fresh connection.
         if link == .unreachable, let a = UserDefaults.standard.string(forKey: Self.addressKey), !a.isEmpty {
+            if !quiet { status = "Trying again…" } // asked for: something to show it's trying
             retryNow(a)
             return
         }
+        // A change still waiting for its answer keeps waiting (and its read-back): this read is
+        // extra, not the end of it, or the change would be taken as done unanswered.
+        if pending {
+            quietReads += 1
+            bulb.send("getPilot", retry: true)
+            return
+        }
         verifyingSeq = nil
-        pending = false
         if quiet { quietReads += 1 } else { quietReads = 0 } // asked for: this one says so
         bulb.send("getPilot", retry: true)
     }
@@ -1718,14 +1726,14 @@ final class Model {
             startIfSaved()
             return started && !was
         }
-        // Not connected: connect, unless one is still under way (its reads retry for about 14 s,
-        // so starting another on every watch poll only restarts them). One left stuck connecting
+        // Not connected: connect, unless one is still under way (its reads retry for as long as
+        // anything waits, answerTimeout, so starting another on every watch poll only restarts them). One left stuck connecting
         // (the app suspended part way) is redone.
         if link != .connected {
             // Not answering: tried again now on a fresh connection, keeping what's known of it.
             if link == .unreachable, Date.now.timeIntervalSince(lastConnect) > 3 {
                 retryNow(a)
-            } else if link == .none || Date.now.timeIntervalSince(lastConnect) > 15 {
+            } else if link == .none || Date.now.timeIntervalSince(lastConnect) > Self.answerTimeout {
                 connect(a)
             }
             return true
@@ -1801,6 +1809,8 @@ final class Model {
     /// If the state is being read again (see `ensureLive`), waits for that too, so what's sent and
     /// reported starts from the bulb's real state. Just found not answering: false at once.
     func waitUntilControllable(timeout: Double = Model.answerTimeout) async -> Bool {
+        // No bulb chosen: nothing to wait for (and nothing to remember as not answering).
+        guard !(UserDefaults.standard.string(forKey: Self.addressKey) ?? "").isEmpty else { return false }
         if !canControl, recentlyNotAnswering {
             _ = ensureLive() // tried again meanwhile, for the next one
             return false
@@ -1812,13 +1822,15 @@ final class Model {
         if reading {
             while pilotReads == reads && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         }
-        if canControl {
-            notAnsweringSince = nil
-        } else {
-            notAnsweringSince = .now
-            notAnsweringAddress = UserDefaults.standard.string(forKey: Self.addressKey)
-        }
+        if canControl { notAnsweringSince = nil } else { markNotAnswering() }
         return canControl
+    }
+
+    /// A wait for the bulb (or for its answer to a change) came to nothing: for a while, waits
+    /// for it fail at once (recentlyNotAnswering).
+    func markNotAnswering() {
+        notAnsweringSince = .now
+        notAnsweringAddress = UserDefaults.standard.string(forKey: Self.addressKey)
     }
 
     /// Waits until the last change has been read back (or `timeout`).
@@ -1836,7 +1848,9 @@ final class Model {
         let end = Date().addingTimeInterval(timeout)
         while refusal == nil, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if let refusal { return refusal }
-        return pending && !pilotAnswered ? "The bulb didn't answer." : nil
+        guard pending && !pilotAnswered else { return nil }
+        markNotAnswering() // as for a wait that came to nothing: the next ones fail at once
+        return "The bulb didn't answer."
     }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted

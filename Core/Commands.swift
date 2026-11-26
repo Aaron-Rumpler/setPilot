@@ -11,10 +11,18 @@ enum Scripting {
     /// only its own if no other change goes out meanwhile.
     /// `fade`: in ms, for this change (setPilot's trans); nil for the controls' fade, as the app's
     /// own controls send.
+    /// A change that has waited its turn longer than anything waits for the bulb (answerTimeout)
+    /// isn't sent: it would land long after it was asked for. It fails as not answering (the one
+    /// before it is still waiting for the bulb).
     static func run(_ command: ScriptCommand, fade: Int? = nil, on model: Model) async -> ScriptResult {
         let previous = queue
+        let asked = Date.now
         let task = Task { @MainActor () -> ScriptResult in
             _ = await previous?.value
+            if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
+                return ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering,
+                    message: "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."))
+            }
             return await runNow(command, fade: fade, on: model)
         }
         queue = Task { @MainActor in _ = await task.value }
@@ -271,7 +279,10 @@ enum Scripting {
         // taken for no answer.
         await model.waitUntilSettled()
         // Answered, but not read back (yet): not known to be done.
-        if model.pending { throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.") }
+        if model.pending {
+            model.markNotAnswering() // as for no answer at all: the next ones fail at once
+            throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.")
+        }
         if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }
     }
 
@@ -301,6 +312,16 @@ enum Scripting {
         case .customScenes: model.library.customScenes.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .scales: model.library.scales(for: model.chosenMAC).map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .bulbs: model.namedBulbs.map { ScriptItem(name: $0.name ?? "Unnamed bulb", id: $0.mac ?? $0.address) }
+        }
+    }
+}
+
+private extension ScriptCommand {
+    /// Whether it changes the light (or which bulb), rather than only reading.
+    var changes: Bool {
+        switch self {
+        case .get, .list: false
+        default: true
         }
     }
 }

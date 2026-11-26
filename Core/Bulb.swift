@@ -131,7 +131,11 @@ final class Bulb {
         Task { [weak self] in
             for (attempt, wait) in Bulb.tryWaits.enumerated() {
                 guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
-                guard !self.blocked else { break } // can't go now: no reply is coming
+                guard !self.blocked else {
+                    // Can't go now: say so, not "no reply after 5 tries".
+                    self.onError?(method, "\(method): couldn't send (no way to reach the bulb right now)")
+                    return
+                }
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))
