@@ -55,7 +55,9 @@ enum URLCommands {
             guard let level = int("level") ?? int("value") else { return .failure(bad("Give level=1–100.")) }
             return .success(.brightness(level))
         case "brighter", "dimmer":
+            // 1–100: the action says which way (a negative step would go the other).
             let step = int("step") ?? 10
+            guard (1...100).contains(step) else { return .failure(bad("The step is 1–100.")) }
             return .success(.adjustBrightness(action == "brighter" ? step : -step))
         case "colour", "color", "rgbcw":
             let r = int("r") ?? 0, g = int("g") ?? 0, b = int("b") ?? 0, c = int("c") ?? 0, w = int("w") ?? 0

@@ -156,7 +156,18 @@ extension AppDelegate {
         command?.suspendExecution()
         let started = Date.now
         Task { @MainActor in
-            if await model.waitUntilControllable() {
+            // Answering but gone quiet: read now (the app's own re-read may have gone just before,
+            // unanswered), and the value once the bulb's answered it.
+            let ready: Bool
+            if model.canControl {
+                model.sync(quiet: true)
+                let end = started.addingTimeInterval(Model.answerTimeout)
+                while !model.heardSince(started), Date.now < end { try? await Task.sleep(for: .milliseconds(100)) }
+                ready = model.heardSince(started) && model.canControl
+            } else {
+                ready = await model.waitUntilControllable()
+            }
+            if ready {
                 command?.resumeExecution(withResult: value(model))
                 return
             }

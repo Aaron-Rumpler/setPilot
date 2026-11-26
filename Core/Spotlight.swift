@@ -26,7 +26,12 @@ struct OpenCustomSceneIntent: OpenIntent {
         // Started by a person, so asked about first if it flashes (in the app, which this opens).
         let model = Shared.model
         if let scene = model.library.customScene(target.id), model.flashes(scene), Flashing.asks {
-            FlashingRequests.shared.ask(scene.name) { _ = model.playCustom(scene, switchOn: true) }
+            // Once confirmed, through the shared runner (it waits for a bulb the launch is still
+            // connecting to, and the status says why if it doesn't go).
+            let id = target.id.uuidString
+            FlashingRequests.shared.ask(scene.name) {
+                Task { if let error = await Scripting.run(.customScene(id, power: true), on: model).error { model.status = error.message } }
+            }
             return .result()
         }
         _ = try await script(.customScene(target.id.uuidString, power: true))
@@ -49,7 +54,7 @@ struct OpenPresetIntent: OpenIntent {
         let model = Shared.model
         if let preset = model.library.presets.first(where: { $0.id == target.id }),
            model.asksFirst(preset) {
-            FlashingRequests.shared.ask(preset.name) { _ = model.apply(preset) }
+            model.applyAsking(preset)
             return .result()
         }
         _ = try await script(.preset(target.id.uuidString))

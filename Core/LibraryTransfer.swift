@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -59,6 +60,15 @@ extension Library {
         return file
     }
 
+    /// An ID made from another and a bulb's MAC, the same every time (name-based, version 5 style).
+    fileprivate static func bulbsOwnID(_ id: UUID, _ mac: String) -> UUID {
+        var bytes = Array(SHA256.hash(data: Data((id.uuidString + "/" + mac.lowercased()).utf8)).prefix(16))
+        bytes[6] = bytes[6] & 0x0F | 0x50
+        bytes[8] = bytes[8] & 0x3F | 0x80
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
+    }
+
     var exportFile: LibraryFile { LibraryFile(presets: presets, customScenes: customScenes, cctScales: cctScales) }
 
     /// What to do with an incoming item that's already here (the same ID: the same item, shared
@@ -66,7 +76,8 @@ extension Library {
     enum Clash { case replace, keepBoth, skip }
 
     /// How many of `file`'s items are already here.
-    func clashes(_ file: LibraryFile) -> Int {
+    func clashes(_ original: LibraryFile) -> Int {
+        let file = scalesOfOtherBulbsRenumbered(original) // as they'll be merged
         let p = Set(presets.map(\.id)), s = Set(customScenes.map(\.id))
         // Scales per bulb, as they're merged.
         let scaleClashes = file.cctScales.reduce(0) { n, entry in
@@ -76,18 +87,27 @@ extension Library {
         return file.presets.filter { p.contains($0.id) }.count + file.customScenes.filter { s.contains($0.id) }.count + scaleClashes
     }
 
-    /// The file with scales that have the ID of one here for another bulb given new IDs (their
-    /// presets follow), so no two bulbs' scales share one (a preset would find either).
+    /// The file with scales that have the ID of one here for another bulb given IDs of their own
+    /// for this bulb (their presets follow), so no two bulbs' scales share one (a preset would
+    /// find either). The same each time (from the ID and the bulb), so importing it again finds
+    /// the copy rather than making another; named apart from that bulb's other scales.
     fileprivate func scalesOfOtherBulbsRenumbered(_ original: LibraryFile) -> LibraryFile {
         var file = original
         var newIDs: [UUID: UUID] = [:]
         for (mac, list) in file.cctScales {
             let elsewhere = Set(cctScales.filter { $0.key != mac.lowercased() }.values.flatMap { $0.map(\.id) })
+            let here = scales(for: mac)
+            var names = here.map(\.name)
             var renumbered = list
             for i in renumbered.indices where elsewhere.contains(renumbered[i].id) {
-                let new = UUID()
+                let new = Self.bulbsOwnID(renumbered[i].id, mac)
                 newIDs[renumbered[i].id] = new
                 renumbered[i].id = new
+                // Its earlier copy keeps its name (it's replaced, or kept); a new one gets its own.
+                if !here.contains(where: { $0.id == new }) {
+                    renumbered[i].name = unique(renumbered[i].name, in: names)
+                }
+                names.append(renumbered[i].name)
             }
             file.cctScales[mac] = renumbered
         }

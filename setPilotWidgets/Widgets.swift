@@ -265,8 +265,11 @@ struct StatusWidgetView: View {
 
     var body: some View {
         let s = entry.snapshot
-        // On only while it's answering: the status line says "Not answering" for the same state.
+        // Shown on only while it's answering: the status line says "Not answering" for the same state.
         let on = s?.link == .connected && s?.isOn == true
+        // The toggles go by the last known state (WidgetKit sends the toggle's new value), so a
+        // tap switches a bulb that was on, off, even while it isn't answering.
+        let lastOn = s?.isOn == true
         switch family {
         case .systemSmall:
             // Home Screen, StandBy, the Mac's desktop: the bulb, its brightness, and its controls.
@@ -284,9 +287,9 @@ struct StatusWidgetView: View {
                     Button(intent: DimStepIntent(step: 10)) { Image(systemName: "sun.max.fill") }
                         .accessibilityLabel("Brighter")
                     Spacer(minLength: 0)
-                    Toggle(isOn: on, intent: {
+                    Toggle(isOn: lastOn, intent: {
                         let i = PowerToggleIntent()
-                        i.value = !(s?.isOn ?? false) // from the last known state, answering or not
+                        i.value = !lastOn
                         return i
                     }()) {
                         Image(systemName: "power")
@@ -314,9 +317,9 @@ struct StatusWidgetView: View {
                     Text(statusText(s)).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Toggle(isOn: on, intent: {
+                Toggle(isOn: lastOn, intent: {
                     let i = PowerToggleIntent()
-                    i.value = !(s?.isOn ?? false) // from the last known state, answering or not
+                    i.value = !lastOn
                     return i
                 }()) {
                     Image(systemName: on ? "lightbulb.fill" : "lightbulb")

@@ -118,7 +118,8 @@ final class PhoneRelay: NSObject {
         // A scene that flashes quickly is asked about before it plays, which the watch can't do:
         // started on the iPhone instead (not queued there to start later, unasked-for).
         if Flashing.asks, Self.flashes(command, model) {
-            return .failed(model.snapshot, "This flashes quickly. Start it on your iPhone, which asks first.")
+            return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                          error: ScriptError(code: .refused, message: "This flashes quickly. Start it on your iPhone, which asks first.")))
         }
         if let (scripted, fade) = Self.scripted(command) {
             // The runner waits for the bulb as everything does (failing at once just after it's
@@ -171,7 +172,16 @@ final class PhoneRelay: NSObject {
             // Why, as Shortcuts say it (a refusal, too late, or not answering), with its kind.
             return .scripted(ScriptResult(state: Scripting.state(of: model), error: Scripting.notReady(model, left: left, waitStarted: waitStarted)))
         }
+        // Ready, but with too little of its time left for a try and its answer: not sent.
+        let deadline = asked.addingTimeInterval(Model.answerTimeout)
+        let reads = switch command { case .sync, .deviceInfo: true; default: false }
+        if deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0], !reads {
+            return .scripted(ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering, message: Model.tooLate)))
+        }
         sentFrom = model.ticket // after the wait: a change made meanwhile (a Shortcut) isn't this one's
+        // Its tries end with its time, counted from the tap (taken by the change it makes).
+        model.changeDeadline = deadline
+        defer { model.changeDeadline = nil }
         var pause = Duration.zero
         switch command {
         case .sync:
@@ -359,7 +369,14 @@ extension PhoneRelay: WCSessionDelegate {
         }
         // A change asked for longer ago than anything waits for the bulb (it waited its turn
         // here behind others, or the message was slow): not sent, as it would land late.
-        let changes: Bool = { if case .set = message.command { return true }; return sends }()
+        // (A script's is the runner's to refuse, with its own reasons.)
+        let changes: Bool = {
+            switch message.command {
+            case .set: return true
+            case .script: return false
+            default: return sends
+            }
+        }()
         if changes, Date.now.timeIntervalSince(message.asked) > Model.answerTimeout {
             finish(message, model?.snapshot ?? LightSnapshot(), error: "That came too late to send (the bulb was busy or not answering); try again.",
                    code: ScriptError.Code.notAnswering.rawValue)

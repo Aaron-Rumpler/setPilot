@@ -131,7 +131,9 @@ final class WidgetPublisher {
         // Those a tap can't play: the app asks before a flashing scene (a person's tap, which a
         // widget can't ask about).
         publishedAsks = Flashing.asks
-        let flashing = publishedAsks ? model.library.presets.filter { model.flashes($0.colour) }.map(\.id.uuidString) : []
+        // At the fastest speed: the widgets' requests carry no speed, so it plays at the bulb's.
+        let flashing = publishedAsks
+            ? model.library.presets.filter { model.library.customSceneOf($0.colour)?.flashes(atSpeed: 200) == true }.map(\.id.uuidString) : []
         SharedStore.defaults.set(flashing, forKey: SharedStore.flashingPresetsKey)
         SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
         // Only when something they show or send has changed (most library edits, a custom scene's

@@ -244,8 +244,6 @@ enum Scripting {
         let scales = model.library.scales(for: model.chosenMAC).filter { $0.range != nil }
         let scale: CCTScale?
         if let q = scaleQuery {
-            // A scale of that name (or ID) first, so one called "Bulb" can be chosen; then the
-            // bulb's own.
             // A scale with exactly that name (or ID) first, so one called "Bulb" can be chosen; then
             // the bulb's own; then a scale by the start of its name ("bulb" isn't "Bulb default").
             let exact = scales.first { $0.id.uuidString.caseInsensitiveCompare(q) == .orderedSame || $0.name.caseInsensitiveCompare(q) == .orderedSame }
@@ -278,6 +276,10 @@ enum Scripting {
         guard await model.waitUntilControllable(timeout: max(left, 0)) else {
             throw notReady(model, left: left, waitStarted: started)
         }
+        // Ready, but with too little of its time left for a try and its answer: not sent.
+        if let deadline, deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0] {
+            throw ScriptError(code: .notAnswering, message: Model.tooLate)
+        }
     }
 
     /// Why a wait for the bulb (of `left` seconds, from `waitStarted`) came to nothing, the same
@@ -291,7 +293,7 @@ enum Scripting {
         // Its time ran out waiting its turn or travelling while the bulb was answering: not the
         // bulb's fault.
         if left < Model.answerTimeout - 0.01, model.heardSince(started), model.link == .connected {
-            return ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
+            return ScriptError(code: .notAnswering, message: Model.tooLate)
         }
         #if os(iOS)
         return ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")

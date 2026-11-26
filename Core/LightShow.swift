@@ -79,9 +79,18 @@ struct LightShow {
     /// More than 3 changes of the light in some second (Flashing), or a cue that starts an
     /// inline scene that flashes itself (at the cue's speed).
     var flashes: Bool {
-        if cues.contains(where: { cue in
-            (cue.pilot["elm"] as? [String: Any]).map { Flashing.flashes(elm: $0, speed: (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100) } ?? false
-        }) { return true }
+        // At the fastest speed it's played at: speed goes in a cue of its own (just after the
+        // scene's, docs/LIGHT-SHOW.md), so any up to the next cue that changes the light's colour.
+        let looks: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
+        for (i, cue) in cues.enumerated() {
+            guard let elm = cue.pilot["elm"] as? [String: Any] else { continue }
+            var speed = (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100
+            for later in cues.dropFirst(i + 1) {
+                if later.pilot.keys.contains(where: looks.contains) { break }
+                if let v = (later.pilot["speed"] as? NSNumber)?.intValue { speed = max(speed, v) }
+            }
+            if Flashing.flashes(elm: elm, speed: speed) { return true }
+        }
         var start = 0
         for end in cues.indices {
             while cues[end].time - cues[start].time >= 1 { start += 1 }

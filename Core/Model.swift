@@ -246,6 +246,9 @@ final class Model {
         if case .notAnswered = result { markNotAnswering() }
     }
 
+    /// A change whose time ran out before it could go (or be answered), the bulb answering.
+    static let tooLate = "That came too late to send (it waited too long before the bulb could take it); try again."
+
     /// The latest change, unanswered so far (or its read-back unanswered): as no answer.
     private var unanswered: ChangeResult {
         pilotAnswered ? .notAnswered("The bulb took the change but didn't answer the read-back.") : .notAnswered("The bulb didn't answer.")
@@ -257,7 +260,10 @@ final class Model {
     func result(of t: Int, timeout: Double = Model.answerTimeout * 2) async -> ChangeResult {
         // Let go of already (many changes since): long settled, but what as isn't kept.
         if t <= forgottenUpTo, results[t] == nil { return .notKnown("Many changes followed, so what became of this one isn't known.") }
-        let end = Date().addingTimeInterval(timeout)
+        // At least until the latest change's read-back has had its own time (it may go as late
+        // as the change's end), with a moment over.
+        var end = Date().addingTimeInterval(timeout)
+        if t == ticket { end = max(end, changeEnd.addingTimeInterval(Self.answerTimeout + 1)) }
         while results[t] == nil, t > forgottenUpTo, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if t <= forgottenUpTo, results[t] == nil { return .notKnown("Many changes followed, so what became of this one isn't known.") }
         if results[t] == nil { settle(t, t == ticket ? unanswered : .notAnswered("The bulb didn't answer.")) }
@@ -889,7 +895,9 @@ final class Model {
         lastConnect = .now
         // A change still waiting for its answer loses its retries with the old connection: said
         // now (and a switch put back), and the read below shows how the light is.
-        abandonUnanswered("The connection was made afresh before the bulb answered the change.")
+        abandonUnanswered("The connection was made afresh before the bulb answered, so it isn't known whether it took the change.", unknown: true)
+        // A read-back under way loses its retries too: asked again, as its own.
+        let readingBack = verifyingSeq != nil && pending
         bulb.connect(to: a) // the old connection's retries stop, unanswered: asked again below
         if consoleWaiting != nil {
             consoleWaiting = nil
@@ -906,8 +914,13 @@ final class Model {
                 }
             }
         }
-        if quiet { quietReads += 1 } else { quietReads = 0 }
-        bulb.send("getPilot", retry: true)
+        if readingBack {
+            quietReads = 0
+            bulb.send("getPilot", retry: true, tag: ticket)
+        } else {
+            if quiet { quietReads += 1 } else { quietReads = 0 }
+            bulb.send("getPilot", retry: true)
+        }
         if !wrongBulb { registerOnce() } // not with another device at the address
     }
 
@@ -1353,6 +1366,7 @@ final class Model {
                 lastState = s
             }
             lastMethod = "setState"
+            stateTicket = ticket
             lastSent = JSONText.compact(p)
             bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
@@ -2022,13 +2036,23 @@ final class Model {
 
     /// The latest change went unanswered and its tries stopped without saying so (cut off by its
     /// time, or by a fresh connection): settled as not answered, as its retries giving up would.
-    private func abandonUnanswered(_ message: String = "The bulb didn't answer.") {
+    /// `unknown`: its tries were cut short (a fresh connection), not given up on: not known, so
+    /// not taken for the bulb not answering, and the read that follows shows the light.
+    private func abandonUnanswered(_ message: String = "The bulb didn't answer.", unknown: Bool = false) {
         guard pending, !pilotAnswered else { return }
         bulb.cancelRetries("setPilot")
         delayedSpeed?.cancel()
         delayedSpeed = nil
         pending = false
         verifyingSeq = nil
+        // Cut short by its own time (asked for earlier, a Shortcut that waited for the bulb):
+        // too late, not the bulb not answering.
+        let cut = changeEnd < changeStarted.addingTimeInterval(BulbTiming.replyWindow - 0.05)
+        if unknown || cut {
+            settle(ticket, .notKnown(cut && !unknown ? Self.tooLate : message))
+            pilotSwitches = false
+            return
+        }
         refusal = message
         status = message
         settle(ticket, .notAnswered(message))
@@ -2047,6 +2071,8 @@ final class Model {
     /// When the latest change started: all of it (a scene's speed, the read-back) within the one
     /// timeout from then.
     @ObservationIgnored private var changeStarted = Date.distantPast
+    /// The console setState's change (its reply is its only while it's still the latest).
+    @ObservationIgnored private var stateTicket = 0
     /// When the latest change's tries end (startChange).
     @ObservationIgnored private var changeEnd = Date.distantPast
     /// Set by the shared runner just before a change it makes: when it has to have gone by
@@ -2096,7 +2122,9 @@ final class Model {
             let readOut = verifyingSeq != nil && verifyingSeq == sendSeq
             let wasReadBack = method == "getPilot" && readOut
             // (A refused getPilot only ends the wait if it's the current change's read-back.)
-            if method == "setPilot" || method == "setState" || (method == "getPilot" && readOut) {
+            // A setState's only while it's still the latest change (replies carry no ID).
+            let ownState = method == "setState" && ticket == stateTicket
+            if method == "setPilot" || ownState || (method == "getPilot" && readOut) {
                 verifyTask?.cancel()
                 pending = false
                 verifyingSeq = nil
@@ -2114,7 +2142,7 @@ final class Model {
             } else if method == "getPilot" {
                 quietReads = 0 // refused too: nothing to keep quiet
             }
-            if method == "setState" { // as when it doesn't answer: the switch didn't happen
+            if ownState { // as when it doesn't answer: the switch didn't happen
                 isOn = powerBefore
                 lastState = powerBefore
             }
@@ -2142,7 +2170,7 @@ final class Model {
                 liveStatus = "Live updates off — \(text)"
                 return
             }
-            if method == "setPilot" || method == "setState" {
+            if method == "setPilot" || ownState {
                 refusal = "\(method): \(text)"
                 settle(ticket, .refused("\(method): \(text)"))
             } else if wasReadBack {
@@ -2203,7 +2231,7 @@ final class Model {
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             status = isOn == false ? "Switched off" : "Switched on"
-            settle(ticket, .done) // nothing to read back for setState
+            if ticket == stateTicket { settle(ticket, .done) } // nothing to read back for setState
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {
                 live = true

@@ -70,6 +70,7 @@ enum QuickBulb {
     /// update it), so they don't snap back when reloaded and the next tap starts from it.
     private static func remember(_ change: (inout LightSnapshot) -> Void) {
         guard var s = SharedStore.snapshot else { return }
+        s.link = .connected // it's just answered
         change(&s)
         SharedStore.save(s, SharedStore.snapshotKey)
     }

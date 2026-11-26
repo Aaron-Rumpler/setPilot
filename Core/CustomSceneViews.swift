@@ -52,6 +52,10 @@ struct CustomSceneEditor: View {
                         if warnsFlashing, Flashing.flashes(binding.wrappedValue) {
                             Label(Flashing.warning, systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
+                        } else if warnsFlashing, Flashing.flashes(binding.wrappedValue, speed: 200) {
+                            // As timed it doesn't; played faster (a speed over 100) it can.
+                            Label(Flashing.fasterWarning, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
                         }
                         Text("The bulb steps through these in order and repeats. Changes take effect the next time it's played. The bulb can't store or read back setPilot's scenes, so they're kept on this device.")
                     }

@@ -123,6 +123,11 @@ extension Model {
             // Once confirmed, through the shared runner: it waits for the bulb if need be (a quick
             // action that launched the app), and the status says why if it doesn't go.
             FlashingRequests.shared.ask(preset.name) { [self] in
+                // What was asked about: not a preset edited or deleted meanwhile.
+                guard library.presets.first(where: { $0.id == preset.id }) == preset else {
+                    status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
+                    return
+                }
                 Task { if let error = await Scripting.run(.preset(preset.id.uuidString), on: self).error { status = error.message } }
             }
         } else {
