@@ -1781,7 +1781,7 @@ final class Model {
 
     /// How long anything waits for the bulb (a widget, Shortcut, link, the CLI, AppleScript, the
     /// watch): as long as a request is retried before it's given up on, and a moment more.
-    static let answerTimeout = Bulb.replyWindow + 0.3
+    static let answerTimeout = BulbTiming.answerTimeout
 
     /// When waiting for the bulb last came to nothing, and at which address. For 10 s after, waits
     /// for it fail at once rather than waiting their turn to find out again: a burst of taps (or
@@ -1792,7 +1792,7 @@ final class Model {
 
     /// Just found not answering, and still the same bulb (another one is worth waiting for).
     var recentlyNotAnswering: Bool {
-        guard let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10,
+        guard let since = notAnsweringSince, Date.now.timeIntervalSince(since) < BulbTiming.notAnsweringHold,
               notAnsweringAddress == UserDefaults.standard.string(forKey: Self.addressKey) else { return false }
         return true
     }

@@ -88,15 +88,20 @@ final class PhoneLink: NSObject {
         }
         // What's waiting for the iPhone and bulb to confirm, for its spinner.
         let key = Self.pendingKey(command)
-        if let key { pending.insert(key) }
+        if let key { pendingCounts[key, default: 0] += 1 }
         transmit(command, quiet: quiet) { [weak self] ok in
-            if let key { self?.pending.remove(key) }
+            if let key, let self {
+                // Counted: the same one tapped twice spins until the last has answered.
+                let left = (self.pendingCounts[key] ?? 1) - 1
+                self.pendingCounts[key] = left > 0 ? left : nil
+            }
             done?(ok)
         }
     }
 
     /// What's being confirmed: a preset's or custom scene's ID, "power" or "brightness".
-    private(set) var pending: Set<String> = []
+    var pending: Set<String> { Set(pendingCounts.keys) }
+    private var pendingCounts: [String: Int] = [:]
 
     private static func pendingKey(_ command: WatchCommand) -> String? {
         switch command {
@@ -201,30 +206,34 @@ final class PhoneLink: NSObject {
     /// The app is in the foreground (screen on, app showing). Only then does it poll the iPhone.
     var isActive = true
 
-    /// A complication tap that arrived before the link to the iPhone was up (the app launched
-    /// by it): acted on once the session is reachable, if that's within half a minute.
+    /// A complication or control tap that arrived before the link to the iPhone was up (the app
+    /// launched by it): acted on once the session is up, if that's soon (BulbTiming.answerTimeout
+    /// from the tap, as any wait). Never once it's been said that the iPhone can't be reached: a
+    /// change mustn't land late.
     private var waitingURL: (url: URL, at: Date)?
 
-    /// Links from the complications.
-    func open(_ url: URL) {
+    /// Links from the complications and controls; `at` is when it was tapped.
+    func open(_ url: URL, at: Date = .now) {
         guard url.scheme == "setpilot" else { return }
         let session = WCSession.default
-        if session.activationState != .activated || !session.isReachable {
-            waitingURL = (url, .now)
-            // Unreachable for real: say so now, rather than leave the tap looking ignored.
-            if session.activationState == .activated {
-                error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
-            }
+        guard Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else { return } // too long ago
+        if session.activationState != .activated {
+            waitingURL = (url, at) // the launch race: the session's on its way
+            return
+        }
+        guard session.isReachable else {
+            waitingURL = nil
+            error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
             return
         }
         perform(url)
     }
 
-    /// Acts on a complication tap that was waiting for the iPhone.
+    /// Acts on a tap that was waiting for the session to come up.
     private func openWaitingURL() {
         guard let waiting = waitingURL else { return }
         waitingURL = nil
-        if Date.now.timeIntervalSince(waiting.at) < 30 { perform(waiting.url) }
+        open(waiting.url, at: waiting.at)
     }
 
     private func perform(_ url: URL) {

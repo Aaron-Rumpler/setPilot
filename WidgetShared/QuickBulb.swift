@@ -68,15 +68,15 @@ enum QuickBulb {
         SharedStore.save(s, SharedStore.snapshotKey)
     }
 
-    /// Up to three tries, a second each.
+    /// Tried as the app tries (BulbTiming): given up on at the same point.
     static func send(_ host: String, _ method: String, _ params: [String: Any]) async throws -> [String: Any] {
         let key = SigningKeyStore.get(SigningKeyStore.current)
-        for _ in 0..<3 {
+        for wait in BulbTiming.tryWaits {
             // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
             guard let data = RequestSigning.message(method, params: params, key: key) else {
                 throw WidgetError(localizedStringResource: "Couldn't make the request.")
             }
-            guard let reply = await attempt(host, data) else { continue }
+            guard let reply = await attempt(host, data, wait: wait) else { continue }
             // An answer, but a refusal (a parameter this firmware doesn't take, say): no use retrying.
             if let error = reply["error"] as? [String: Any] {
                 let message = error["message"] as? String ?? (error["code"] as? Int).map { "error \($0)" } ?? "an error"
@@ -87,7 +87,7 @@ enum QuickBulb {
         throw WidgetError(localizedStringResource: "The bulb didn't answer.")
     }
 
-    private static func attempt(_ host: String, _ data: Data) async -> [String: Any]? {
+    private static func attempt(_ host: String, _ data: Data, wait: Double) async -> [String: Any]? {
         let conn = NWConnection(host: NWEndpoint.Host(host), port: 38899, using: .udp)
         let box = ReplyBox()
         return await withCheckedContinuation { (cont: CheckedContinuation<[String: Any]?, Never>) in
@@ -99,7 +99,7 @@ enum QuickBulb {
                 box.finish(obj)
                 conn.cancel()
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + wait) {
                 box.finish(nil)
                 conn.cancel()
             }

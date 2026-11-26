@@ -31,11 +31,9 @@ final class Bulb {
     /// out whenever it comes back, long after they were meant, so they're refused instead.
     private var blocked = false
 
-    /// When each try of a retried request goes, after the one before (the first at once).
-    static let tryWaits: [Double] = [0.4, 0.8, 1.5, 1.5, 1.5]
-    /// How long a retried request has to be answered before it's given up on: the time every
-    /// wait for the bulb is measured by (Model.answerTimeout).
-    static let replyWindow = tryWaits.reduce(0, +)
+    /// The retry schedule (BulbTiming, shared with the widgets and the watch).
+    static let tryWaits = BulbTiming.tryWaits
+    static let replyWindow = BulbTiming.replyWindow
 
     func connect(to host: String) {
         conn?.cancel()

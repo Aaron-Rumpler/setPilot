@@ -390,7 +390,9 @@ final class LightShowPlayer {
         // the media, and a cue at the very end may fall after the last tick): sent now, as they'd
         // have been, unless the light's put back anyway.
         let end = duration + max(delay, 0) / 1000
-        if sentUpTo == nil, let show, !show.cues.isEmpty {
+        // (Only a seek to the end: Stop, a tapped cue or a new show also clear sentUpTo, and one of
+        // those just before the end notification isn't at the end.)
+        if sentUpTo == nil, time >= duration - 0.05, let show, !show.cues.isEmpty {
             // A seek still landing as it ended (dragged or tapped to the very end): the state
             // there, sent unless the light's put back anyway, and shown either way.
             if restores { showPosition(at: duration) } else { catchUp(to: end, in: show) }
@@ -609,7 +611,9 @@ final class LightShowPlayer {
         guard sendsToBulb else { return }
         // The first cue sent: remember the light to put back (whether it's put back is decided
         // when the show stops).
-        if saved == nil { saved = model.savedLight; restoreNote = nil }
+        // Not for a follow-up speed: one after the run has ended (the light not put back) isn't
+        // the start of a new one.
+        if saved == nil, !followUp { saved = model.savedLight; restoreNote = nil }
         model.sendLightCue(pilot)
         // On (a setPilot without "state": false switches it on), with a speed waiting: send it.
         // (A fade on its own isn't taken as switching it on, as elsewhere.)

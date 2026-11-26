@@ -9,7 +9,7 @@ struct SetPilotWatchApp: App {
         PhoneLink.shared.start()
         // The controls' links (Common/WatchControls.swift), now and from before the app was running.
         WatchLinkInbox.handler = { PhoneLink.shared.open($0) }
-        if let url = WatchLinkInbox.take() { PhoneLink.shared.open(url) }
+        if let link = WatchLinkInbox.take() { PhoneLink.shared.open(link.url, at: link.at) }
         WatchShortcuts.updateAppShortcutParameters() // the preset names Siri knows, from the last context
     }
 
@@ -26,7 +26,7 @@ struct SetPilotWatchApp: App {
             link.isActive = new == .active
             if new == .active {
                 link.refresh()
-                if let url = WatchLinkInbox.take() { link.open(url) } // a control's, left while the app wasn't running
+                if let left = WatchLinkInbox.take() { link.open(left.url, at: left.at) } // a control's, left while the app wasn't running
             }
         }
     }
@@ -179,12 +179,18 @@ struct PowerRow: View {
     /// The switch as tapped, until the iPhone answers (or its next state comes): it doesn't jump
     /// back meanwhile.
     @State private var asked: Bool?
+    /// Switches sent and not answered yet: `asked` stays until the last has.
+    @State private var sending = 0
 
     var body: some View {
         let s = link.snapshot
         Toggle(isOn: Binding(get: { asked ?? s?.isOn ?? false }, set: { on in
             asked = on
-            link.send(.power(on)) { _ in asked = nil }
+            sending += 1
+            link.send(.power(on)) { _ in
+                sending -= 1
+                if sending == 0 { asked = nil }
+            }
         })) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(s?.bulbName ?? "Bulb").lineLimit(1)

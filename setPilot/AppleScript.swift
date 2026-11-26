@@ -125,17 +125,30 @@ extension AppDelegate {
     /// made-up value (`set power to not power` on a bulb not read yet would go the wrong way).
     private func readForScript(_ value: @escaping (Model) -> NSNumber) -> Any {
         let model = Shared.model
-        if model.isOn != nil { return value(model) }
+        if model.canControl { return value(model) } // answering: what it is now
         let command = NSScriptCommand.current()
+        func fail(_ code: ScriptError.Code, _ message: String) {
+            command?.scriptErrorNumber = 1000 + Int(ScriptError(code: code, message: message).exitCode)
+            command?.scriptErrorString = message
+        }
+        // The same reasons, in the same order, as the commands (Scripting.ready).
+        guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
+            fail(.noBulb, "Choose a bulb in setPilot first.")
+            return NSNumber(value: 0)
+        }
         command?.suspendExecution()
         Task { @MainActor in
-            if await model.waitUntilControllable(), model.isOn != nil {
+            if await model.waitUntilControllable() {
                 command?.resumeExecution(withResult: value(model))
-            } else {
-                command?.scriptErrorNumber = 1000 + Int(ScriptError(code: .notAnswering, message: "").exitCode)
-                command?.scriptErrorString = "The bulb isn't answering, so its state isn't known."
-                command?.resumeExecution(withResult: nil)
+                return
             }
+            // Answering but refusing to say how it is (a wrong signing key, say): that reason.
+            if model.link == .connected, !model.status.isEmpty {
+                fail(.refused, model.status)
+            } else {
+                fail(.notAnswering, "The bulb isn't answering, so its state isn't known.")
+            }
+            command?.resumeExecution(withResult: nil)
         }
         return NSNumber(value: 0) // replaced by the result above
     }

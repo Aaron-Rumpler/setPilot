@@ -118,9 +118,22 @@ struct PresetGrid: View {
         return [GridItem(.adaptive(minimum: tileWidth), spacing: 8)]
     }
 
+    /// Swaps a preset with its neighbour among the tiles shown (looked up now, by ID).
+    private func move(_ id: UUID, by offset: Int) {
+        let lib = model.library
+        let shown = featuredOnly ? lib.presets.favourites : lib.presets
+        guard let i = shown.firstIndex(where: { $0.id == id }), shown.indices.contains(i + offset) else { return }
+        let other = shown[i + offset].id
+        guard let a = lib.presets.firstIndex(where: { $0.id == id }),
+              let b = lib.presets.firstIndex(where: { $0.id == other }) else { return }
+        lib.presets.swapAt(a, b)
+    }
+
     @ViewBuilder private func menu(for preset: Preset) -> some View {
         let lib = model.library
-        let i = lib.presets.firstIndex(where: { $0.id == preset.id }) ?? 0
+        // Moves among the tiles shown: with only favourites showing, past the next favourite.
+        let shown = featuredOnly ? lib.presets.favourites : lib.presets
+        let i = shown.firstIndex(where: { $0.id == preset.id }) ?? 0
         Button("Rename…") {
             newName = preset.name
             promptIsRename[preset.id] = true
@@ -139,8 +152,8 @@ struct PresetGrid: View {
         Divider()
         // By ID, not the index the menu was built with: the presets can change while it's open
         // (iCloud, or the watch).
-        Button("Move Left") { model.movePreset(preset.id, by: -1) }.disabled(i == 0)
-        Button("Move Right") { model.movePreset(preset.id, by: 1) }.disabled(i >= lib.presets.count - 1)
+        Button("Move Left") { move(preset.id, by: -1) }.disabled(i == 0)
+        Button("Move Right") { move(preset.id, by: 1) }.disabled(i >= shown.count - 1)
         Divider()
         Button("Delete…", role: .destructive) {
             promptIsRename[preset.id] = false

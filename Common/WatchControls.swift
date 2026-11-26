@@ -39,15 +39,16 @@ enum WatchLinkInbox {
         }
     }
 
-    /// A link left for the app, once, if it's recent: a tap from minutes ago isn't what's wanted now.
-    static func take() -> URL? {
+    /// A link left for the app, once, with when it was tapped (the app drops it if that's too
+    /// long ago: a change mustn't land late).
+    static func take() -> (url: URL, at: Date)? {
         let defaults = SharedStore.defaults
         guard let link = defaults.string(forKey: key) else { return nil }
         let at = defaults.double(forKey: key + ".at")
         defaults.removeObject(forKey: key)
         defaults.removeObject(forKey: key + ".at")
-        guard Date.now.timeIntervalSince1970 - at < 30 else { return nil }
-        return URL(string: link)
+        guard let url = URL(string: link) else { return nil }
+        return (url, Date(timeIntervalSince1970: at))
     }
 }
 #endif

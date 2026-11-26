@@ -57,7 +57,10 @@ enum WidgetPerformer {
     @MainActor
     static func perform(_ command: WidgetCommand) async throws {
         if let handler {
+            // In the app: it reloads what changed itself (WidgetPublisher), and WidgetKit the
+            // widget that ran this.
             try await handler(command)
+            return
         } else {
             try await QuickBulb.perform(command)
         }
