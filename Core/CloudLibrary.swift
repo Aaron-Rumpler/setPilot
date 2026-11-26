@@ -153,6 +153,9 @@ final class CloudLibrary {
         var household: SharedZone
         var addMine: Bool
         var leaving: [SharedZone]
+        /// The account's other devices have been told (the leave records and the join record
+        /// written): only the leaving and switching are left.
+        var told: Bool? = nil
     }
 
     /// A household membership of this device: which, the join it was (if known), and since when.
@@ -663,37 +666,45 @@ final class CloudLibrary {
         let household = SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName)
         let olds = others.map { SharedZone(zoneName: $0.zoneName, ownerName: $0.ownerName) }
         // In it now: kept until it's through (a quit part way is finished at launch).
-        saved.joiningTo = JoinIntent(household: household, addMine: addMine, leaving: olds)
+        let intent = JoinIntent(household: household, addMine: addMine, leaving: olds)
+        saved.joiningTo = intent
         persist()
-        // What's here sent to the account's own library first (best effort): replaced here, it
-        // would otherwise be lost, and the other devices couldn't be asked about it.
-        _ = await syncOwn()
+        guard let record = await tell(intent, changes: changes) else { return }
         guard accountChanges == changes else { return }
-        // Leaving others for this: said for each, so the account's devices in them follow here
-        // when they find them gone (this device's own handling of its going is join()'s).
-        for old in olds {
+        await completeJoin(household, addMine: addMine, leaving: olds, record: record)
+    }
+
+    /// The account's other devices told of a join (`intent`): what's here sent to the own library
+    /// first (replaced here, it would otherwise be lost), a leave record for each household left
+    /// for it (so the devices in them follow here), the join record (how, and what this library
+    /// had), and one for a household this device was asked about. The join record, or nil if it
+    /// couldn't be done (the join's undone if the old ones couldn't be told).
+    private func tell(_ intent: JoinIntent, changes: Int) async -> HouseholdJoin?? {
+        let household = intent.household
+        _ = await syncOwn()
+        guard accountChanges == changes else { return nil }
+        for old in intent.leaving {
             let was = membership.flatMap { $0.zone == old ? $0 : nil } ?? Membership(zone: old, joinID: nil, joinedAt: nil)
             var leave = HouseholdLeave(zone: old, joinID: was.joinID, mode: .joined(household), at: .now)
-            leave.addMine = addMine
+            leave.addMine = intent.addMine
             let read = await readRecord(Self.leaveRecordName(old))
-            guard accountChanges == changes else { return }
+            guard accountChanges == changes else { return nil }
             guard !read.failed, await saveRecord(Self.leaveRecordName(old), type: Self.leaveRecordType, leave, over: read.record) == .saved else {
                 // Not in two at once: the new one's left again, to be joined once this can go.
-                _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: zone)
+                _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: CKRecordZone.ID(zoneName: household.zoneName, ownerName: household.ownerName))
                 saved.joiningTo = nil
+                if case .joined(household)? = saved.leaving?.mode { saved.leaving = nil }
                 persist()
                 status = "Couldn't leave your current household to join this one: check you're online, and try again"
-                return
+                return nil
             }
             if saved.shared == old {
                 saved.leaving = leave
                 persist()
             }
         }
-        // How it was joined and what this library had (before the old ones are left, so those
-        // in them find it when they follow); not written if they couldn't be told.
-        let record = await leaveJoinRecord(household, addMine: addMine)
-        guard accountChanges == changes else { return }
+        let record = await leaveJoinRecord(household, addMine: intent.addMine)
+        guard accountChanges == changes else { return nil }
         // Put out of one and asked about it: the account's other devices follow here instead
         // (once the join record's there for them). Not over an answer another device gave.
         if let put = saved.leftQuestion {
@@ -701,12 +712,44 @@ final class CloudLibrary {
             let answered = read.decoded(HouseholdLeave.self).map { $0.ends(put) && !$0.isJoin } ?? false
             if !read.failed, !answered {
                 var leave = HouseholdLeave(zone: put.zone, joinID: put.joinID, mode: .joined(household), at: .now)
-                leave.addMine = addMine
+                leave.addMine = intent.addMine
                 _ = await saveRecord(Self.leaveRecordName(put.zone), type: Self.leaveRecordType, leave, over: read.record)
             }
         }
-        guard accountChanges == changes else { return }
-        await completeJoin(household, addMine: addMine, leaving: olds, record: record)
+        guard accountChanges == changes, saved.joiningTo?.household == household else { return nil }
+        saved.joiningTo?.told = true
+        persist()
+        return record
+    }
+
+    /// A join stopped part way (relaunched): the telling redone if it hadn't got through, then
+    /// the rest. Not while a lookup could take it over (`joining`).
+    private func resumeJoin(_ intent: JoinIntent) async {
+        guard !joining else { return }
+        joining = true
+        defer { joining = false }
+        let changes = accountChanges
+        guard let zones = try? await container.sharedCloudDatabase.allRecordZones(), accountChanges == changes,
+              saved.joiningTo == intent else { return }
+        guard zones.contains(where: { $0.zoneID.zoneName == intent.household.zoneName && $0.zoneID.ownerName == intent.household.ownerName }) else {
+            saved.joiningTo = nil // not there after all
+            persist()
+            return
+        }
+        if saved.shared == intent.household {
+            saved.joiningTo = nil // through already
+            persist()
+            return
+        }
+        let record: HouseholdJoin?
+        if intent.told == true {
+            record = await readRecord(Self.joinRecordName).decoded(HouseholdJoin.self, key: "join").flatMap { $0.zone == intent.household ? $0 : nil }
+        } else {
+            guard let told = await tell(intent, changes: changes) else { return }
+            record = told
+        }
+        guard accountChanges == changes, saved.joiningTo?.household == intent.household else { return }
+        await completeJoin(intent.household, addMine: intent.addMine, leaving: intent.leaving, record: record)
     }
 
     /// The rest of a join (and again at launch, if it didn't get through): the old households
@@ -839,7 +882,7 @@ final class CloudLibrary {
     private func lookUpHousehold(after choice: AccountChoice?) async -> HouseholdLookup {
         // Not while the question about another Apple ID is open: this device's library is
         // decided on first (answering it looks again).
-        guard !joining, saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil, engine != nil else { return .skipped }
+        guard !joining, saved.joiningTo == nil, saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil, engine != nil else { return .skipped }
         guard let zones = try? await container.sharedCloudDatabase.allRecordZones() else { return .skipped }
         guard saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil else { return .skipped } // joined (or switched) meanwhile
         let households = zones.filter { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName }
@@ -1197,26 +1240,29 @@ final class CloudLibrary {
         // Left for another household, and stopped part way (relaunched): the join's finished
         // here (it was accepted), or, not there after all, asked as if put out.
         if case .joined(let target) = leave.mode {
-            guard !joining, let zones = try? await container.sharedCloudDatabase.allRecordZones(), saved.leaving == leave else { return }
+            // The join's noted: that's what's finished (all the households left for it).
+            if let intent = saved.joiningTo, intent.household == target { return await resumeJoin(intent) }
+            guard !joining, let zones = try? await container.sharedCloudDatabase.allRecordZones(), saved.leaving == leave,
+                  accountChanges == changes else { return }
             let was = membership ?? Membership(zone: leave.zone, joinID: leave.joinID, joinedAt: nil)
             if zones.contains(where: { $0.zoneID.zoneName == target.zoneName && $0.zoneID.ownerName == target.ownerName }) {
                 let read = await readRecord(Self.joinRecordName)
                 // (How it was joined is known from the leave; the record only to keep.)
                 guard !read.failed || leave.addMine != nil else { return } // tried again later
                 let record = read.decoded(HouseholdJoin.self, key: "join").flatMap { $0.zone == target ? $0 : nil }
-                guard saved.leaving == leave else { return }
+                guard saved.leaving == leave, accountChanges == changes else { return }
                 // The old one left (or left to try again), then in, as it was joined.
                 let old = CKRecordZone.ID(zoneName: leave.zone.zoneName, ownerName: leave.zone.ownerName)
                 var stillIn: [SharedZone] = []
                 if zones.contains(where: { $0.zoneID == old }) {
                     if (try? await container.sharedCloudDatabase.deleteRecordZone(withID: old)) == nil { stillIn.append(leave.zone) }
                 }
-                guard saved.leaving == leave else { return }
+                guard saved.leaving == leave, accountChanges == changes else { return }
                 let addMine = leave.addMine ?? record?.addMine ?? true
                 if !addMine { clearLibraryHere() }
                 switchLibrary(to: target, join: record)
                 if !stillIn.isEmpty {
-                    saved.toLeave = stillIn
+                    saved.toLeave = Array(Set((saved.toLeave ?? []) + stillIn))
                     persist()
                 }
             } else {
@@ -1400,18 +1446,7 @@ final class CloudLibrary {
             persist()
         }
         // A join stopped part way (accepted): finished, if the household's still there.
-        if let intent = saved.joiningTo, saved.leaving == nil {
-            guard let zones = try? await container.sharedCloudDatabase.allRecordZones() else { return }
-            guard saved.joiningTo == intent, !joining else { return }
-            if zones.contains(where: { $0.zoneID.zoneName == intent.household.zoneName && $0.zoneID.ownerName == intent.household.ownerName }) {
-                if saved.shared == intent.household { saved.joiningTo = nil; persist(); return } // through already
-                let record = await readRecord(Self.joinRecordName).decoded(HouseholdJoin.self, key: "join").flatMap { $0.zone == intent.household ? $0 : nil }
-                guard saved.joiningTo == intent else { return }
-                return await completeJoin(intent.household, addMine: intent.addMine, leaving: intent.leaving, record: record)
-            }
-            saved.joiningTo = nil
-            persist()
-        }
+        if let intent = saved.joiningTo { return await resumeJoin(intent) }
         if let leave = saved.leaving { return await finishLeaving(leave) }
         if let put = saved.leftQuestion {
             let read = await readRecord(Self.leaveRecordName(put.zone))
@@ -1748,6 +1783,12 @@ final class CloudLibrary {
             saved.meta[name] = meta
             return (kind, id, remote)
         }
+        // Changed here while leaving (nothing's sent meanwhile): kept, for the copy.
+        if saved.leaving != nil, let mine = current(kind)[id], Self.hash(mine) != meta.hash {
+            meta.systemFields = fields
+            saved.meta[name] = meta
+            return nil
+        }
         let keepContent = meta.modified > modified && meta.hash != remoteHash
         let keepOrder = meta.orderModified > orderModified && meta.order != remote.order
         meta.systemFields = fields
@@ -1969,8 +2010,7 @@ final class CloudLibrary {
             for (id, item) in current(kind) {
                 let name = Self.recordName(kind, id)
                 let hash = Self.hash(item)
-                // (Becoming a copy: its items count as synced, though not all sent yet.)
-                if let meta = saved.meta[name], !meta.unsent || saved.replacing != nil, meta.hash == hash { hashes[name] = hash }
+                if let meta = saved.meta[name], !meta.unsent, meta.hash == hash { hashes[name] = hash }
             }
         }
         // Held for where it goes (left elsewhere, say): those aren't the library's.
@@ -2088,7 +2128,8 @@ final class CloudLibrary {
                 here.insert(name)
                 let hash = Self.hash(item)
                 if note.hashes[name] != hash {
-                    new[name] = .now
+                    // (A copy's item not sent yet: as of its time in the copy.)
+                    new[name] = saved.replacing.flatMap { $0.stamps?[name] ?? $0.stamp } ?? .now
                     newHashes[name] = hash
                 }
             }
