@@ -1690,7 +1690,7 @@ final class Model {
     @ObservationIgnored private var pilotReads = 0
 
     /// Pull to refresh: `resume`, then wait (up to `timeout`) until the bulb's state has been read.
-    func refresh(timeout: Double = 3) async {
+    func refresh(timeout: Double = Model.answerTimeout) async {
         let before = pilotReads
         resume()
         let end = Date().addingTimeInterval(timeout)
@@ -1779,10 +1779,32 @@ final class Model {
         library.presets[i].name = n
     }
 
+    /// How long anything waits for the bulb (a widget, Shortcut, link, the CLI, AppleScript, the
+    /// watch): as long as a request is retried before it's given up on, and a moment more.
+    static let answerTimeout = Bulb.replyWindow + 0.3
+
+    /// When waiting for the bulb last came to nothing, and at which address. For 10 s after, waits
+    /// for it fail at once rather than waiting their turn to find out again: a burst of taps (or
+    /// a Shortcut run again) during an outage would otherwise queue up and land long after they
+    /// were meant, or time out. Trying to reach it carries on meanwhile.
+    @ObservationIgnored private var notAnsweringSince: Date?
+    @ObservationIgnored private var notAnsweringAddress: String?
+
+    /// Just found not answering, and still the same bulb (another one is worth waiting for).
+    var recentlyNotAnswering: Bool {
+        guard let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10,
+              notAnsweringAddress == UserDefaults.standard.string(forKey: Self.addressKey) else { return false }
+        return true
+    }
+
     /// Connects to the saved bulb if needed and waits until it can be controlled (or `timeout`).
     /// If the state is being read again (see `ensureLive`), waits for that too, so what's sent and
-    /// reported starts from the bulb's real state.
-    func waitUntilControllable(timeout: Double = 4) async -> Bool {
+    /// reported starts from the bulb's real state. Just found not answering: false at once.
+    func waitUntilControllable(timeout: Double = Model.answerTimeout) async -> Bool {
+        if !canControl, recentlyNotAnswering {
+            _ = ensureLive() // tried again meanwhile, for the next one
+            return false
+        }
         let reads = pilotReads
         let reading = ensureLive()
         let end = Date().addingTimeInterval(timeout)
@@ -1790,11 +1812,17 @@ final class Model {
         if reading {
             while pilotReads == reads && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         }
+        if canControl {
+            notAnsweringSince = nil
+        } else {
+            notAnsweringSince = .now
+            notAnsweringAddress = UserDefaults.standard.string(forKey: Self.addressKey)
+        }
         return canControl
     }
 
     /// Waits until the last change has been read back (or `timeout`).
-    func waitUntilSettled(timeout: Double = 3) async {
+    func waitUntilSettled(timeout: Double = Model.answerTimeout) async {
         let end = Date().addingTimeInterval(timeout)
         while pending && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
     }
@@ -1804,7 +1832,7 @@ final class Model {
 
     /// For Shortcuts, after a change: nil once the bulb has taken it (read back), or why not: its
     /// refusal, or no answer within `timeout`.
-    func outcome(timeout: Double = 3) async -> String? {
+    func outcome(timeout: Double = Model.answerTimeout) async -> String? {
         let end = Date().addingTimeInterval(timeout)
         while refusal == nil, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if let refusal { return refusal }

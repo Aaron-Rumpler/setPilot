@@ -248,7 +248,7 @@ enum Scripting {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
             throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
         }
-        guard await model.waitUntilControllable(timeout: 5) else {
+        guard await model.waitUntilControllable() else {
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
             if model.link == .connected, !model.status.isEmpty { throw ScriptError(code: .refused, message: model.status) }
             #if os(iOS)
@@ -267,9 +267,9 @@ enum Scripting {
                 || problem.contains("no reply") || problem.contains("couldn't send") || problem.hasPrefix("Lost the connection")
             throw ScriptError(code: unanswered ? .notAnswering : .refused, message: problem)
         }
-        // Long enough for the read-back's retries (0.7 s after sending, then resent at about 0.4,
-        // 1.2, 2.7 and 4.2 s): a lost read-back or two isn't taken for no answer.
-        await model.waitUntilSettled(timeout: 5)
+        // As long as the read-back is retried (Model.answerTimeout): a lost read-back or two isn't
+        // taken for no answer.
+        await model.waitUntilSettled()
         // Answered, but not read back (yet): not known to be done.
         if model.pending { throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.") }
         if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }

@@ -27,12 +27,22 @@ final class Bulb {
 
     /// The current connection has been left waiting (so becoming ready is news).
     private var waited = false
+    /// The current connection is waiting or failed: sends would be queued by the system and go
+    /// out whenever it comes back, long after they were meant, so they're refused instead.
+    private var blocked = false
+
+    /// When each try of a retried request goes, after the one before (the first at once).
+    static let tryWaits: [Double] = [0.4, 0.8, 1.5, 1.5, 1.5]
+    /// How long a retried request has to be answered before it's given up on: the time every
+    /// wait for the bulb is measured by (Model.answerTimeout).
+    static let replyWindow = tryWaits.reduce(0, +)
 
     func connect(to host: String) {
         conn?.cancel()
         conn = nil
         replyCount = [:]
         waited = false
+        blocked = false
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !host.isEmpty else { return }
         let c = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: Net.port)!, using: .udp)
@@ -63,18 +73,22 @@ final class Bulb {
                 guard let self, c === self.conn else { return }
                 if let lost {
                     if waiting { self.waited = true }
+                    self.blocked = true
                     self.onError?(nil, lost)
-                } else if ready, self.waited {
-                    self.waited = false
-                    self.onReady?()
+                } else if ready {
+                    self.blocked = false
+                    if self.waited {
+                        self.waited = false
+                        self.onReady?()
+                    }
                 }
             }
         }
         c.start(queue: DispatchQueue(label: "wiz.udp"))
     }
 
-    /// `retry` sends up to 5 times (0.4 s apart, doubling, capped at 1.5 s; the last at about 4 s)
-    /// until a reply with the same method arrives. Use it for one-off commands, not slider drags.
+    /// `retry` sends up to 5 times (tryWaits: 0.4 s apart, doubling, capped at 1.5 s; given up on
+    /// at about 5.7 s, replyWindow) until a reply with the same method arrives. Use it for one-off commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     func send(_ method: String, _ params: [String: Any]? = [:], retry: Bool = false) {
         let key = signingKey
@@ -95,6 +109,11 @@ final class Bulb {
     private func transmit(method: String?, retry: Bool, message: @escaping () -> Data?) {
         guard let conn, let data = message() else { return }
         let name = method ?? "Raw message"
+        // Not queued on a connection that can't send now (see `blocked`): failed straight away.
+        guard !blocked else {
+            Task { @MainActor [weak self] in self?.onError?(method ?? "", "\(name): couldn't send (no way to reach the bulb right now)") }
+            return
+        }
         onSent?(method ?? "", String(decoding: data, as: UTF8.self))
 
         guard retry, let method else {
@@ -112,13 +131,12 @@ final class Bulb {
 
         let before = replyCount[method, default: 0]
         Task { [weak self] in
-            var wait = 0.4
-            for attempt in 0..<5 {
+            for (attempt, wait) in Bulb.tryWaits.enumerated() {
                 guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
+                guard !self.blocked else { break } // can't go now: no reply is coming
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))
-                wait = min(wait * 2, 1.5)
             }
             guard let self, self.conn === conn, self.replyCount[method, default: 0] == before else { return }
             self.onError?(method, "\(method): no reply after 5 tries")

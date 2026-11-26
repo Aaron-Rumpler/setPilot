@@ -77,42 +77,15 @@ final class PhoneRelay: NSObject {
         }
     }
 
-    /// When waiting for the bulb last came to nothing. For a while after, commands don't wait
-    /// their turn to find out again: a burst of taps during an outage would queue up, then either
-    /// time out on the watch or land late, long after they were meant. They're answered "not
-    /// answering" at once instead (a connect keeps being tried meanwhile).
-    private var notAnsweringSince: Date? {
-        didSet { notAnsweringAddress = notAnsweringSince == nil ? nil : UserDefaults.standard.string(forKey: Model.addressKey) }
-    }
-    /// The bulb that wasn't answering: another one (chosen here or on the watch) is worth waiting for.
-    private var notAnsweringAddress: String?
-
-    /// Just found not answering, and still the same bulb.
-    private var recentlyNotAnswering: Bool {
-        guard let since = notAnsweringSince, Date.now.timeIntervalSince(since) < 10,
-              notAnsweringAddress == UserDefaults.standard.string(forKey: Model.addressKey) else { return false }
-        return true
-    }
     private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
 
-    /// The bulb can take a command now, waiting (up to `timeout`) only if it hasn't just been
-    /// found not answering.
-    private func bulbReady(_ model: Model, timeout: Double = 5) async -> Bool {
-        if model.canControl {
-            notAnsweringSince = nil
-            // Still through waitUntilControllable: woken from a suspension, it re-registers for
-            // pushes and reads the state again if it's gone quiet (and waits for that read), so
-            // a toggle doesn't go by a state from before. Otherwise it's back at once.
-            _ = await model.waitUntilControllable(timeout: timeout)
-            return true
-        }
-        if recentlyNotAnswering {
-            _ = model.ensureLive()
-            return false
-        }
-        let ready = await model.waitUntilControllable(timeout: timeout)
-        notAnsweringSince = ready ? nil : .now
-        return ready
+    /// The bulb can take a command now. As everywhere (Model.waitUntilControllable): waits as long
+    /// as the bulb's own retries, and not at all if it's just been found not answering (a burst of
+    /// taps during an outage is answered at once, not queued to land late). Woken from a
+    /// suspension, it re-registers for pushes and reads the state again if it's gone quiet, so a
+    /// toggle doesn't go by a state from before.
+    private func bulbReady(_ model: Model) async -> Bool {
+        await model.waitUntilControllable()
     }
 
     /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
@@ -121,31 +94,20 @@ final class PhoneRelay: NSObject {
     private func run(_ command: WatchCommand) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
         if let (scripted, fade) = Self.scripted(command) {
-            // Just found not answering: said at once, not after waiting again (a burst of taps).
-            // Not for switching bulbs or listing, which don't need this one.
-            if !model.canControl, recentlyNotAnswering, scripted.needsBulb {
-                _ = model.ensureLive()
-                return .scripted(ScriptResult(state: Scripting.state(of: model),
-                                              error: ScriptError(code: .notAnswering, message: Self.notAnswering)))
-            }
-            let result = await Scripting.run(scripted, fade: fade, on: model)
-            if result.error?.code == .notAnswering, !model.canControl {
-                notAnsweringSince = .now
-            } else if result.error == nil {
-                notAnsweringSince = nil
-            }
-            return .scripted(result)
+            // The runner waits for the bulb as everything does (failing at once just after it's
+            // been found not answering; not for switching bulbs or listing, which don't need it).
+            return .scripted(await Scripting.run(scripted, fade: fade, on: model))
         }
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
         }
         switch command {
         case .state:
-            _ = await bulbReady(model, timeout: 3)
+            _ = await bulbReady(model)
             return .now(model.snapshot)
         case .savePreset(let name):
             // The light as it is: not saved from a state that may be out of date.
-            guard await bulbReady(model, timeout: 3) else { return .failed(model.snapshot, Self.notAnswering) }
+            guard await bulbReady(model) else { return .failed(model.snapshot, Self.notAnswering) }
             // Not every light can be a preset (Rhythm, say): the status says why.
             guard model.savePreset(named: name) != nil else { return .failed(model.snapshot, model.status) }
             return .now(model.snapshot)
@@ -171,8 +133,7 @@ final class PhoneRelay: NSObject {
             return .now(model.snapshot)
         case let .chooseBulb(address, mac):
             model.choose(address, mac: mac)
-            notAnsweringSince = nil // another bulb: worth waiting for
-            _ = await bulbReady(model, timeout: 4)
+            _ = await bulbReady(model)
             return .now(model.snapshot)
         default:
             break
@@ -396,15 +357,5 @@ extension PhoneRelay: WCSessionDelegate {
         if let error { response[WatchKey.error] = error }
         if let code { response[WatchKey.errorCode] = code }
         message.reply(response)
-    }
-}
-
-private extension ScriptCommand {
-    /// Whether it needs the chosen bulb to answer (switching bulbs and listing don't).
-    var needsBulb: Bool {
-        switch self {
-        case .switchBulb, .list: false
-        default: true
-        }
     }
 }

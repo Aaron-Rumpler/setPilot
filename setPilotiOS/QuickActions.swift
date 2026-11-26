@@ -32,7 +32,7 @@ enum QuickActions {
     static func perform(_ item: UIApplicationShortcutItem) {
         let model = Shared.model
         Task {
-            guard await model.waitUntilControllable(timeout: 5) else { return }
+            guard await model.waitUntilControllable() else { return }
             switch item.type {
             case power:
                 model.power(model.isOn != true)

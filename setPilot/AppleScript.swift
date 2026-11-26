@@ -110,26 +110,34 @@ extension AppDelegate {
     func application(_ sender: NSApplication, delegateHandlesKey key: String) -> Bool { Self.scriptKeys.contains(key) }
 
     @objc var scriptPower: Bool {
-        get { stateKnown() ? Shared.model.isOn == true : false }
+        get { readForScript { NSNumber(value: $0.isOn == true) } as? Bool ?? false }
         set { runForScript(.power(newValue)) }
     }
 
     @objc var scriptBrightness: Int {
-        get { stateKnown() ? Int(Shared.model.dimming) : 0 }
+        get { readForScript { NSNumber(value: Int($0.dimming)) } as? Int ?? 0 }
         set { runForScript(.brightness(newValue)) }
     }
 
-    /// The bulb's state is known (it's answered since connecting). Otherwise the script gets the
-    /// not-answering error rather than a made-up value (`set power to not power` on a bulb not
-    /// read yet would go the wrong way).
-    private func stateKnown() -> Bool {
-        guard Shared.model.isOn == nil else { return true }
+    /// A property read by a script. Known (the bulb has answered): at once. Not yet (just
+    /// launched, or not answering): the script waits while the bulb is tried (as long as the app's
+    /// own read retries, Model.answerTimeout), then gets the value, or the not-answering error rather than a
+    /// made-up value (`set power to not power` on a bulb not read yet would go the wrong way).
+    private func readForScript(_ value: @escaping (Model) -> NSNumber) -> Any {
+        let model = Shared.model
+        if model.isOn != nil { return value(model) }
         let command = NSScriptCommand.current()
-        command?.scriptErrorNumber = 1000 + Int(ScriptError(code: .notAnswering, message: "").exitCode)
-        command?.scriptErrorString = Shared.model.link == .connecting
-            ? "The bulb's state isn't known yet: try again in a moment."
-            : "The bulb isn't answering, so its state isn't known."
-        return false
+        command?.suspendExecution()
+        Task { @MainActor in
+            if await model.waitUntilControllable(), model.isOn != nil {
+                command?.resumeExecution(withResult: value(model))
+            } else {
+                command?.scriptErrorNumber = 1000 + Int(ScriptError(code: .notAnswering, message: "").exitCode)
+                command?.scriptErrorString = "The bulb isn't answering, so its state isn't known."
+                command?.resumeExecution(withResult: nil)
+            }
+        }
+        return NSNumber(value: 0) // replaced by the result above
     }
 
     /// A property set by a script: the script waits for the change, and gets its failure as an
