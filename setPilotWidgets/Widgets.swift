@@ -265,7 +265,8 @@ struct StatusWidgetView: View {
 
     var body: some View {
         let s = entry.snapshot
-        let on = s?.isOn == true
+        // On only while it's answering: the status line says "Not answering" for the same state.
+        let on = s?.link == .connected && s?.isOn == true
         switch family {
         case .systemSmall:
             // Home Screen, StandBy, the Mac's desktop: the bulb, its brightness, and its controls.

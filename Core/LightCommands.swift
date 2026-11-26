@@ -23,7 +23,7 @@ struct LightCommands: Commands {
                 Button("No Presets") {}.disabled(true)
             }
             ForEach(presets, id: \.element.id) { i, preset in
-                Button(preset.name) { model.apply(preset) }
+                Button(preset.name) { model.applyAsking(preset) }
                     .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
                     .disabled(model.link != .connected)
             }

@@ -1827,6 +1827,8 @@ final class Model {
 
     /// When something was last heard from the bulb (a reply or a push).
     @ObservationIgnored private var lastHeard = Date.distantPast
+    /// How long without hearing from the bulb before `ensureLive` reads the state again.
+    static let staleAfter: Double = 25
     /// When `ensureLive` last read the state because the bulb had gone quiet.
     @ObservationIgnored private var lastStaleRead = Date.distantPast
 
@@ -1856,7 +1858,7 @@ final class Model {
             return true
         }
         var reading = false
-        if Date.now.timeIntervalSince(max(lastHeard, lastStaleRead)) > 25 {
+        if Date.now.timeIntervalSince(max(lastHeard, lastStaleRead)) > Self.staleAfter {
             lastStaleRead = .now
             sync()
             reading = true

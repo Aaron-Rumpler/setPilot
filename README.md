@@ -79,7 +79,7 @@ trademark of Signify.
   `preset <name>`, `switch <bulb>`, `set --scene Ocean --brightness 40 --on --fade 2000` (several at
   once, in one change), `list presets` and `watch` (the state, one line each time it changes);
   `--json` for JSON (JSON Lines for `watch`), `--on` to switch the bulb on too, `--fade <ms>` for
-  any change. It asks the
+  any change but a speed alone. It asks the
   app (launching it in the background if needed), with an exit code for each kind of failure (see
   `setpilot --help`). It's inside the app: link it onto your PATH, e.g.
   `ln -s /Applications/setPilot.app/Contents/Helpers/setpilot /usr/local/bin/setpilot`. It needs App

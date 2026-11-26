@@ -97,3 +97,20 @@ private struct FlashingGuard: ViewModifier {
             }
     }
 }
+
+extension Model {
+    /// Whether a preset is asked about before it plays (one of a custom scene that flashes).
+    func asksFirst(_ preset: Preset) -> Bool {
+        Flashing.asks && library.customSceneOf(preset.colour)?.flashes == true
+    }
+
+    /// A preset a person started from a menu or a quick action: asked about first, in the main
+    /// window, if it flashes; applied at once otherwise.
+    func applyAsking(_ preset: Preset) {
+        if asksFirst(preset) {
+            FlashingRequests.shared.ask(preset.name) { [self] in _ = apply(preset) }
+        } else {
+            _ = apply(preset)
+        }
+    }
+}

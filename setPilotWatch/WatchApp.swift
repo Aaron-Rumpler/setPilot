@@ -9,7 +9,7 @@ struct SetPilotWatchApp: App {
         PhoneLink.shared.start()
         // The controls' links (Common/WatchControls.swift), now and from before the app was running.
         WatchLinkInbox.handler = { PhoneLink.shared.open($0) }
-        if let link = WatchLinkInbox.take() { PhoneLink.shared.open(link.url, at: link.at) }
+        for link in WatchLinkInbox.take() { PhoneLink.shared.open(link.url, at: link.at) }
         WatchShortcuts.updateAppShortcutParameters() // the preset names Siri knows, from the last context
     }
 
@@ -26,7 +26,7 @@ struct SetPilotWatchApp: App {
             link.isActive = new == .active
             if new == .active {
                 link.refresh()
-                if let left = WatchLinkInbox.take() { link.open(left.url, at: left.at) } // a control's, left while the app wasn't running
+                for left in WatchLinkInbox.take() { link.open(left.url, at: left.at) } // the controls', left while the app wasn't running
             }
         }
     }

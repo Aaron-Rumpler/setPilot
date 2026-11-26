@@ -149,6 +149,7 @@ enum Scripting {
             try send(LightChange(colour: try customScene(query, speed: nil, model), power: power), fade, model)
         case .speed(let speed):
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
+            guard fade == nil else { throw bad("A speed change can't have a fade.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
             var v = model.values
             v.speed = Double(speed)

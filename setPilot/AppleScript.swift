@@ -98,6 +98,14 @@ enum LightStateRecord {
         if let v = s.rgbcw { d["rgbcw"] = v }
         return d as NSDictionary
     }
+
+    /// While the light isn't known (connecting, not answering): the bulb and the link only, not
+    /// the last values shown as if they were the light's.
+    static func unknown(_ s: LightState) -> NSDictionary {
+        var d: [String: Any] = ["link": s.link]
+        if let v = s.bulb.name { d["bulbName"] = v }
+        return d as NSDictionary
+    }
 }
 
 /// The application's properties (power, brightness, the light state, the lists).
@@ -119,23 +127,29 @@ extension AppDelegate {
         set { runForScript(.brightness(newValue)) }
     }
 
-    /// A property read by a script. Known (the bulb has answered): at once. Not yet (just
-    /// launched, or not answering): the script waits while the bulb is tried (as long as the app's
-    /// own read retries, Model.answerTimeout), then gets the value, or the not-answering error rather than a
-    /// made-up value (`set power to not power` on a bulb not read yet would go the wrong way).
+    /// A property read by a script. Known (the bulb has answered lately): at once. Not yet (just
+    /// launched, not answering, or not heard from for a while with live updates off): the script
+    /// waits while the bulb is tried and read again (as long as the app's own read retries,
+    /// Model.answerTimeout), as the commands do, then gets the value, or the not-answering error
+    /// rather than a made-up or out-of-date value (`set power to not power` would go the wrong way).
     /// `key`: the property's; read as part of something else (`properties`, which reads every
     /// property in one command that can't be suspended once per property), it's what's known now.
-    private func readForScript(_ key: String, _ value: @escaping (Model) -> NSNumber) -> Any {
+    /// `unknown`: what's given when it isn't known, instead of the error (the light state).
+    private func readForScript(_ key: String, unknown: ((Model) -> Any)? = nil, _ value: @escaping (Model) -> Any) -> Any {
         let model = Shared.model
-        if model.canControl { return value(model) } // answering: what it is now
+        // Answering, and heard from within the time after which the app reads it again.
+        if model.canControl, model.heardSince(.now.addingTimeInterval(-Model.staleAfter)) { return value(model) }
         let command = NSScriptCommand.current()
-        guard (command?.receiversSpecifier as? NSPropertySpecifier)?.key == key else { return value(model) }
+        guard (command?.receiversSpecifier as? NSPropertySpecifier)?.key == key else {
+            return model.canControl ? value(model) : unknown?(model) ?? value(model)
+        }
         func fail(_ code: ScriptError.Code, _ message: String) {
             command?.scriptErrorNumber = 1000 + Int(ScriptError(code: code, message: message).exitCode)
             command?.scriptErrorString = message
         }
         // The same reasons, in the same order, as the commands (Scripting.ready).
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
+            if let unknown { return unknown(model) }
             fail(.noBulb, "Choose a bulb in setPilot first.")
             return NSNumber(value: 0)
         }
@@ -143,6 +157,10 @@ extension AppDelegate {
         Task { @MainActor in
             if await model.waitUntilControllable() {
                 command?.resumeExecution(withResult: value(model))
+                return
+            }
+            if let unknown {
+                command?.resumeExecution(withResult: unknown(model))
                 return
             }
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
@@ -171,7 +189,11 @@ extension AppDelegate {
         }
     }
 
-    @objc var scriptLightState: NSDictionary { LightStateRecord.dictionary(Scripting.state(of: Shared.model)) }
+    @objc var scriptLightState: NSDictionary {
+        readForScript("scriptLightState", unknown: { LightStateRecord.unknown(Scripting.state(of: $0)) }) {
+            LightStateRecord.dictionary(Scripting.state(of: $0))
+        } as? NSDictionary ?? [:]
+    }
     @objc var scriptPresetNames: [String] { Scripting.items(.presets, Shared.model).map(\.name) }
     @objc var scriptCustomSceneNames: [String] { Scripting.items(.customScenes, Shared.model).map(\.name) }
     @objc var scriptSceneNames: [String] { Scripting.items(.scenes, Shared.model).map(\.name) }

@@ -38,6 +38,7 @@ final class SetPilotUITests: XCTestCase {
         app.typeKey("l", modifierFlags: [.command, .option])
         XCTAssertTrue(app.windows["Light Show"].waitForExistence(timeout: 10), "The Light Show window didn't open")
         app.typeKey("k", modifierFlags: [.command, .option])
-        XCTAssertTrue(app.windows["Console"].waitForExistence(timeout: 10), "The console didn't open")
+        // "Console — <bulb>" once a named bulb's chosen.
+        XCTAssertTrue(app.windows.matching(NSPredicate(format: "title BEGINSWITH 'Console'")).firstMatch.waitForExistence(timeout: 10), "The console didn't open")
     }
 }

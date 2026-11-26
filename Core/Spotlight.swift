@@ -48,7 +48,7 @@ struct OpenPresetIntent: OpenIntent {
     func perform() async throws -> some IntentResult {
         let model = Shared.model
         if let preset = model.library.presets.first(where: { $0.id == target.id }),
-           model.library.customSceneOf(preset.colour)?.flashes == true, Flashing.asks {
+           model.asksFirst(preset) {
             FlashingRequests.shared.ask(preset.name) { _ = model.apply(preset) }
             return .result()
         }

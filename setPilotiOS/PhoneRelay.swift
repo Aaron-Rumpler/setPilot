@@ -80,6 +80,19 @@ final class PhoneRelay: NSObject {
         }
     }
 
+    /// Whether a command plays a custom scene that flashes quickly.
+    private static func flashes(_ command: WatchCommand, _ model: Model) -> Bool {
+        switch command {
+        case .applyPreset(let id):
+            guard let preset = model.library.presets.first(where: { $0.id == id }) else { return false }
+            return model.library.customSceneOf(preset.colour)?.flashes == true
+        case .playCustom(let id, _):
+            return model.library.customScene(id)?.flashes == true
+        default:
+            return false
+        }
+    }
+
     /// The change number before the command in hand sent its change (set once the bulb's ready).
     private var sentFrom: Int?
     private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
@@ -100,6 +113,11 @@ final class PhoneRelay: NSObject {
     /// shouldn't wait out this one's read-back.
     private func run(_ command: WatchCommand, asked: Date) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
+        // A scene that flashes quickly is asked about before it plays, which the watch can't do:
+        // started on the iPhone instead (not queued there to start later, unasked-for).
+        if Flashing.asks, Self.flashes(command, model) {
+            return .failed(model.snapshot, "This flashes quickly. Start it on your iPhone, which asks first.")
+        }
         if let (scripted, fade) = Self.scripted(command) {
             // The runner waits for the bulb as everything does (failing at once just after it's
             // been found not answering; not for switching bulbs or listing, which don't need it).

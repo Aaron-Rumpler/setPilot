@@ -27,28 +27,30 @@ struct WatchLinkIntent: AppIntent {
 enum WatchLinkInbox {
     /// Set by the app.
     static var handler: ((URL) -> Void)?
-    private static let key = "shared.pendingLink"
+    private static let key = "shared.pendingLinks"
 
     static func post(_ link: String) {
         guard let url = URL(string: link) else { return }
         if let handler {
             handler(url)
         } else {
-            SharedStore.defaults.set(link, forKey: key)
-            SharedStore.defaults.set(Date.now.timeIntervalSince1970, forKey: key + ".at")
+            // Kept in order, each with when it was tapped (two taps of Brighter are two steps).
+            var left = SharedStore.defaults.array(forKey: key) as? [[String: Any]] ?? []
+            left.append(["link": link, "at": Date.now.timeIntervalSince1970])
+            SharedStore.defaults.set(Array(left.suffix(10)), forKey: key)
         }
     }
 
-    /// A link left for the app, once, with when it was tapped (the app drops it if that's too
-    /// long ago: a change mustn't land late).
-    static func take() -> (url: URL, at: Date)? {
+    /// The links left for the app, once, oldest first, each with when it was tapped (the app
+    /// drops one tapped too long ago: a change mustn't land late).
+    static func take() -> [(url: URL, at: Date)] {
         let defaults = SharedStore.defaults
-        guard let link = defaults.string(forKey: key) else { return nil }
-        let at = defaults.double(forKey: key + ".at")
+        let left = defaults.array(forKey: key) as? [[String: Any]] ?? []
         defaults.removeObject(forKey: key)
-        defaults.removeObject(forKey: key + ".at")
-        guard let url = URL(string: link) else { return nil }
-        return (url, Date(timeIntervalSince1970: at))
+        return left.compactMap { entry in
+            guard let url = (entry["link"] as? String).flatMap(URL.init(string:)), let at = entry["at"] as? Double else { return nil }
+            return (url, Date(timeIntervalSince1970: at))
+        }
     }
 }
 #endif

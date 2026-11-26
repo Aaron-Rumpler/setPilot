@@ -137,6 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let event = NSAppleEventManager.shared().currentAppleEvent
         launchedAtLogin = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+            // The command-line tool starts the app in the background the same way.
+            || ProcessInfo.processInfo.arguments.contains("--background")
         NSApp.setActivationPolicy(launchedAtLogin ? .accessory : .regular)
 
         let centre = NotificationCenter.default
@@ -245,7 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = Shared.model
         guard let id = (item.representedObject as? String).flatMap(UUID.init(uuidString:)),
               let preset = model.library.presets.first(where: { $0.id == id }) else { return }
-        _ = model.apply(preset)
+        model.applyAsking(preset)
     }
 
     /// Keep running in the menu bar when the window is closed.

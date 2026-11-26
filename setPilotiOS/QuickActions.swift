@@ -28,21 +28,28 @@ enum QuickActions {
         UIApplication.shared.shortcutItems = items
     }
 
-    /// Runs one, once the bulb can be controlled (the app may have just launched for it).
+    /// Runs one through the shared runner, as Shortcuts and widgets are (queued with them, and
+    /// failing with the same reasons, shown in the status). A preset that flashes is asked about
+    /// first, as everywhere a person starts one.
     static func perform(_ item: UIApplicationShortcutItem) {
         let model = Shared.model
-        Task {
-            guard await model.waitUntilControllable() else { return }
-            switch item.type {
-            case power:
-                model.power(model.isOn != true)
-            case preset:
-                guard let id = (item.userInfo?["id"] as? String).flatMap(UUID.init(uuidString:)),
-                      let p = model.library.presets.first(where: { $0.id == id }) else { return }
-                _ = model.apply(p)
-            default:
-                break
+        let command: ScriptCommand
+        switch item.type {
+        case power:
+            command = .power(nil)
+        case preset:
+            guard let id = (item.userInfo?["id"] as? String).flatMap(UUID.init(uuidString:)) else { return }
+            guard let p = model.library.presets.first(where: { $0.id == id }) else {
+                model.status = "That preset no longer exists."
+                return
             }
+            if model.asksFirst(p) { return model.applyAsking(p) }
+            command = .preset(id.uuidString)
+        default:
+            return
+        }
+        Task {
+            if let error = await Scripting.run(command, on: model).error { model.status = error.message }
         }
     }
 }

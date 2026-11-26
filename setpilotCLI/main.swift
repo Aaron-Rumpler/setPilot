@@ -30,6 +30,7 @@ usage: setpilot [--json] <command> [arguments]
   --on     also switch the bulb on (colour, temp, scene, custom); otherwise
            the power is left as it is, as the app's controls do
   --fade <ms>  this change's fade (0–86400000, a day); otherwise the controls' fade
+               (not for speed: a speed change has no fade)
   --json   JSON output (watch: one object per line)
 
 Changes are reported once the bulb has answered and read back as asked.
@@ -187,7 +188,7 @@ let optionUse: [(String, Bool, Set<String>)] = [
     ("--rgb", rgbOption != nil, ["set"]), ("--temp", tempOption != nil, ["set"]),
     ("--scene", sceneOption != nil, ["set"]), ("--custom", customOption != nil, ["set"]),
     ("--brightness", brightnessOption != nil, ["set"]),
-    ("--fade", fadeOption != nil, colourVerbs.union(["on", "off", "toggle", "brightness", "dim", "dimming", "brighter", "dimmer", "speed", "preset"])),
+    ("--fade", fadeOption != nil, colourVerbs.union(["on", "off", "toggle", "brightness", "dim", "dimming", "brighter", "dimmer", "preset"])),
 ]
 for (name, given, verbs) in optionUse where given && !verbs.contains(verb) {
     badArguments("\(name) doesn't go with \(verb).")
@@ -242,6 +243,8 @@ func connectToApp() -> Int32 {
     } else {
         open.arguments = ["-g", "-j", "-b", "nz.aaronrumpler.setPilot"]
     }
+    // Started as a login item is (the menu bar item only: no window, no Dock icon).
+    open.arguments! += ["--args", "--background"]
     try? open.run()
     open.waitUntilExit()
     guard open.terminationStatus == 0 else {

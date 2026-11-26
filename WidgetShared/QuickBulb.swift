@@ -93,7 +93,9 @@ enum QuickBulb {
         for planned in BulbTiming.tryWaits {
             try Task.checkCancellation() // the action's ended: nothing more goes
             let left = deadline.timeIntervalSinceNow
-            guard left > 0.05 else { break }
+            // The first try only with time for its answer too (what the last try is given): one
+            // applied with its reply just too late would be reported as not answered.
+            guard left > (sent ? 0.05 : BulbTiming.answerTimeout - BulbTiming.replyWindow) else { break }
             // Signed afresh for each try: its own sigTs, in case the bulb refuses a repeat.
             guard let data = RequestSigning.message(method, params: params, key: key) else {
                 throw WidgetError(localizedStringResource: "Couldn't make the request.")

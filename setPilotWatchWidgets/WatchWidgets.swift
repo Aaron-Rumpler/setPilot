@@ -170,7 +170,8 @@ struct StatusView: View {
 
     var body: some View {
         let s = entry.snapshot
-        let on = s?.isOn == true
+        // On only while it's answering: the other families say "Not answering" for the same state.
+        let on = s?.link == .connected && s?.isOn == true
         let symbol = on ? "lightbulb.fill" : "lightbulb"
         switch family {
         case .accessoryCircular:
@@ -316,7 +317,8 @@ struct PresetView: View {
 struct PowerWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "power", provider: StatusProvider(keys: [PresetUsage.powerOn, PresetUsage.powerOff])) { entry in
-            let isOn = entry.snapshot?.isOn
+            // Known only while it's answering (as the status complication shows it).
+            let isOn = entry.snapshot?.link == .connected ? entry.snapshot?.isOn : nil
             let on = isOn == true
             ZStack {
                 AccessoryWidgetBackground()
