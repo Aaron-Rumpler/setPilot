@@ -191,6 +191,8 @@ final class CloudLibrary {
         /// Only records last changed before the leave: the account's other devices may already
         /// be sending theirs (following it), which stay.
         var before: Date?
+        /// What the copy's stamped with: the leave's time (later changes win over it).
+        var stamp: Date? = nil
     }
 
     /// What was here when signed out (Saved.signedOut).
@@ -285,7 +287,8 @@ final class CloudLibrary {
             for name in held.keys where name.hasPrefix(prefix) && !names.contains(name) { updated[name] = nil }
             for (id, item) in now {
                 let name = Self.recordName(kind, id)
-                guard updated[name] == nil else { continue }
+                // Already held: as of this change (one of this kind's), so it's the latest.
+                if updated[name] != nil { updated[name] = .now; continue }
                 let hash = Self.hash(item)
                 // The library's, as fetched (and not changed here since): not this device's.
                 if let meta = saved.meta[name], meta.hash == hash { continue }
@@ -344,7 +347,7 @@ final class CloudLibrary {
     /// Library items of `kind` deleted here while settling: deleted where it goes too.
     private func noteDeletions(_ kind: Kind, _ now: [String: Item]) {
         let prefix = kind.rawValue + "."
-        for (name, meta) in saved.meta where name.hasPrefix(prefix) && now[meta.id] == nil {
+        for (name, meta) in saved.meta where name.hasPrefix(prefix) && now[meta.id] == nil && saved.unreadable?[name] == nil {
             saved.deletedHere = (saved.deletedHere ?? []).union([name])
         }
     }
@@ -452,7 +455,7 @@ final class CloudLibrary {
                 // Offered as oldest (iCloud's copy wins); back from a household, as of the leave
                 // (the own library becomes what's here; what the account's other devices bring
                 // after it, stamped later, wins over it).
-                let stamp: Date = saved.replacing.map { $0.before ?? .now } ?? .distantPast
+                let stamp: Date = saved.replacing.map { $0.stamp ?? $0.before ?? .now } ?? .distantPast
                 saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: stamp,
                                         orderModified: stamp, systemFields: saved.meta[name]?.systemFields)
                 pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
@@ -584,6 +587,7 @@ final class CloudLibrary {
         guard !joining else { return }
         joining = true
         defer { joining = false }
+        let changes = accountChanges
         let zone = metadata.share.recordID.zoneID
         guard metadata.participantRole != .owner, zone.ownerName != CKCurrentUserDefaultName else { return } // our own share
         // One household at a time, and this account's own library shared with others is one.
@@ -618,6 +622,9 @@ final class CloudLibrary {
         // those in it find this when they follow).
         _ = await syncOwn()
         let record = await leaveJoinRecord(household, addMine: addMine)
+        // Kept until they're gone (a quit part way is picked up at launch: checkHousehold).
+        saved.toLeave = others.map { SharedZone(zoneName: $0.zoneName, ownerName: $0.ownerName) }
+        persist()
         if let other = others.first {
             let was = membership ?? Membership(zone: SharedZone(zoneName: other.zoneName, ownerName: other.ownerName), joinID: nil, joinedAt: nil)
             let leave = HouseholdLeave(zone: was.zone, joinID: was.joinID, mode: .joined(household), at: .now)
@@ -625,6 +632,8 @@ final class CloudLibrary {
             guard !read.failed, await saveRecord(Self.leaveRecordName(was.zone), type: Self.leaveRecordType, leave, over: read.record) == .saved else {
                 // Not in two at once: the new one's left again, to be joined once this can go.
                 _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: zone)
+                saved.toLeave = nil
+                persist()
                 status = "Couldn't leave your current household to join this one: check you're online, and try again"
                 return
             }
@@ -644,6 +653,8 @@ final class CloudLibrary {
                 stillIn.append(SharedZone(zoneName: other.zoneName, ownerName: other.ownerName))
             }
         }
+        // Signed out (or another Apple ID) meanwhile: not switched now (asked again on signing in).
+        guard accountChanges == changes else { return }
         if !addMine { clearLibraryHere() }
         switchLibrary(to: household, join: record)
         if !stillIn.isEmpty {
@@ -1096,12 +1107,26 @@ final class CloudLibrary {
         // here (it was accepted), or, not there after all, asked as if put out.
         if case .joined(let target) = leave.mode {
             guard !joining, let zones = try? await container.sharedCloudDatabase.allRecordZones(), saved.leaving == leave else { return }
+            let was = membership ?? Membership(zone: leave.zone, joinID: leave.joinID, joinedAt: nil)
             if zones.contains(where: { $0.zoneID.zoneName == target.zoneName && $0.zoneID.ownerName == target.ownerName }) {
                 let read = await readRecord(Self.joinRecordName)
                 let record = read.decoded(HouseholdJoin.self, key: "join").flatMap { $0.zone == target ? $0 : nil }
                 guard saved.leaving == leave else { return }
+                // The old one left (or left to try again), then in, as it was joined.
+                let old = CKRecordZone.ID(zoneName: leave.zone.zoneName, ownerName: leave.zone.ownerName)
+                var stillIn: [SharedZone] = []
+                if zones.contains(where: { $0.zoneID == old }) {
+                    if (try? await container.sharedCloudDatabase.deleteRecordZone(withID: old)) == nil { stillIn.append(leave.zone) }
+                }
+                guard saved.leaving == leave else { return }
+                let addMine = record?.addMine ?? true
+                if !addMine { clearLibraryHere() }
                 switchLibrary(to: target, join: record)
-            } else if let was = membership {
+                if !stillIn.isEmpty {
+                    saved.toLeave = stillIn
+                    persist()
+                }
+            } else {
                 saved.leaving = nil
                 askLeft(was)
             }
@@ -1125,11 +1150,19 @@ final class CloudLibrary {
         for kind in Kind.allCases { for id in current(kind).keys { keep.insert(Self.recordName(kind, id)) } }
         // (Only what's older than the account's joining: anything since is its devices' that
         // didn't follow, kept.)
-        let unreadable = saved.unreadable ?? [:]
-        switchLibrary(to: nil, replacing: ReplacePlan(keep: keep, before: min(leave.at, leave.joinedAt ?? leave.at)))
-        // A newer build's items go to the own library as they are.
+        // (Cut off a little after the join, which syncs what's here just before it; with no
+        // join time, a little before the leave, as the other devices send theirs after it.)
+        let cutoff = leave.joinedAt.map { min($0.addingTimeInterval(120), leave.at.addingTimeInterval(-120)) } ?? leave.at.addingTimeInterval(-120)
+        let unreadable = leave.mode == .fresh ? [:] : saved.unreadable ?? [:]
+        let ids = saved.meta.mapValues(\.id)
+        switchLibrary(to: nil, replacing: ReplacePlan(keep: keep, before: cutoff, stamp: leave.at))
+        // A newer build's items go to the own library as they are (as part of the copy).
         if !unreadable.isEmpty, let engine {
             saved.unreadable = unreadable
+            for (name, item) in unreadable {
+                guard let id = ids[name] else { continue }
+                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: leave.at, orderModified: leave.at)
+            }
             engine.state.add(pendingRecordZoneChanges: unreadable.keys.map { .saveRecord(CKRecord.ID(recordName: $0, zoneID: zoneID)) })
             persist()
         }
@@ -1494,8 +1527,8 @@ final class CloudLibrary {
             record.encryptedValues["data"] = item.data
             record.encryptedValues["mac"] = item.mac
             record["order"] = item.order
-            record["modified"] = plan.before ?? .now
-            record["orderModified"] = plan.before ?? .now
+            record["modified"] = plan.stamp ?? plan.before ?? .now
+            record["orderModified"] = plan.stamp ?? plan.before ?? .now
             return record
         }
         guard let kind = Self.kind(of: id.recordName), let meta = saved.meta[id.recordName],
@@ -1549,6 +1582,14 @@ final class CloudLibrary {
             saved.meta[name] = Meta(id: id, hash: remoteHash, order: remote.order, modified: modified,
                                     orderModified: orderModified, systemFields: fields, unsent: false)
             return (kind, id, remote)
+        }
+        // A newer build's item carried here (back from a household), newer than iCloud's: kept,
+        // and sent again on top.
+        if saved.unreadable?[name] != nil, meta.unsent, meta.modified > modified {
+            meta.systemFields = fields
+            saved.meta[name] = meta
+            engine?.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])
+            return nil
         }
         // A newer build's, which this one can't read: set aside (readable), and nothing of this
         // device's goes over it (its place either: the save would carry this device's older content).
@@ -1664,7 +1705,7 @@ final class CloudLibrary {
                 if saved.newHere?[name] != nil || saved.returning != nil { continue }
                 // Back from a household, the own library becomes what's here: anything else goes.
                 if let plan = saved.replacing, Self.kind(of: name) != nil, !plan.keep.contains(name),
-                   (m.record.modificationDate ?? .distantPast) < (plan.before ?? .distantFuture).addingTimeInterval(-120) { // clocks a little apart
+                   (m.record.modificationDate ?? .distantPast) < (plan.before ?? .distantFuture) {
                     saved.deleting.insert(name)
                     engine?.state.add(pendingRecordZoneChanges: [.deleteRecord(m.record.recordID)])
                     continue
@@ -1675,7 +1716,7 @@ final class CloudLibrary {
             if joined, saved.switchPending != true, householdLookup == nil { Task { await findHousehold() } }
             for d in e.deletions where d.recordID.zoneID == zoneID {
                 let name = d.recordID.recordName
-                if saved.newHere?[name] != nil { continue } // held here: this device's
+                if saved.newHere?[name] != nil || saved.returning != nil { continue } // held here, or still being worked out
                 saved.deleting.remove(name)
                 saved.unreadable?.removeValue(forKey: name)
                 guard let kind = Self.kind(of: name), let id = itemID(name, kind) else { continue }
@@ -1693,7 +1734,7 @@ final class CloudLibrary {
                 saved.meta[record.recordID.recordName]?.systemFields = Self.systemFields(of: record)
                 saved.meta[record.recordID.recordName]?.unsent = false
             }
-            for id in e.deletedRecordIDs { saved.deleting.remove(id.recordName) }
+            for id in e.deletedRecordIDs where id.zoneID == zoneID { saved.deleting.remove(id.recordName) }
             for (id, error) in e.failedRecordDeletes where error.code == .unknownItem || error.code == .zoneNotFound {
                 saved.deleting.remove(id.recordName) // already gone
             }
@@ -1715,6 +1756,7 @@ final class CloudLibrary {
                     // Made afresh: saved as new records (the old change tags would come back as
                     // "unknown item", taken for deletions elsewhere).
                     ensureZone()
+                    saved.replacing = nil
                     for name in saved.meta.keys { saved.meta[name]?.systemFields = nil }
                     retry.append(.saveRecord(id))
                 case .unknownItem:
@@ -1949,6 +1991,8 @@ extension CloudLibrary: CKSyncEngineDelegate {
         let changes = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { id in
             await MainActor.run {
+                // A library switched from meanwhile: nothing of the new one goes to the old one's zone.
+                guard syncEngine === self.engine, id.zoneID == self.zoneID else { return nil }
                 let record = self.record(for: id)
                 // Gone since it was queued (deleted here or elsewhere): drop it rather than offer it again.
                 if record == nil { syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(id)]) }
