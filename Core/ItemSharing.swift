@@ -53,9 +53,17 @@ struct SharedItem: Transferable {
 @MainActor @Observable
 final class IncomingItems {
     static let shared = IncomingItems()
-    var pending: LibraryFile?
+    var pending: LibraryFile? { didSet { if pending != nil { showWindow() } } }
     /// Why something opened here couldn't be added.
-    var problem: String?
+    var problem: String? { didSet { if problem != nil { showWindow() } } }
+
+    /// The question is asked in the main window: opened for it on the Mac, where the app may be
+    /// in the menu bar only.
+    private func showWindow() {
+        #if os(macOS)
+        HandoffRouter.shared.open(.controls)
+        #endif
+    }
 
     /// From a setpilot://import link.
     func take(link url: URL) {
@@ -137,7 +145,8 @@ private struct IncomingItemsPrompt: ViewModifier {
     }
 
     private func add(_ clash: Library.Clash) {
-        if let file = IncomingItems.shared.pending { _ = model.library.merge(file, clash: clash) }
+        // What was added, as an import without clashes says it.
+        if let file = IncomingItems.shared.pending { model.status = model.library.merge(file, clash: clash) }
         IncomingItems.shared.pending = nil
     }
 }

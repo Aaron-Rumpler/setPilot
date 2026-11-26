@@ -16,7 +16,7 @@ struct CustomScenesList: View {
             ForEach(lib.customScenes) { scene in
                 NavigationLink(value: scene.id) { CustomSceneRow(scene: scene) }
                     .swipeActions(edge: .leading) {
-                        Button { confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene) } } label: { Label("Play", systemImage: "play.fill") }
+                        Button { confirmFlashing(scene.name, flashes: model.flashes(scene)) { model.playCustom(scene) } } label: { Label("Play", systemImage: "play.fill") }
                             .tint(.green)
                             .disabled(!model.canControl)
                     }
@@ -27,7 +27,7 @@ struct CustomScenesList: View {
                             .tint(.red)
                     }
                     .contextMenu {
-                        Button { confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
+                        Button { confirmFlashing(scene.name, flashes: model.flashes(scene)) { model.playCustom(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
                         Button { lib.duplicate(scene) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                         ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))

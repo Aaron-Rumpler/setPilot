@@ -286,7 +286,7 @@ struct StatusWidgetView: View {
                     Spacer(minLength: 0)
                     Toggle(isOn: on, intent: {
                         let i = PowerToggleIntent()
-                        i.value = !on
+                        i.value = !(s?.isOn ?? false) // from the last known state, answering or not
                         return i
                     }()) {
                         Image(systemName: "power")
@@ -316,7 +316,7 @@ struct StatusWidgetView: View {
                 Spacer(minLength: 0)
                 Toggle(isOn: on, intent: {
                     let i = PowerToggleIntent()
-                    i.value = !on
+                    i.value = !(s?.isOn ?? false) // from the last known state, answering or not
                     return i
                 }()) {
                     Image(systemName: on ? "lightbulb.fill" : "lightbulb")

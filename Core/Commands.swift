@@ -122,6 +122,9 @@ enum Scripting {
         }
         try await ready(model)
         model.mismatch = nil // an earlier change's: this one's own read-back says
+        // Its tries end with its time, counted from when it was asked (taken by its change).
+        model.changeDeadline = deadline
+        defer { model.changeDeadline = nil }
         let before = model.ticket
         switch command {
         case .power(let on):
@@ -307,6 +310,27 @@ enum Scripting {
         case .notApplied(let why): throw ScriptError(code: .notApplied, message: why)
         case .refused(let why): throw ScriptError(code: .refused, message: why)
         case .notAnswered(let why), .notKnown(let why): throw ScriptError(code: .notAnswering, message: why)
+        }
+    }
+
+    /// The flashing custom scene a command would play (at its speed), by name: for the places a
+    /// person starts one (a widget, the watch), which refuse it, as they can't ask first.
+    /// Shortcuts, links and the command line don't ask.
+    static func flashingScene(_ command: ScriptCommand, _ model: Model) -> String? {
+        let lib = model.library
+        func scene(_ q: String) -> CustomScene? { find(q, in: lib.customScenes, name: { $0.name }, id: { $0.id.uuidString }) }
+        switch command {
+        case .preset(let q):
+            guard let p = find(q, in: lib.presets, name: { $0.name }, id: { $0.id.uuidString }) else { return nil }
+            return model.flashes(p.colour) ? p.name : nil
+        case .customScene(let q, _):
+            guard let s = scene(q) else { return nil }
+            return model.flashes(s) ? s.name : nil
+        case .set(let change):
+            guard let q = change.customScene, let s = scene(q) else { return nil }
+            return model.flashes(s, speed: change.speed) ? s.name : nil
+        default:
+            return nil
         }
     }
 

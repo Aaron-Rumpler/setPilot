@@ -19,7 +19,6 @@ extension Library {
         var file = original
         var newIDs: [UUID: UUID] = [:]
         let sceneIDs = Set(customScenes.map(\.id))
-        let scaleIDs = Set(cctScales.values.flatMap { $0.map(\.id) })
         // Names here and in the file, and the copies' as they're given, so no two end up the same.
         var sceneNames = customScenes.map(\.name) + file.customScenes.map(\.name)
         for i in file.customScenes.indices where sceneIDs.contains(file.customScenes[i].id) {
@@ -32,6 +31,8 @@ extension Library {
         for (mac, list) in file.cctScales {
             var copied = list
             var names = scales(for: mac).map(\.name) + list.map(\.name)
+            // Per bulb, as they're merged.
+            let scaleIDs = Set(scales(for: mac).map(\.id))
             for i in copied.indices where scaleIDs.contains(copied[i].id) {
                 let new = UUID()
                 newIDs[copied[i].id] = new
@@ -67,16 +68,43 @@ extension Library {
     /// How many of `file`'s items are already here.
     func clashes(_ file: LibraryFile) -> Int {
         let p = Set(presets.map(\.id)), s = Set(customScenes.map(\.id))
-        let c = Set(cctScales.values.flatMap { $0.map(\.id) })
-        return file.presets.filter { p.contains($0.id) }.count + file.customScenes.filter { s.contains($0.id) }.count
-            + file.cctScales.values.flatMap { $0 }.filter { c.contains($0.id) }.count
+        // Scales per bulb, as they're merged.
+        let scaleClashes = file.cctScales.reduce(0) { n, entry in
+            let here = Set(scales(for: entry.key).map(\.id))
+            return n + entry.value.filter { here.contains($0.id) }.count
+        }
+        return file.presets.filter { p.contains($0.id) }.count + file.customScenes.filter { s.contains($0.id) }.count + scaleClashes
+    }
+
+    /// The file with scales that have the ID of one here for another bulb given new IDs (their
+    /// presets follow), so no two bulbs' scales share one (a preset would find either).
+    fileprivate func scalesOfOtherBulbsRenumbered(_ original: LibraryFile) -> LibraryFile {
+        var file = original
+        var newIDs: [UUID: UUID] = [:]
+        for (mac, list) in file.cctScales {
+            let elsewhere = Set(cctScales.filter { $0.key != mac.lowercased() }.values.flatMap { $0.map(\.id) })
+            var renumbered = list
+            for i in renumbered.indices where elsewhere.contains(renumbered[i].id) {
+                let new = UUID()
+                newIDs[renumbered[i].id] = new
+                renumbered[i].id = new
+            }
+            file.cctScales[mac] = renumbered
+        }
+        guard !newIDs.isEmpty else { return file }
+        for i in file.presets.indices {
+            if case let .customCCT(id, k) = file.presets[i].colour, let n = newIDs[id] {
+                file.presets[i].colour = .customCCT(scale: n, kelvin: k)
+            }
+        }
+        return file
     }
 
     /// Adds what's in `file`, keeping everything else; an item that's already here is replaced, or
     /// added again as a copy (a new ID, and a name of its own), or left as it is. Returns what
     /// changed, as a sentence.
     func merge(_ file: LibraryFile, clash: Clash = .replace) -> String {
-        var file = file
+        var file = scalesOfOtherBulbsRenumbered(file)
         if clash == .keepBoth { file = copiesOfClashes(file) }
         // A shared preset carries no favourite (it's the sender's): one replacing yours keeps yours.
         for i in file.presets.indices where file.presets[i].favourite == nil {

@@ -80,16 +80,18 @@ final class PhoneRelay: NSObject {
         }
     }
 
-    /// Whether a command plays a custom scene that flashes quickly.
+    /// Whether a command plays a custom scene that flashes quickly (at the speed it would play):
+    /// from the app, its Siri and Shortcuts actions, and Compose alike.
     private static func flashes(_ command: WatchCommand, _ model: Model) -> Bool {
         switch command {
-        case .applyPreset(let id):
-            guard let preset = model.library.presets.first(where: { $0.id == id }) else { return false }
-            return model.library.customSceneOf(preset.colour)?.flashes == true
-        case .playCustom(let id, _):
-            return model.library.customScene(id)?.flashes == true
+        case .compose(let change):
+            return model.flashes(change.colour)
+        case .script(let data, _):
+            guard let scripted = try? JSONDecoder().decode(ScriptCommand.self, from: data) else { return false }
+            return Scripting.flashingScene(scripted, model) != nil
         default:
-            return false
+            guard let (runnerCommand, _) = Self.scripted(command) else { return false }
+            return Scripting.flashingScene(runnerCommand, model) != nil
         }
     }
 
@@ -337,7 +339,9 @@ extension PhoneRelay: WCSessionDelegate {
         }
         let arrived = Date.now
         // The watch's time (a tap that's waited is counted from the tap, and refused if that's too
-        // long ago), unless its clock looks off: ahead (allowing a moment), or implausibly far behind.
+        // long ago), unless its clock looks off: ahead (allowing a moment), or implausibly far behind
+        // (the watch drops a waiting tap once its time is up, by its own clock, so one that old
+        // means the clocks differ).
         let sent = (message[WatchKey.sentAt] as? Double).map(Date.init(timeIntervalSince1970:))
         let asked = sent.flatMap { $0 <= arrived.addingTimeInterval(1) && arrived.timeIntervalSince($0) < 60 ? min($0, arrived) : nil } ?? arrived
         incomingQueue.yield(Incoming(command: command, reply: replyHandler, asked: asked))

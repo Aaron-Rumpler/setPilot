@@ -152,19 +152,39 @@ enum Flashing {
     static let askKey = "askFlashing"
     static let warning = "This flashes quickly (more than 3 times a second). Take care if you, or anyone who'll see it, is sensitive to flashing light."
 
-    /// A scene whose steps differ and come round faster than 3 a second.
-    static func flashes(_ scene: CustomScene) -> Bool {
-        guard scene.steps.count >= 2, Set(scene.steps.map(\.look)).count >= 2 else { return false }
-        switch scene.timing {
-        case .slow, .quick: return false // 3 s and 0.9 s a step
-        case .steps: return scene.steps.contains { $0.hold + $0.fade < 333 }
+    /// A scene whose steps differ and come round faster than 3 a second, played at `speed`
+    /// (10–200; 100 plays the steps as timed, 200 twice as fast).
+    static func flashes(_ scene: CustomScene, speed: Int = 100) -> Bool {
+        flashes(timing: scene.timing, steps: scene.steps.map { ($0.look, $0.hold + $0.fade) }, speed: speed)
+    }
+
+    /// An inline scene as sent to the bulb (setPilot's `elm`, a light show cue's say), at `speed`.
+    static func flashes(elm: [String: Any], speed: Int = 100) -> Bool {
+        guard let steps = elm["steps"] as? [[NSNumber]] else { return false }
+        let timing = (elm["modifier"] as? NSNumber).flatMap { CustomScene.Timing(rawValue: $0.intValue) } ?? .steps
+        // Mode, the channels, kelvin and level are the look; hold and fade the time.
+        let parsed = steps.filter { $0.count >= 10 }.map { step in
+            (Array(step.prefix(8).map(\.intValue)), step[8].intValue + step[9].intValue)
+        }
+        return flashes(timing: timing, steps: parsed, speed: speed)
+    }
+
+    private static func flashes(timing: CustomScene.Timing, steps: [([Int], Int)], speed: Int) -> Bool {
+        guard steps.count >= 2, Set(steps.map(\.0)).count >= 2 else { return false }
+        let scale = 100 / Double(min(max(speed, 10), 200))
+        switch timing {
+        case .slow: return 3000 * scale < 333 // never, at any speed
+        case .quick: return 900 * scale < 333
+        case .steps: return steps.contains { Double($0.1) * scale < 333 }
         }
     }
 }
 
 extension CustomScene {
-    /// Changes the light more than 3 times a second (Flashing).
+    /// Changes the light more than 3 times a second (Flashing), as timed (speed 100).
     var flashes: Bool { Flashing.flashes(self) }
+    /// The same, played at `speed`.
+    func flashes(atSpeed speed: Int) -> Bool { Flashing.flashes(self, speed: speed) }
 }
 
 extension CustomScene.Step {

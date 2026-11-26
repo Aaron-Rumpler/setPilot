@@ -154,6 +154,7 @@ extension AppDelegate {
             return NSNumber(value: 0)
         }
         command?.suspendExecution()
+        let started = Date.now
         Task { @MainActor in
             if await model.waitUntilControllable() {
                 command?.resumeExecution(withResult: value(model))
@@ -163,12 +164,9 @@ extension AppDelegate {
                 command?.resumeExecution(withResult: unknown(model))
                 return
             }
-            // Answering but refusing to say how it is (a wrong signing key, say): that reason.
-            if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty {
-                fail(.refused, model.status)
-            } else {
-                fail(.notAnswering, "The bulb isn't answering, so its state isn't known.")
-            }
+            // Why, as the commands say it (refused, or not answering).
+            let error = Scripting.notReady(model, left: Model.answerTimeout, waitStarted: started)
+            fail(error.code, error.message)
             command?.resumeExecution(withResult: nil)
         }
         return NSNumber(value: 0) // replaced by the result above

@@ -30,6 +30,11 @@ struct SetPilotMobileApp: App {
             case .power(let on): .power(on)
             case .dimDelta(let delta): .adjustBrightness(delta)
             }
+            // A tap by a person, which can't be asked about first: a scene that flashes is started
+            // in the app instead.
+            if Flashing.asks, Scripting.flashingScene(script, Shared.model) != nil {
+                throw WidgetError(localizedStringResource: "This flashes quickly. Start it in setPilot, which asks first.")
+            }
             let result = await Scripting.run(script, on: Shared.model)
             if let error = result.error { throw WidgetError(localizedStringResource: "\(error.message)") }
         }

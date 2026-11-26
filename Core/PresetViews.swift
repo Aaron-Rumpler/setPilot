@@ -38,7 +38,7 @@ struct PresetGrid: View {
                 LazyVGrid(columns: gridColumns, spacing: 8) {
                     ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
                         Button {
-                            let flashes = lib.customSceneOf(preset.colour)?.flashes ?? false
+                            let flashes = model.flashes(preset.colour)
                             confirmFlashing(preset.name, flashes: flashes) { model.apply(preset) }
                         } label: {
                             PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
@@ -259,7 +259,7 @@ extension Model {
                 case .builtin(let id): self.setScene(id)
                 case .custom(let id):
                     guard let s = self.library.customScene(id) else { return }
-                    confirm(s.name, flashes: s.flashes) { _ = self.playCustom(s) }
+                    confirm(s.name, flashes: self.flashes(s)) { _ = self.playCustom(s) }
                 }
             }
         )

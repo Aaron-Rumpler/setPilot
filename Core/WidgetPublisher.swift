@@ -17,6 +17,13 @@ final class WidgetPublisher {
         self.model = model
         publishLibrary()
         observe()
+        // "Ask before playing" turned on or off: which presets a widget refuses.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, Flashing.asks != self.publishedAsks else { return }
+                self.libraryChanged()
+            }
+        }
     }
 
     // MARK: State
@@ -93,6 +100,7 @@ final class WidgetPublisher {
     // MARK: Library
 
     private var publishedLibrary: [Data?] = []
+    private var publishedAsks = true
     private var fadeReload: Task<Void, Never>?
     private var libraryScheduled = false
 
@@ -120,6 +128,11 @@ final class WidgetPublisher {
             }
         }
         SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
+        // Those a tap can't play: the app asks before a flashing scene (a person's tap, which a
+        // widget can't ask about).
+        publishedAsks = Flashing.asks
+        let flashing = publishedAsks ? model.library.presets.filter { model.flashes($0.colour) }.map(\.id.uuidString) : []
+        SharedStore.defaults.set(flashing, forKey: SharedStore.flashingPresetsKey)
         SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
         // Only when something they show or send has changed (most library edits, a custom scene's
         // steps say, don't).

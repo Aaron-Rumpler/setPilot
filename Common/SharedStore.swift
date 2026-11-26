@@ -33,6 +33,8 @@ enum SharedStore {
     static let snapshotKey = "shared.snapshot"
     static let presetsKey = "shared.presets"
     static let presetParamsKey = "shared.presetParams"
+    /// The presets a widget tap refuses (they flash, and the app asks first): their IDs.
+    static let flashingPresetsKey = "shared.flashingPresets"
     static let addressKey = "shared.address"
     /// Where builds before the Keychain kept the chosen bulb's signing key (removed at launch).
     static let signingKeyKey = "shared.signingKey"

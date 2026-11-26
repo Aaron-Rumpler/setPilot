@@ -25,7 +25,7 @@ struct OpenCustomSceneIntent: OpenIntent {
     func perform() async throws -> some IntentResult {
         // Started by a person, so asked about first if it flashes (in the app, which this opens).
         let model = Shared.model
-        if let scene = model.library.customScene(target.id), scene.flashes, Flashing.asks {
+        if let scene = model.library.customScene(target.id), model.flashes(scene), Flashing.asks {
             FlashingRequests.shared.ask(scene.name) { _ = model.playCustom(scene, switchOn: true) }
             return .result()
         }
@@ -87,6 +87,8 @@ enum SpotlightIndex {
             }
             try? await index.indexAppEntities(presets)
             try? await index.indexAppEntities(scenes)
+            // Replaced meanwhile by a newer run: its list is the one kept (this one's is older).
+            guard !Task.isCancelled else { return }
             UserDefaults.standard.set((Array(now) + stillIndexed).map(\.uuidString), forKey: indexedKey)
         }
     }

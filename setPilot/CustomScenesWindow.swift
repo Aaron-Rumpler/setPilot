@@ -23,7 +23,7 @@ struct CustomScenesWindow: View {
                                 NSApp.keyWindow?.makeFirstResponder(nil)
                                 DispatchQueue.main.async {
                                     if let s = lib.customScene(scene.id) {
-                                        confirmFlashing(s.name, flashes: s.flashes) { model.playCustom(s) }
+                                        confirmFlashing(s.name, flashes: model.flashes(s)) { model.playCustom(s) }
                                     }
                                 }
                             }

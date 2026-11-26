@@ -138,15 +138,22 @@ extension Model {
     /// status says why.
     /// `confirm`: the window's question about flashing light, for a flashing custom scene.
     func sendDraft(_ confirm: ConfirmFlashing) {
-        if case .custom(let id, _)? = draftChange.colour, let scene = library.customScene(id) {
-            confirm(scene.name, flashes: scene.flashes) { [weak self] in self?.sendDraftNow() }
+        let change = draftChange
+        if case .custom(let id, _)? = change.colour, let scene = library.customScene(id) {
+            // What was asked about goes: not the draft as it may be by the time it's answered
+            // (the Mac's menu bar panel stays open to editing while the main window asks).
+            confirm(scene.name, flashes: flashes(change.colour)) { [weak self] in self?.sendDraftNow(change) }
             return
         }
-        sendDraftNow()
+        sendDraftNow(change)
     }
 
-    private func sendDraftNow() {
-        guard send(draftChange) else { return }
+    private func sendDraftNow(_ change: LightChange) {
+        guard draftChange == change else {
+            status = "The change was edited while being asked about; send it again."
+            return
+        }
+        guard send(change) else { return }
         draft.loaded = false
         composing = false
     }

@@ -76,8 +76,12 @@ struct LightShow {
         return valid(total)
     }
 
-    /// More than 3 changes of the light in some second (Flashing).
+    /// More than 3 changes of the light in some second (Flashing), or a cue that starts an
+    /// inline scene that flashes itself (at the cue's speed).
     var flashes: Bool {
+        if cues.contains(where: { cue in
+            (cue.pilot["elm"] as? [String: Any]).map { Flashing.flashes(elm: $0, speed: (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100) } ?? false
+        }) { return true }
         var start = 0
         for end in cues.indices {
             while cues[end].time - cues[start].time >= 1 { start += 1 }

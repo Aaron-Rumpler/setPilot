@@ -99,16 +99,32 @@ private struct FlashingGuard: ViewModifier {
 }
 
 extension Model {
+    /// Whether a custom scene flashes as it would play: at `speed`, or with none given, the
+    /// speed the bulb's on (as fast as it may go: at least as timed).
+    func flashes(_ scene: CustomScene, speed: Int? = nil) -> Bool {
+        scene.flashes(atSpeed: speed ?? max(100, Int(self.speed)))
+    }
+
+    /// Whether a colour plays a custom scene that flashes (at its own speed, if it has one).
+    func flashes(_ colour: LightColour?) -> Bool {
+        guard case let .custom(id, speed)? = colour, let scene = library.customScene(id) else { return false }
+        return flashes(scene, speed: speed)
+    }
+
     /// Whether a preset is asked about before it plays (one of a custom scene that flashes).
     func asksFirst(_ preset: Preset) -> Bool {
-        Flashing.asks && library.customSceneOf(preset.colour)?.flashes == true
+        Flashing.asks && flashes(preset.colour)
     }
 
     /// A preset a person started from a menu or a quick action: asked about first, in the main
     /// window, if it flashes; applied at once otherwise.
     func applyAsking(_ preset: Preset) {
         if asksFirst(preset) {
-            FlashingRequests.shared.ask(preset.name) { [self] in _ = apply(preset) }
+            // Once confirmed, through the shared runner: it waits for the bulb if need be (a quick
+            // action that launched the app), and the status says why if it doesn't go.
+            FlashingRequests.shared.ask(preset.name) { [self] in
+                Task { if let error = await Scripting.run(.preset(preset.id.uuidString), on: self).error { status = error.message } }
+            }
         } else {
             _ = apply(preset)
         }

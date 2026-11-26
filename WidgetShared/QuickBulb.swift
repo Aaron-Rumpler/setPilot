@@ -29,6 +29,9 @@ enum QuickBulb {
         }
         switch command {
         case .applyPreset(let id):
+            if (SharedStore.defaults.stringArray(forKey: SharedStore.flashingPresetsKey) ?? []).contains(id.uuidString) {
+                throw WidgetError(localizedStringResource: "This flashes quickly. Start it in setPilot, which asks first.")
+            }
             let all = SharedStore.defaults.dictionary(forKey: SharedStore.presetParamsKey) as? [String: Data] ?? [:]
             guard let data = all[id.uuidString],
                   let params = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

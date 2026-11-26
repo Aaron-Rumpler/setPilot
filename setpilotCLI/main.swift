@@ -128,8 +128,11 @@ case "on": command = .power(true)
 case "off": command = .power(false)
 case "toggle": command = .power(nil)
 case "brightness", "dim", "dimming": command = .brightness(int(rest.first, "Brightness"))
-case "brighter": command = .adjustBrightness(rest.first.map { int($0, "The step") } ?? 10)
-case "dimmer": command = .adjustBrightness(-(rest.first.map { int($0, "The step") } ?? 10))
+case "brighter", "dimmer":
+    // A step of 1–100: the verb says which way (a negative one would go the other).
+    let step = rest.first.map { int($0, "The step") } ?? 10
+    guard (1...100).contains(step) else { badArguments("The step is 1–100.") }
+    command = .adjustBrightness(verb == "dimmer" ? -step : step)
 case "colour", "color", "rgb", "rgbcw":
     guard (3...5).contains(rest.count) else { badArguments("colour takes r g b, and optionally c and w.") }
     let v = rest.map { int($0, "Each channel") } + Array(repeating: 0, count: 5 - rest.count)

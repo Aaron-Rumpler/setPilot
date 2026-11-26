@@ -70,8 +70,9 @@ final class CLIServer {
         let done = DispatchSemaphore(value: 0)
         let box = ResultBox()
         Task { @MainActor in
-            // From when the command was given (launching the app counts), unless that looks off.
-            let asked = request.asked.map(Date.init(timeIntervalSince1970:)).flatMap { $0 <= .now && Date.now.timeIntervalSince($0) < 60 ? $0 : nil } ?? .now
+            // From when the command was given (launching the app counts; the same clock, so one
+            // long ago, the Mac asleep in between say, is refused as late, not sent now).
+            let asked = min(request.asked.map(Date.init(timeIntervalSince1970:)) ?? .now, .now)
             box.result = await Scripting.run(command, fade: request.fade, asked: asked, on: model)
             done.signal()
         }
