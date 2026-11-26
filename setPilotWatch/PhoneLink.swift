@@ -212,11 +212,11 @@ final class PhoneLink: NSObject {
     /// The app is in the foreground (screen on, app showing). Only then does it poll the iPhone.
     var isActive = true
 
-    /// A complication or control tap that arrived before the link to the iPhone was up (the app
-    /// launched by it): acted on once the session is up, if that's soon (BulbTiming.answerTimeout
-    /// from the tap, as any wait). Never once it's been said that the iPhone can't be reached: a
-    /// change mustn't land late.
-    private var waitingURL: (url: URL, at: Date)?
+    /// Complication or control taps that arrived before the link to the iPhone was up (the app
+    /// launched by one), in order: acted on once it's up, if that's soon (BulbTiming.answerTimeout
+    /// from each tap, as any wait). Never once it's been said that the iPhone can't be reached: a
+    /// change mustn't land late. Each shows as waiting meanwhile (its spinner).
+    private var waitingURLs: [(url: URL, at: Date)] = []
 
     /// Links from the complications and controls; `at` is when it was tapped.
     func open(_ url: URL, at: Date = .now) {
@@ -226,15 +226,11 @@ final class PhoneLink: NSObject {
             error = "That tap waited too long to be sent, so it wasn't. Tap again."
             return
         }
-        if session.activationState != .activated {
-            waitingURL = (url, at) // the launch race: the session's on its way
-            dropWhenDue(url, at: at)
-            return
-        }
-        guard session.isReachable else {
-            // Often only for a moment (just launched): kept until the tap's time is up, then said
-            // and dropped, never sent after that.
-            waitingURL = (url, at)
+        // The launch race (the session's on its way), or the iPhone out of reach, often only for a
+        // moment: kept until the tap's time is up, then said and dropped, never sent after that.
+        guard session.activationState == .activated, session.isReachable else {
+            waitingURLs.append((url, at))
+            if let key = Self.pendingKey(url) { pendingCounts[key, default: 0] += 1 }
             dropWhenDue(url, at: at)
             return
         }
@@ -246,17 +242,37 @@ final class PhoneLink: NSObject {
         let left = BulbTiming.answerTimeout - Date.now.timeIntervalSince(at)
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(max(left, 0)))
-            guard let self, let waiting = self.waitingURL, waiting.url == url, waiting.at == at else { return }
-            self.waitingURL = nil
-            self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+            guard let self, let i = self.waitingURLs.firstIndex(where: { $0.url == url && $0.at == at }) else { return }
+            self.waitingURLs.remove(at: i)
+            self.stopWaiting(url)
+            self.error = "Can't reach your iPhone, so that wasn't sent. Keep it nearby, with Bluetooth or Wi-Fi on."
         }
     }
 
-    /// Acts on a tap that was waiting for the session to come up.
+    /// Acts on the taps that were waiting for the session, in the order they came.
     private func openWaitingURL() {
-        guard let waiting = waitingURL else { return }
-        waitingURL = nil
-        open(waiting.url, at: waiting.at)
+        let waiting = waitingURLs
+        waitingURLs = []
+        for tap in waiting {
+            stopWaiting(tap.url)
+            open(tap.url, at: tap.at)
+        }
+    }
+
+    private func stopWaiting(_ url: URL) {
+        guard let key = Self.pendingKey(url) else { return }
+        let left = (pendingCounts[key] ?? 1) - 1
+        pendingCounts[key] = left > 0 ? left : nil
+    }
+
+    /// A tap's spinner key (as its command's).
+    private static func pendingKey(_ url: URL) -> String? {
+        switch url.host() {
+        case "preset": UUID(uuidString: url.lastPathComponent)?.uuidString
+        case "power": "power"
+        case "brighter", "dimmer": "brightness"
+        default: nil
+        }
     }
 
     private func perform(_ url: URL, at: Date) {
@@ -319,11 +335,8 @@ extension PhoneLink: WCSessionDelegate {
             if reachable {
                 self.refresh()
                 self.openWaitingURL()
-            } else if let waiting = self.waitingURL {
-                // A tap that launched the app, with the iPhone out of reach so far (often only for
-                // a moment): sent if it comes within reach in the tap's time, else said and dropped.
-                self.dropWhenDue(waiting.url, at: waiting.at)
             }
+            // Otherwise taps waiting stay so until their time's up (dropWhenDue, set as they came).
         }
     }
 

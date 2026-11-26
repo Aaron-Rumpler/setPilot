@@ -117,6 +117,7 @@ enum Scripting {
         }
         try await ready(model)
         model.mismatch = nil // an earlier change's: this one's own read-back says
+        let before = model.ticket
         switch command {
         case .power(let on):
             let on = on ?? !(model.isOn ?? false)
@@ -164,7 +165,7 @@ enum Scripting {
         case .get, .list, .switchBulb:
             break
         }
-        try await answered(model)
+        try await answered(model, since: before)
         return ScriptResult(state: state(of: model))
     }
 
@@ -265,6 +266,10 @@ enum Scripting {
         }
         let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
         guard await model.waitUntilControllable(timeout: max(left, 0)) else {
+            // Its time ran out waiting its turn or travelling, not the bulb's fault.
+            if left < Model.answerTimeout - 0.01, !model.recentlyNotAnswering, model.link == .connected {
+                throw ScriptError(code: .notAnswering, message: "That came too late to send (it waited too long before the bulb could take it); try again.")
+            }
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
             // Not if it's just been found not answering (it may still show as connected).
             if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty {
@@ -278,24 +283,17 @@ enum Scripting {
         }
     }
 
-    /// Taken, read back and as asked: or the bulb's refusal, no answer, or what it didn't apply.
-    private static func answered(_ model: Model) async throws {
-        if let problem = await model.outcome() {
-            // No answer (still waiting, every retry gone unanswered, the connection lost) or a refusal.
-            let unanswered = model.pending || problem == "The bulb didn't answer."
-                || problem.contains("no reply") || problem.contains("couldn't send") || problem.hasPrefix("Lost the connection")
-            throw ScriptError(code: unanswered ? .notAnswering : .refused, message: problem)
+    /// Taken, read back and as asked: or the bulb's refusal, no answer, what it didn't apply, or
+    /// not known (another change went before it was answered). Nothing sent (already as asked): done.
+    private static func answered(_ model: Model, since before: Int) async throws {
+        let t = model.ticket
+        guard t != before else { return }
+        switch await model.result(of: t) {
+        case .done: return
+        case .notApplied(let why): throw ScriptError(code: .notApplied, message: why)
+        case .refused(let why): throw ScriptError(code: .refused, message: why)
+        case .notAnswered(let why), .notKnown(let why): throw ScriptError(code: .notAnswering, message: why)
         }
-        // As long as the read-back is retried (Model.answerTimeout): a lost read-back or two isn't
-        // taken for no answer.
-        await model.waitUntilSettled()
-        // Answered, but not read back (yet): not known to be done.
-        // Still waiting, or the read-back went unanswered: not known to be done.
-        if model.pending || model.readBackFailed {
-            model.markNotAnswering() // as for no answer at all: the next ones fail at once
-            throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.")
-        }
-        if let mismatch = model.mismatch { throw ScriptError(code: .notApplied, message: mismatch) }
     }
 
     // MARK: Finding by name

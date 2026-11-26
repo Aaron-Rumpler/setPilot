@@ -179,47 +179,79 @@ final class Model {
     /// The setPilot just sent switches the bulb on or off (the power switch, a preset): if it gets
     /// no answer, the power switch goes back to how it was.
     @ObservationIgnored private var pilotSwitches = false
-    /// The latest change's setPilot was answered "success" (outcome() counts that as taken; the
-    /// scripting runner also waits for the read-back after it).
+    /// The latest change's setPilot was answered "success" (the read-back that follows says
+    /// whether it was applied).
     @ObservationIgnored private var pilotAnswered = false
-    /// The latest change's read-back went unanswered (or its connection was lost waiting): it's
-    /// not known to have been done, though `pending` is cleared.
-    @ObservationIgnored private(set) var readBackFailed = false
-    /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
-    /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
-    @ObservationIgnored private(set) var refusal: String? {
-        didSet {
-            guard refusal == nil else { return }
-            // A new change: the one before, if still unanswered, isn't known to be done.
-            if pending, !pilotAnswered { unansweredMarks = Array((unansweredMarks + [changeMark]).suffix(16)) }
-            changeMark += 1
-        }
-    }
-    /// Counts changes started (each clears `refusal`): a reason read later belongs to the change
-    /// made at a mark only if the mark is still the same.
-    @ObservationIgnored private(set) var changeMark = 0
-    /// Starts an action whose refusal will be reported: one that sends nothing (already as asked)
-    /// mustn't report an earlier change's reason.
-    func forgetRefusal() {
-        refusal = nil
-        readBackFailed = false // that was the last change's: this one starts clean
+    /// Why the last change (setPilot or setState) didn't take, or wasn't sent: the bulb's
+    /// refusal, no answer, or the app's reason (Model.apply). Nil once another is started.
+    @ObservationIgnored private(set) var refusal: String?
+    /// Starts an action whose reason will be reported: one that sends nothing (already as asked)
+    /// mustn't report an earlier change's.
+    func forgetRefusal() { refusal = nil }
+
+    // MARK: What became of a change
+
+    /// What became of a change, for whoever's waiting on it (Shortcuts, links, the CLI,
+    /// AppleScript, widgets, the watch). WiZ replies carry no request ID, so a change's answer
+    /// is the one that comes while it's the latest: one that another change goes before, still
+    /// unanswered, isn't known to be done.
+    enum ChangeResult: Equatable {
+        case done
+        case notApplied(String)
+        case refused(String)
+        case notAnswered(String)
+        case notKnown(String)
     }
 
-    /// A change still waiting (for its answer or its read-back) is dropped: not known to be done.
-    private func dropPending(_ why: String) {
-        if pending || verifyingSeq != nil {
-            readBackFailed = true
-            if !pilotAnswered, refusal == nil { refusal = why }
+    /// The latest change's number (0 before any); a waiter takes it once its change is sent.
+    @ObservationIgnored private(set) var ticket = 0
+    /// What became of recent changes, by number.
+    @ObservationIgnored private var results: [Int: ChangeResult] = [:]
+
+    /// A change is going out: the one before, if still unsettled, is settled now (done if it was
+    /// answered, its read-back being this one's now; otherwise not known to be done).
+    private func startChange() {
+        if ticket > 0, results[ticket] == nil {
+            settle(ticket, pilotAnswered ? .done : .notKnown("Another change went before this one was answered, so it isn't known to be done."))
         }
+        ticket += 1
+        refusal = nil
+        pilotAnswered = false
+    }
+
+    /// Records what became of a change (the first word on it counts). No answer at all starts the
+    /// fail-at-once hold (recentlyNotAnswering).
+    private func settle(_ t: Int, _ result: ChangeResult) {
+        guard t > 0, results[t] == nil else { return }
+        results[t] = result
+        if results.count > 64, let oldest = results.keys.min() { results.removeValue(forKey: oldest) }
+        if case .notAnswered = result { markNotAnswering() }
+    }
+
+    /// The latest change, unanswered so far (or its read-back unanswered): as no answer.
+    private var unanswered: ChangeResult {
+        pilotAnswered ? .notAnswered("The bulb took the change but didn't answer the read-back.") : .notAnswered("The bulb didn't answer.")
+    }
+
+    /// Waits for what became of change `t`: answered and read back as asked (done), not applied,
+    /// refused, not answered, or not known (another change went before it was answered). Settled
+    /// by the bulb's own retries giving up, so the wait is a backstop.
+    func result(of t: Int, timeout: Double = Model.answerTimeout * 2) async -> ChangeResult {
+        let end = Date().addingTimeInterval(timeout)
+        while results[t] == nil, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        if results[t] == nil { settle(t, t == ticket ? unanswered : .notAnswered("The bulb didn't answer.")) }
+        return results[t] ?? .notAnswered("The bulb didn't answer.")
+    }
+
+    /// A change still waiting (for its answer or its read-back) is dropped (another bulb, a light
+    /// show taking over): done if it was answered, otherwise not known to be done. Not taken for
+    /// the bulb not answering.
+    private func dropPending(_ why: String) {
+        if pending || verifyingSeq != nil { settle(ticket, pilotAnswered ? .done : .notKnown(why)) }
         verifyTask?.cancel()
         verifyingSeq = nil
         pending = false
     }
-
-    /// Changes superseded by a later one before they were answered (by changeMark), for whoever
-    /// waits on one to say it isn't known to be done. Only the last few are kept.
-    @ObservationIgnored private var unansweredMarks: [Int] = []
-    func wasAnswered(_ mark: Int) -> Bool { !unansweredMarks.contains(mark) }
     /// Reads after refused setPilots, still to come: they put the controls right, leaving the
     /// error as the status (one per refusal: a slider drag can be refused several times over).
     @ObservationIgnored private var quietReads = 0
@@ -298,7 +330,7 @@ final class Model {
             if let method, method != "getPilot", BulbAPI.deviceInfo.contains(method) { return }
             // A retry's read (recover) going unanswered: still not answering, as already said.
             if method == "getPilot", link == .unreachable {
-                if verifyingSeq != nil { readBackFailed = true }
+                if verifyingSeq != nil { settle(ticket, unanswered) }
                 quietReads = 0
                 pending = false
                 verifyingSeq = nil
@@ -326,10 +358,7 @@ final class Model {
                     }
                     recover()
                 }
-                if verifyingSeq != nil {
-                    readBackFailed = true // the change isn't known to have been done
-                    markNotAnswering()
-                }
+                if verifyingSeq != nil { settle(ticket, unanswered) } // its read-back
                 pending = false
                 verifyingSeq = nil
             case "setPilot"?:
@@ -337,9 +366,8 @@ final class Model {
                 pending = false
                 verifyingSeq = nil
                 refusal = message
-                // No answer at all (not a refusal): the next waits fail at once, as for a wait
-                // that came to nothing.
-                if message.contains("no reply") || message.contains("couldn't send") { markNotAnswering() }
+                // Not answered (every retry, or it couldn't be sent); otherwise the reason.
+                settle(ticket, message.contains("no reply") || message.contains("couldn't send") ? .notAnswered(message) : .refused(message))
                 if pilotSwitches { // it was to switch the bulb: as far as we know, it didn't
                     isOn = powerBefore
                     lastState = powerBefore
@@ -351,6 +379,7 @@ final class Model {
                 lastState = powerBefore
                 status = "The bulb didn't answer the power switch"
                 refusal = status
+                settle(ticket, .notAnswered(status))
             default:
                 break
             }
@@ -776,8 +805,9 @@ final class Model {
         guard link != .none else { return }
         // A change that never got its answer didn't take as far as we know (Shortcuts say so).
         if pending, !pilotAnswered, refusal == nil { refusal = "Lost the connection to the bulb before it answered." }
-        if pending || verifyingSeq != nil { readBackFailed = true }
-        if pending { markNotAnswering() }
+        if pending || verifyingSeq != nil {
+            settle(ticket, pilotAnswered ? unanswered : .notAnswered("Lost the connection to the bulb before it answered."))
+        }
         pending = false
         verifyingSeq = nil
         let was = link
@@ -1258,9 +1288,7 @@ final class Model {
                 .compactMapValues { ($0 as? NSNumber)?.intValue }
             // A change like the controls' own: an earlier one's reason and delayed speed no longer
             // apply, and a switch that goes unanswered puts the power back.
-            refusal = nil
-            pilotAnswered = false
-            readBackFailed = false
+            startChange()
             delayedSpeed?.cancel()
             delayedSpeed = nil
             let before = isOn
@@ -1274,9 +1302,7 @@ final class Model {
             endConsoleWait(after: retry)
             scheduleVerify()
         case "setState":
-            refusal = nil // a new change, as for setPilot
-            pilotAnswered = false
-            readBackFailed = false
+            startChange() // a new change, as for setPilot
             powerBefore = isOn // what a refusal puts back, whatever this one carries
             if let s = p["state"] as? Bool {
                 isOn = s
@@ -1354,8 +1380,6 @@ final class Model {
         var p = params
         refusal = nil // a new change: an older one's reason no longer applies, sent or not
         guard !p.isEmpty || speed != nil || power != nil else { return }
-        pilotAnswered = false
-        readBackFailed = false
         if power != nil { powerBefore = isOn } // what an unanswered switch puts back
         switch power {
         case true?:
@@ -1384,6 +1408,7 @@ final class Model {
         lastPilot = p.filter { $0.key != "state" && $0.key != "trans" }.compactMapValues { $0 as? Int }
         if let speed, speedParams != nil { lastPilot["speed"] = speed }
         lastState = isOn
+        startChange()
         sendSeq += 1
         pending = true
         if !p.isEmpty { bulb.send("setPilot", p, retry: retry) }
@@ -1611,11 +1636,9 @@ final class Model {
         lastMethod = "setPilot"
         lastPilot = ["dimming": Int(dimming)]
         lastState = isOn
+        startChange()
         sendSeq += 1
         pending = true
-        refusal = nil
-        pilotAnswered = false
-        readBackFailed = false
         pilotSwitches = false
         bulb.send("setPilot", p, retry: true)
         scheduleVerify()
@@ -1860,8 +1883,13 @@ final class Model {
         if reading {
             while pilotReads == reads && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         }
-        if !canControl { markNotAnswering() }
-        return canControl
+        // Ready only with the state read afresh if it was being read: a change mustn't go by a
+        // state from before (a toggle the wrong way).
+        let ready = canControl && (!reading || pilotReads != reads)
+        // Not answering, after a whole wait: the hold starts. Not for a short wait (what was left
+        // of a change's time) or a bulb that's answering but refusing.
+        if !ready, timeout >= Self.answerTimeout - 0.01, link != .connected { markNotAnswering() }
+        return ready
     }
 
     /// A wait for the bulb (or for its answer to a change) came to nothing: for a while, waits
@@ -1879,17 +1907,6 @@ final class Model {
 
     /// A scene speed changed while the bulb was off, still to go when it's switched on.
     var owedSpeed: Int? { speedOwed && mode == .scene ? Int(speed) : nil }
-
-    /// For Shortcuts, after a change: nil once the bulb has taken it (read back), or why not: its
-    /// refusal, or no answer within `timeout`.
-    func outcome(timeout: Double = Model.answerTimeout) async -> String? {
-        let end = Date().addingTimeInterval(timeout)
-        while refusal == nil, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
-        if let refusal { return refusal } // marked already if it was no answer (onError)
-        guard pending && !pilotAnswered else { return nil }
-        markNotAnswering() // as for a wait that came to nothing: the next ones fail at once
-        return "The bulb didn't answer."
-    }
 
     /// Once changes settle, read the state back to catch values the bulb ignored or adjusted
     /// (it replies "success" to some setPilots it doesn't fully apply).
@@ -1920,6 +1937,7 @@ final class Model {
         }
         mismatch = diffs.isEmpty ? nil : "Bulb didn't apply: " + diffs.joined(separator: ", ")
         status = diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state"
+        settle(ticket, mismatch.map { .notApplied($0) } ?? .done)
     }
 
     // MARK: Incoming
@@ -1946,6 +1964,7 @@ final class Model {
             // replace the error below with "didn't apply"), and nothing is pending any more.
             // A read-back already on its way (the refusal came after it went out) will do.
             let readOut = verifyingSeq != nil && verifyingSeq == sendSeq
+            let wasReadBack = method == "getPilot" && verifyingSeq != nil
             if method == "setPilot" || method == "setState" || method == "getPilot" {
                 verifyTask?.cancel()
                 pending = false
@@ -1992,7 +2011,13 @@ final class Model {
                 liveStatus = "Live updates off — \(text)"
                 return
             }
-            if method == "setPilot" || method == "setState" { refusal = "\(method): \(text)" }
+            if method == "setPilot" || method == "setState" {
+                refusal = "\(method): \(text)"
+                settle(ticket, .refused("\(method): \(text)"))
+            } else if wasReadBack {
+                // The read-back refused (a signing key, say): taken if the change was answered.
+                settle(ticket, pilotAnswered ? .done : .refused("getPilot: \(text)"))
+            }
             status = "\(method): \(text)"
             return
         }
@@ -2046,6 +2071,7 @@ final class Model {
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             status = isOn == false ? "Switched off" : "Switched on"
+            settle(ticket, .done) // nothing to read back for setState
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {
                 live = true

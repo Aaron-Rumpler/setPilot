@@ -469,6 +469,11 @@ final class LightShowPlayer {
         if playing != isPlaying {
             // Started some other way than Play (a media key, Control Center): still a run.
             if playing, runOver {
+                // A flashing show started without Play (which asks first): paused until Play.
+                if show?.flashes == true, Flashing.asks {
+                    player.pause()
+                    return
+                }
                 runOver = false
                 if saved == nil { restoreNote = nil }
             }

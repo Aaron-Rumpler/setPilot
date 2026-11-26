@@ -310,10 +310,10 @@ extension PhoneRelay: WCSessionDelegate {
             return
         }
         let arrived = Date.now
-        // The watch's time, unless its clock looks off (ahead, or further behind than anything
-        // waits: a watch a few seconds slow mustn't make every change look too late).
+        // The watch's time (a tap that's waited is counted from the tap, and refused if that's too
+        // long ago), unless its clock looks off: ahead (allowing a moment), or implausibly far behind.
         let sent = (message[WatchKey.sentAt] as? Double).map(Date.init(timeIntervalSince1970:))
-        let asked = sent.flatMap { $0 <= arrived && arrived.timeIntervalSince($0) < Model.answerTimeout ? $0 : nil } ?? arrived
+        let asked = sent.flatMap { $0 <= arrived.addingTimeInterval(1) && arrived.timeIntervalSince($0) < 60 ? min($0, arrived) : nil } ?? arrived
         incomingQueue.yield(Incoming(command: command, reply: replyHandler, asked: asked))
     }
 
@@ -324,7 +324,7 @@ extension PhoneRelay: WCSessionDelegate {
         let sends = switch message.command {
         case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
         // A script's own say: reading the state and switching bulbs aren't changes to this bulb.
-        case .script: Self.scripted(message.command)?.0.changes ?? true
+        case .script: Self.scripted(message.command)?.0.changes ?? false // not understood: not sent
         default: false
         }
         // A change asked for longer ago than anything waits for the bulb (it waited its turn
@@ -335,10 +335,12 @@ extension PhoneRelay: WCSessionDelegate {
                    code: ScriptError.Code.notAnswering.rawValue)
             return
         }
-        if sends { model?.forgetRefusal() }
+        // Not the runner's (it keeps its own): a reason from before isn't this one's.
+        if sends, Self.scripted(message.command) == nil { model?.forgetRefusal() }
+        let before = model?.ticket
         let outcome = await run(message.command, asked: message.asked)
-        // A later change (the Crown, a widget) meanwhile has its own reason, not this one's.
-        let mark = model?.changeMark
+        // The change this sent, if it sent one (its result is its own, whatever follows).
+        let ticket = model.flatMap { m in before.flatMap { m.ticket != $0 ? m.ticket : nil } }
         switch outcome {
         case .now(let snapshot):
             finish(message, snapshot)
@@ -350,23 +352,13 @@ extension PhoneRelay: WCSessionDelegate {
             Task {
                 try? await Task.sleep(for: pause)
                 await model?.waitUntilSettled()
-                // Refused, or not sent at all (a deleted scene in a preset): say so, as Shortcuts do.
-                // Only for commands that send (cleared above, so not an earlier change's reason), and
-                // only while no later change has started.
-                // Still unanswered by now: say so (outcome's "didn't answer"), as Shortcuts do.
+                // What became of the change it sent, as Shortcuts say it: refused, not answered,
+                // not applied, or not known (another change went before it was answered).
                 var why: String?
-                // A later change went before this one was answered: not known to be done.
-                if sends, let model, let mark, model.changeMark != mark, !model.wasAnswered(mark) {
-                    why = "Another change went before this one was answered, so it isn't known to be done."
-                }
-                if sends, let model, model.changeMark == mark {
-                    why = await model.outcome(timeout: 0)
-                    // Answered but not read back, or not as asked: not known to be done (as Shortcuts say).
-                    if why == nil, model.pending || model.readBackFailed {
-                        model.markNotAnswering()
-                        why = "The bulb took the change but didn't answer the read-back."
-                    } else if why == nil, let mismatch = model.mismatch {
-                        why = mismatch
+                if sends, let model, let ticket {
+                    switch await model.result(of: ticket) {
+                    case .done: break
+                    case .notApplied(let m), .refused(let m), .notAnswered(let m), .notKnown(let m): why = m
                     }
                 }
                 finish(message, model?.snapshot ?? LightSnapshot(), error: why)
