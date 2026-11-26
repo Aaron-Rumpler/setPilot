@@ -43,6 +43,13 @@ struct SetPilotMobileApp: App {
             }
             // Refused, unanswered or not sent (a deleted scene in a preset): say so, as Shortcuts do.
             if let problem = await model.outcome() { throw WidgetError(localizedStringResource: "\(problem)") }
+            // Done once read back as asked, as for Shortcuts (Scripting.answered).
+            await model.waitUntilSettled()
+            if model.pending || model.readBackFailed {
+                model.markNotAnswering()
+                throw WidgetError(localizedStringResource: "The bulb took the change but didn't answer the read-back.")
+            }
+            if let mismatch = model.mismatch { throw WidgetError(localizedStringResource: "\(mismatch)") }
         }
         // Siri learns the preset names from this (also refreshed whenever the presets change).
         SetPilotShortcuts.updateAppShortcutParameters()

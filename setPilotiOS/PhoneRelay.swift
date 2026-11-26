@@ -20,6 +20,9 @@ final class PhoneRelay: NSObject {
     private struct Incoming: @unchecked Sendable {
         let command: WatchCommand
         let reply: ([String: Any]) -> Void
+        /// When it was asked for: sent from the watch (as the watch's clock says, if that's
+        /// sensible), else when it arrived. Waits are counted from then.
+        let asked: Date
     }
     private let incoming: AsyncStream<Incoming>
     nonisolated private let incomingQueue: AsyncStream<Incoming>.Continuation
@@ -91,12 +94,12 @@ final class PhoneRelay: NSObject {
     /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
     /// apart from the queue: only the sending needs to keep the order, and the next command
     /// shouldn't wait out this one's read-back.
-    private func run(_ command: WatchCommand) async -> Outcome {
+    private func run(_ command: WatchCommand, asked: Date) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
         if let (scripted, fade) = Self.scripted(command) {
             // The runner waits for the bulb as everything does (failing at once just after it's
             // been found not answering; not for switching bulbs or listing, which don't need it).
-            return .scripted(await Scripting.run(scripted, fade: fade, on: model))
+            return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, on: model))
         }
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
@@ -304,7 +307,11 @@ extension PhoneRelay: WCSessionDelegate {
             replyHandler([WatchKey.error: "setPilot on your iPhone didn't understand that; update both apps"])
             return
         }
-        incomingQueue.yield(Incoming(command: command, reply: replyHandler))
+        let arrived = Date.now
+        // The watch's time, unless its clock looks off (ahead, or a minute behind).
+        let sent = (message[WatchKey.sentAt] as? Double).map(Date.init(timeIntervalSince1970:))
+        let asked = sent.flatMap { $0 <= arrived && arrived.timeIntervalSince($0) < 60 ? $0 : nil } ?? arrived
+        incomingQueue.yield(Incoming(command: command, reply: replyHandler, asked: asked))
     }
 
     private func handle(_ message: Incoming) async {
@@ -315,8 +322,16 @@ extension PhoneRelay: WCSessionDelegate {
         case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale, .script: true
         default: false
         }
+        // A change asked for longer ago than anything waits for the bulb (it waited its turn
+        // here behind others, or the message was slow): not sent, as it would land late.
+        let changes: Bool = { if case .set = message.command { return true }; return sends }()
+        if changes, Date.now.timeIntervalSince(message.asked) > Model.answerTimeout {
+            finish(message, model?.snapshot ?? LightSnapshot(), error: "That came too late to send (the bulb was busy or not answering); try again.",
+                   code: ScriptError.Code.notAnswering.rawValue)
+            return
+        }
         if sends { model?.forgetRefusal() }
-        let outcome = await run(message.command)
+        let outcome = await run(message.command, asked: message.asked)
         // A later change (the Crown, a widget) meanwhile has its own reason, not this one's.
         let mark = model?.changeMark
         switch outcome {
@@ -335,7 +350,16 @@ extension PhoneRelay: WCSessionDelegate {
                 // only while no later change has started.
                 // Still unanswered by now: say so (outcome's "didn't answer"), as Shortcuts do.
                 var why: String?
-                if sends, let model, model.changeMark == mark { why = await model.outcome(timeout: 0) }
+                if sends, let model, model.changeMark == mark {
+                    why = await model.outcome(timeout: 0)
+                    // Answered but not read back, or not as asked: not known to be done (as Shortcuts say).
+                    if why == nil, model.pending || model.readBackFailed {
+                        model.markNotAnswering()
+                        why = "The bulb took the change but didn't answer the read-back."
+                    } else if why == nil, let mismatch = model.mismatch {
+                        why = mismatch
+                    }
+                }
                 finish(message, model?.snapshot ?? LightSnapshot(), error: why)
             }
         }

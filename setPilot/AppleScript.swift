@@ -110,12 +110,12 @@ extension AppDelegate {
     func application(_ sender: NSApplication, delegateHandlesKey key: String) -> Bool { Self.scriptKeys.contains(key) }
 
     @objc var scriptPower: Bool {
-        get { readForScript { NSNumber(value: $0.isOn == true) } as? Bool ?? false }
+        get { readForScript("scriptPower") { NSNumber(value: $0.isOn == true) } as? Bool ?? false }
         set { runForScript(.power(newValue)) }
     }
 
     @objc var scriptBrightness: Int {
-        get { readForScript { NSNumber(value: Int($0.dimming)) } as? Int ?? 0 }
+        get { readForScript("scriptBrightness") { NSNumber(value: Int($0.dimming)) } as? Int ?? 0 }
         set { runForScript(.brightness(newValue)) }
     }
 
@@ -123,10 +123,13 @@ extension AppDelegate {
     /// launched, or not answering): the script waits while the bulb is tried (as long as the app's
     /// own read retries, Model.answerTimeout), then gets the value, or the not-answering error rather than a
     /// made-up value (`set power to not power` on a bulb not read yet would go the wrong way).
-    private func readForScript(_ value: @escaping (Model) -> NSNumber) -> Any {
+    /// `key`: the property's; read as part of something else (`properties`, which reads every
+    /// property in one command that can't be suspended once per property), it's what's known now.
+    private func readForScript(_ key: String, _ value: @escaping (Model) -> NSNumber) -> Any {
         let model = Shared.model
         if model.canControl { return value(model) } // answering: what it is now
         let command = NSScriptCommand.current()
+        guard (command?.receiversSpecifier as? NSPropertySpecifier)?.key == key else { return value(model) }
         func fail(_ code: ScriptError.Code, _ message: String) {
             command?.scriptErrorNumber = 1000 + Int(ScriptError(code: code, message: message).exitCode)
             command?.scriptErrorString = message

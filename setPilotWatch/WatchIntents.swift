@@ -1,4 +1,5 @@
 import AppIntents
+import WatchConnectivity
 
 // Shortcuts actions on the watch itself: Siri on the watch, the Action button (Ultra), and the
 // Smart Stack. The same actions as the iPhone's, sent to the iPhone, whose shared runner
@@ -16,9 +17,14 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
         throw WatchIntentError(localizedStringResource: "Couldn't send that.")
     }
     let link = PhoneLink.shared
-    // Launched just for this (Siri, the Action button): the link to the iPhone is still coming up.
-    let until = Date.now.addingTimeInterval(5)
-    while !link.ready, Date.now < until { try? await Task.sleep(for: .milliseconds(100)) }
+    // Launched just for this (Siri, the Action button): the session is still coming up. Waited
+    // for as anything waits for the bulb (BulbTiming), and not at all for the iPhone to come
+    // back within reach: a change mustn't land late.
+    let until = Date.now.addingTimeInterval(BulbTiming.answerTimeout)
+    while WCSession.default.activationState != .activated, Date.now < until { try? await Task.sleep(for: .milliseconds(100)) }
+    guard link.ready else {
+        throw WatchIntentError(localizedStringResource: "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on.")
+    }
     let ok = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
         MainActor.assumeIsolated { link.send(.script(data, fade: fade)) { done.resume(returning: $0) } } // called right away, here
     }

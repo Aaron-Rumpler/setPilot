@@ -324,6 +324,7 @@ final class LightShowPlayer {
 
     func play() {
         guard player.currentItem != nil else { return }
+        runOver = false
         if saved == nil { restoreNote = nil } // a new run (not resuming): the last one's note is done
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
         player.play()
@@ -419,7 +420,11 @@ final class LightShowPlayer {
 
     /// Puts the light back if anything was sent (`saved` is set then), even if sending has since
     /// been turned off.
+    /// The run has ended or stopped (restore ran) and not started again.
+    @ObservationIgnored private var runOver = false
+
     private func restore() {
+        runOver = true
         // A speed still to come would switch the bulb back on once it's put back; left as the
         // show has it, the speed still goes (the scene's, sent just before the end).
         if restores {
@@ -611,9 +616,9 @@ final class LightShowPlayer {
         guard sendsToBulb else { return }
         // The first cue sent: remember the light to put back (whether it's put back is decided
         // when the show stops).
-        // Not for a follow-up speed: one after the run has ended (the light not put back) isn't
-        // the start of a new one.
-        if saved == nil, !followUp { saved = model.savedLight; restoreNote = nil }
+        // Not for a follow-up speed after the run has ended (the light not put back): that isn't
+        // the start of a new one. One during a run (its first change only a speed) is.
+        if saved == nil, !(followUp && runOver) { saved = model.savedLight; restoreNote = nil }
         model.sendLightCue(pilot)
         // On (a setPilot without "state": false switches it on), with a speed waiting: send it.
         // (A fade on its own isn't taken as switching it on, as elsewhere.)

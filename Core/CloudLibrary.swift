@@ -90,9 +90,12 @@ final class CloudLibrary {
         /// iCloud's versions this build can't read (from a newer build), by record name: neither
         /// taken nor overwritten nor deleted here, and tried again at launch (after an update).
         var unreadable: [String: Item]?
+        /// The household this device's library is a copy of, left by an account change (signing
+        /// out, say): rejoined as its copy, not added to it, so what others deleted stays deleted.
+        var formerHousehold: SharedZone?
     }
 
-    struct SharedZone: Codable {
+    struct SharedZone: Codable, Equatable {
         var zoneName: String
         var ownerName: String
     }
@@ -104,6 +107,9 @@ final class CloudLibrary {
     }
     private var container: CKContainer { CKContainer(identifier: Self.containerID) }
     private var engine: CKSyncEngine?
+    /// The engine was made without saved state, and hasn't reported an account change yet.
+    private var engineFresh = false
+    private var householdLookup: Task<HouseholdLookup, Never>?
     private var saved = Saved()
     private weak var model: Model?
     /// Set while applying iCloud's changes, so they aren't taken for local ones.
@@ -251,6 +257,7 @@ final class CloudLibrary {
         var config = CKSyncEngine.Configuration(database: database, stateSerialization: saved.state, delegate: self)
         config.automaticallySync = true
         engine = CKSyncEngine(config)
+        engineFresh = saved.state == nil
         progress.household = saved.shared?.ownerName
         status = "Waiting for iCloud"
     }
@@ -341,7 +348,14 @@ final class CloudLibrary {
         // One household at a time: in another already, it's left (so the account's other devices
         // can't find the old one instead).
         if saved.shared != nil, zoneID != zone {
-            _ = try? await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
+            do {
+                _ = try await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
+            } catch let error as CKError where error.code == .zoneNotFound || error.code == .unknownItem {
+                // Already gone: left all the same.
+            } catch {
+                status = "Couldn't leave your current household to join this one: " + Self.describe(error)
+                return
+            }
         }
         if !addMine { clearLibraryHere() }
         switchLibrary(to: SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName))
@@ -355,27 +369,63 @@ final class CloudLibrary {
     /// `choice` is how this device's library goes with it: none (found at launch or Sync Now) takes
     /// the household's in its place; after the Apple ID question, as answered (added, kept here
     /// without being added, or already replaced); signing in, added. Returns whether one was found.
+    enum HouseholdLookup { case none, joined, skipped }
+
+    /// One look at a time: two at once (launch and signing in, say) would race to decide how
+    /// this device's library goes.
     @discardableResult
-    private func findHousehold(after choice: AccountChoice? = nil) async -> Bool {
+    private func findHousehold(after choice: AccountChoice? = nil) async -> HouseholdLookup {
+        if let running = householdLookup { return await running.value == .joined ? .joined : .skipped }
+        let task = Task { await lookUpHousehold(after: choice) }
+        householdLookup = task
+        let result = await task.value
+        householdLookup = nil
+        return result
+    }
+
+    private func lookUpHousehold(after choice: AccountChoice?) async -> HouseholdLookup {
         // Not while the question about another Apple ID is open: this device's library is
         // decided on first (answering it looks again).
-        guard saved.shared == nil, saved.switchPending != true, engine != nil,
-              let zones = try? await container.sharedCloudDatabase.allRecordZones(),
-              let zone = zones.first(where: { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName })
-        else { return false }
-        guard saved.shared == nil, saved.switchPending != true else { return false } // joined (or switched) meanwhile
+        guard saved.shared == nil, saved.switchPending != true, engine != nil else { return .skipped }
+        guard let zones = try? await container.sharedCloudDatabase.allRecordZones() else { return .skipped }
+        guard saved.shared == nil, saved.switchPending != true else { return .skipped } // joined (or switched) meanwhile
+        guard let zone = zones.first(where: { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName })
+        else { return .none }
         let household = SharedZone(zoneName: zone.zoneID.zoneName, ownerName: zone.zoneID.ownerName)
-        switch choice {
+        // Rejoining the household this library is a copy of: taken as its copy, not added.
+        let how: AccountChoice? = saved.formerHousehold == household && choice == .merge ? nil : choice
+        switch how {
         case .merge?:
             switchLibrary(to: household)
         case .keepHereOnly?:
             switchLibrary(to: household, offerMine: false)
             markAllKnown()
-        case .replace?, nil:
+        case .replace?:
+            clearLibraryHere() // already, as answered
+            switchLibrary(to: household, offerMine: false)
+        case nil:
+            // In place of what's here. First what's here goes up to the account's own library (it
+            // may never have, or have changes not sent yet), so nothing's lost; not now if that
+            // can't be done (offline): the next launch or Sync Now tries again.
+            guard await uploadHere() else { return .skipped }
+            guard saved.shared == nil, saved.switchPending != true else { return .skipped }
             clearLibraryHere()
             switchLibrary(to: household, offerMine: false)
         }
-        return true
+        return .joined
+    }
+
+    /// Sends everything here to the account's own library, offering it first if it never has
+    /// been. Returns whether it all went.
+    private func uploadHere() async -> Bool {
+        guard let engine else { return false }
+        if !saved.seeded { seed() }
+        do {
+            try await engine.sendChanges()
+        } catch {
+            return false
+        }
+        return engine === self.engine && engine.state.pendingRecordZoneChanges.isEmpty
     }
 
     /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).
@@ -633,22 +683,29 @@ final class CloudLibrary {
             // (a household just joined, say) reports the account it starts with as one.
             var signingIn = false
             if case .signIn = e.changeType { signingIn = true }
+            // An engine just made (at launch, or for a library just switched to) reports the account
+            // it starts with as signing in: that's not a change, and whoever made it has done what's due.
+            let fresh = engineFresh
+            engineFresh = false
             if saved.shared != nil, !signingIn {
+                let former = saved.shared
                 saved = Saved()
+                saved.formerHousehold = former
                 persist()
                 makeEngine()
+                engineFresh = false // made for this change, which is handled below
             }
             switch e.changeType {
-            // Not offered while the question about another Apple ID is still open.
             case .signIn:
-                guard saved.shared == nil else { break } // a household's engine starting: nothing's changed
+                guard saved.shared == nil, !fresh else { break }
                 reset(reseed: false)
                 // Not while the question about another Apple ID is open. An account in a household
-                // joins it, with what's here added; otherwise what's here goes to its own library.
-                if saved.switchPending != true {
-                    Task {
-                        if !(await self.findHousehold(after: .merge)) { self.seed() }
-                    }
+                // joins it, with what's here added (or, if this is that household's copy, as its
+                // copy); with none, what's here goes to its own library.
+                guard saved.switchPending != true else { break }
+                Task {
+                    let found = await self.findHousehold(after: .merge)
+                    if found == .none, self.saved.shared == nil, self.saved.switchPending != true { self.seed() }
                 }
             // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
             case .switchAccounts:

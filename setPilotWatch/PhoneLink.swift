@@ -128,7 +128,7 @@ final class PhoneLink: NSObject {
             waiting += 1
             error = nil
         }
-        session.sendMessage([WatchKey.command: data], replyHandler: { reply in
+        session.sendMessage([WatchKey.command: data, WatchKey.sentAt: Date.now.timeIntervalSince1970], replyHandler: { reply in
             let snapshot = (reply[WatchKey.snapshot] as? Data).flatMap { try? JSONDecoder().decode(LightSnapshot.self, from: $0) }
             let message = reply[WatchKey.error] as? String
             let info = (reply[WatchKey.deviceInfo] as? Data).flatMap { try? JSONDecoder().decode([DeviceInfoEntry].self, from: $0) }
@@ -216,7 +216,10 @@ final class PhoneLink: NSObject {
     func open(_ url: URL, at: Date = .now) {
         guard url.scheme == "setpilot" else { return }
         let session = WCSession.default
-        guard Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else { return } // too long ago
+        guard Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else {
+            error = "That tap took too long to reach the iPhone, so it wasn't sent. Tap again."
+            return
+        }
         if session.activationState != .activated {
             waitingURL = (url, at) // the launch race: the session's on its way
             return
@@ -297,8 +300,9 @@ extension PhoneLink: WCSessionDelegate {
                 self.refresh()
                 self.openWaitingURL()
             } else if self.waitingURL != nil {
-                // A complication tap that launched the app: say why nothing's happened yet (it's
-                // still acted on if the iPhone comes within reach soon).
+                // A tap that launched the app, with the iPhone out of reach: said, and dropped (it
+                // mustn't go when the iPhone comes back, after being told it couldn't).
+                self.waitingURL = nil
                 self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
             }
         }

@@ -139,6 +139,9 @@ enum WatchKey {
     static let errorCode = "errorCode"
     /// When presets were applied on the iPhone (PresetUsage).
     static let presetUsage = "presetUsage"
+    /// When the watch sent a command (seconds since 1970): a change that reaches the bulb later
+    /// than anything waits for it (BulbTiming.answerTimeout) isn't sent.
+    static let sentAt = "sentAt"
 }
 
 /// A custom scene's name and swatch, which is all the watch needs.

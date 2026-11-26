@@ -14,9 +14,10 @@ enum Scripting {
     /// A change that has waited its turn longer than anything waits for the bulb (answerTimeout)
     /// isn't sent: it would land long after it was asked for. It fails as not answering (the one
     /// before it is still waiting for the bulb).
-    static func run(_ command: ScriptCommand, fade: Int? = nil, on model: Model) async -> ScriptResult {
+    /// `asked`: when it was asked for, if before now (a watch tap that's waited its turn on the
+    /// iPhone): the wait is counted from then.
+    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, on model: Model) async -> ScriptResult {
         let previous = queue
-        let asked = Date.now
         let task = Task { @MainActor () -> ScriptResult in
             _ = await previous?.value
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
@@ -279,7 +280,8 @@ enum Scripting {
         // taken for no answer.
         await model.waitUntilSettled()
         // Answered, but not read back (yet): not known to be done.
-        if model.pending {
+        // Still waiting, or the read-back went unanswered: not known to be done.
+        if model.pending || model.readBackFailed {
             model.markNotAnswering() // as for no answer at all: the next ones fail at once
             throw ScriptError(code: .notAnswering, message: "The bulb took the change but didn't answer the read-back.")
         }
@@ -320,7 +322,8 @@ private extension ScriptCommand {
     /// Whether it changes the light (or which bulb), rather than only reading.
     var changes: Bool {
         switch self {
-        case .get, .list: false
+        // Switching bulbs is the way out of one that isn't answering, and lands on another.
+        case .get, .list, .switchBulb: false
         default: true
         }
     }

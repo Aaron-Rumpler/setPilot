@@ -182,6 +182,9 @@ final class Model {
     /// The latest change's setPilot was answered "success" (outcome() counts that as taken; the
     /// scripting runner also waits for the read-back after it).
     @ObservationIgnored private var pilotAnswered = false
+    /// The latest change's read-back went unanswered (or its connection was lost waiting): it's
+    /// not known to have been done, though `pending` is cleared.
+    @ObservationIgnored private(set) var readBackFailed = false
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String? {
@@ -271,9 +274,11 @@ final class Model {
             if let method, method != "getPilot", BulbAPI.deviceInfo.contains(method) { return }
             // A retry's read (recover) going unanswered: still not answering, as already said.
             if method == "getPilot", link == .unreachable {
+                if verifyingSeq != nil { readBackFailed = true }
                 quietReads = 0
                 pending = false
                 verifyingSeq = nil
+                if status == "Trying again…" { status = "The bulb isn't answering; trying again…" } // Try Again's
                 return
             }
             // The connection itself: connectionLost says it (once, not at every retry).
@@ -297,6 +302,10 @@ final class Model {
                     }
                     recover()
                 }
+                if verifyingSeq != nil {
+                    readBackFailed = true // the change isn't known to have been done
+                    markNotAnswering()
+                }
                 pending = false
                 verifyingSeq = nil
             case "setPilot"?:
@@ -304,6 +313,9 @@ final class Model {
                 pending = false
                 verifyingSeq = nil
                 refusal = message
+                // No answer at all (not a refusal): the next waits fail at once, as for a wait
+                // that came to nothing.
+                if message.contains("no reply") || message.contains("couldn't send") { markNotAnswering() }
                 if pilotSwitches { // it was to switch the bulb: as far as we know, it didn't
                     isOn = powerBefore
                     lastState = powerBefore
@@ -742,6 +754,8 @@ final class Model {
         guard link != .none else { return }
         // A change that never got its answer didn't take as far as we know (Shortcuts say so).
         if pending, !pilotAnswered, refusal == nil { refusal = "Lost the connection to the bulb before it answered." }
+        if pending || verifyingSeq != nil { readBackFailed = true }
+        if pending { markNotAnswering() }
         pending = false
         verifyingSeq = nil
         let was = link
@@ -1226,6 +1240,7 @@ final class Model {
             // apply, and a switch that goes unanswered puts the power back.
             refusal = nil
             pilotAnswered = false
+            readBackFailed = false
             delayedSpeed?.cancel()
             delayedSpeed = nil
             let before = isOn
@@ -1241,6 +1256,7 @@ final class Model {
         case "setState":
             refusal = nil // a new change, as for setPilot
             pilotAnswered = false
+            readBackFailed = false
             powerBefore = isOn // what a refusal puts back, whatever this one carries
             if let s = p["state"] as? Bool {
                 isOn = s
@@ -1319,6 +1335,7 @@ final class Model {
         refusal = nil // a new change: an older one's reason no longer applies, sent or not
         guard !p.isEmpty || speed != nil || power != nil else { return }
         pilotAnswered = false
+        readBackFailed = false
         if power != nil { powerBefore = isOn } // what an unanswered switch puts back
         switch power {
         case true?:
@@ -1578,6 +1595,7 @@ final class Model {
         pending = true
         refusal = nil
         pilotAnswered = false
+        readBackFailed = false
         pilotSwitches = false
         bulb.send("setPilot", p, retry: true)
         scheduleVerify()
@@ -1811,7 +1829,9 @@ final class Model {
     func waitUntilControllable(timeout: Double = Model.answerTimeout) async -> Bool {
         // No bulb chosen: nothing to wait for (and nothing to remember as not answering).
         guard !(UserDefaults.standard.string(forKey: Self.addressKey) ?? "").isEmpty else { return false }
-        if !canControl, recentlyNotAnswering {
+        // Just found not answering (even if it still shows as connected, a read-back just went
+        // unanswered, say): at once. An answer from the bulb clears it (handleReply).
+        if recentlyNotAnswering {
             _ = ensureLive() // tried again meanwhile, for the next one
             return false
         }
@@ -1822,7 +1842,7 @@ final class Model {
         if reading {
             while pilotReads == reads && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         }
-        if canControl { notAnsweringSince = nil } else { markNotAnswering() }
+        if !canControl { markNotAnswering() }
         return canControl
     }
 
@@ -1847,7 +1867,7 @@ final class Model {
     func outcome(timeout: Double = Model.answerTimeout) async -> String? {
         let end = Date().addingTimeInterval(timeout)
         while refusal == nil, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
-        if let refusal { return refusal }
+        if let refusal { return refusal } // marked already if it was no answer (onError)
         guard pending && !pilotAnswered else { return nil }
         markNotAnswering() // as for a wait that came to nothing: the next ones fail at once
         return "The bulb didn't answer."
@@ -1893,6 +1913,7 @@ final class Model {
             wrongBulb = false
         }
         lastHeard = .now
+        notAnsweringSince = nil // it's answering
         let method = reply["method"] as? String ?? "?"
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
