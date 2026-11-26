@@ -87,8 +87,10 @@ final class PhoneRelay: NSObject {
     /// taps during an outage is answered at once, not queued to land late). Woken from a
     /// suspension, it re-registers for pushes and reads the state again if it's gone quiet, so a
     /// toggle doesn't go by a state from before.
-    private func bulbReady(_ model: Model) async -> Bool {
-        await model.waitUntilControllable()
+    /// `asked`: a change's, whose wait is what's left of the one timeout from then.
+    private func bulbReady(_ model: Model, asked: Date? = nil) async -> Bool {
+        let left = asked.map { Model.answerTimeout - Date.now.timeIntervalSince($0) } ?? Model.answerTimeout
+        return await model.waitUntilControllable(timeout: max(left, 0))
     }
 
     /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
@@ -141,7 +143,7 @@ final class PhoneRelay: NSObject {
         default:
             break
         }
-        guard await bulbReady(model) else { return .failed(model.snapshot, Self.notAnswering) }
+        guard await bulbReady(model, asked: asked) else { return .failed(model.snapshot, Self.notAnswering) }
         var pause = Duration.zero
         switch command {
         case .sync:
@@ -308,9 +310,10 @@ extension PhoneRelay: WCSessionDelegate {
             return
         }
         let arrived = Date.now
-        // The watch's time, unless its clock looks off (ahead, or a minute behind).
+        // The watch's time, unless its clock looks off (ahead, or further behind than anything
+        // waits: a watch a few seconds slow mustn't make every change look too late).
         let sent = (message[WatchKey.sentAt] as? Double).map(Date.init(timeIntervalSince1970:))
-        let asked = sent.flatMap { $0 <= arrived && arrived.timeIntervalSince($0) < 60 ? $0 : nil } ?? arrived
+        let asked = sent.flatMap { $0 <= arrived && arrived.timeIntervalSince($0) < Model.answerTimeout ? $0 : nil } ?? arrived
         incomingQueue.yield(Incoming(command: command, reply: replyHandler, asked: asked))
     }
 
@@ -319,7 +322,9 @@ extension PhoneRelay: WCSessionDelegate {
         // going again (and the state read again if the app was suspended) through
         // waitUntilControllable, so changes from elsewhere reach the watch while it's awake.
         let sends = switch message.command {
-        case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale, .script: true
+        case .applyPreset, .playCustom, .compose, .power, .togglePower, .dimDelta, .modeChoice, .temperatureScale: true
+        // A script's own say: reading the state and switching bulbs aren't changes to this bulb.
+        case .script: Self.scripted(message.command)?.0.changes ?? true
         default: false
         }
         // A change asked for longer ago than anything waits for the bulb (it waited its turn
@@ -350,6 +355,10 @@ extension PhoneRelay: WCSessionDelegate {
                 // only while no later change has started.
                 // Still unanswered by now: say so (outcome's "didn't answer"), as Shortcuts do.
                 var why: String?
+                // A later change went before this one was answered: not known to be done.
+                if sends, let model, let mark, model.changeMark != mark, !model.wasAnswered(mark) {
+                    why = "Another change went before this one was answered, so it isn't known to be done."
+                }
                 if sends, let model, model.changeMark == mark {
                     why = await model.outcome(timeout: 0)
                     // Answered but not read back, or not as asked: not known to be done (as Shortcuts say).

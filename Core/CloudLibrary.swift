@@ -110,6 +110,8 @@ final class CloudLibrary {
     /// The engine was made without saved state, and hasn't reported an account change yet.
     private var engineFresh = false
     private var householdLookup: Task<HouseholdLookup, Never>?
+    /// Account changes so far (sign in, out, another Apple ID), to tell one happened during a wait.
+    private var accountChanges = 0
     private var saved = Saved()
     private weak var model: Model?
     /// Set while applying iCloud's changes, so they aren't taken for local ones.
@@ -375,13 +377,21 @@ final class CloudLibrary {
     /// this device's library goes.
     @discardableResult
     private func findHousehold(after choice: AccountChoice? = nil) async -> HouseholdLookup {
-        if let running = householdLookup { return await running.value == .joined ? .joined : .skipped }
+        if let running = householdLookup {
+            // One under way: its answer, if it was asked the same; otherwise this one after it.
+            if runningChoice == choice { return await running.value }
+            _ = await running.value
+            return await findHousehold(after: choice)
+        }
+        runningChoice = choice
         let task = Task { await lookUpHousehold(after: choice) }
         householdLookup = task
         let result = await task.value
         householdLookup = nil
         return result
     }
+
+    private var runningChoice: AccountChoice?
 
     private func lookUpHousehold(after choice: AccountChoice?) async -> HouseholdLookup {
         // Not while the question about another Apple ID is open: this device's library is
@@ -419,13 +429,18 @@ final class CloudLibrary {
     /// been. Returns whether it all went.
     private func uploadHere() async -> Bool {
         guard let engine else { return false }
+        let changes = accountChanges
         if !saved.seeded { seed() }
         do {
             try await engine.sendChanges()
         } catch {
             return false
         }
-        return engine === self.engine && engine.state.pendingRecordZoneChanges.isEmpty
+        // Only if nothing changed meanwhile: an account change (signing in or out) empties the
+        // queue without sending it, which would look the same as all of it having gone.
+        guard accountChanges == changes, engine === self.engine, saved.seeded,
+              engine.state.pendingRecordZoneChanges.isEmpty else { return false }
+        return true
     }
 
     /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).
@@ -685,6 +700,7 @@ final class CloudLibrary {
             if case .signIn = e.changeType { signingIn = true }
             // An engine just made (at launch, or for a library just switched to) reports the account
             // it starts with as signing in: that's not a change, and whoever made it has done what's due.
+            accountChanges += 1
             let fresh = engineFresh
             engineFresh = false
             if saved.shared != nil, !signingIn {
@@ -704,8 +720,9 @@ final class CloudLibrary {
                 // copy); with none, what's here goes to its own library.
                 guard saved.switchPending != true else { break }
                 Task {
+                    // Not joined (none, or couldn't look): what's here goes to the account's own.
                     let found = await self.findHousehold(after: .merge)
-                    if found == .none, self.saved.shared == nil, self.saved.switchPending != true { self.seed() }
+                    if found != .joined, self.saved.shared == nil, self.saved.switchPending != true { self.seed() }
                 }
             // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
             case .switchAccounts:
@@ -718,6 +735,7 @@ final class CloudLibrary {
             }
 
         case .fetchedDatabaseChanges(let e):
+            engineFresh = false // working: a later sign-in is a real one
             // A household library this account left, or its owner stopped sharing: back to its
             // own, with what's here (offered to it as on signing in).
             if saved.shared != nil, e.deletions.contains(where: { $0.zoneID == zoneID }) {

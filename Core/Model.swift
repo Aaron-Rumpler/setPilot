@@ -188,14 +188,38 @@ final class Model {
     /// Why the last change (setPilot or setState) didn't take: the bulb's refusal, or no answer.
     /// Nil once another is sent. For Shortcuts, which otherwise only see that it was sent.
     @ObservationIgnored private(set) var refusal: String? {
-        didSet { if refusal == nil { changeMark += 1 } }
+        didSet {
+            guard refusal == nil else { return }
+            // A new change: the one before, if still unanswered, isn't known to be done.
+            if pending, !pilotAnswered { unansweredMarks = Array((unansweredMarks + [changeMark]).suffix(16)) }
+            changeMark += 1
+        }
     }
     /// Counts changes started (each clears `refusal`): a reason read later belongs to the change
     /// made at a mark only if the mark is still the same.
     @ObservationIgnored private(set) var changeMark = 0
     /// Starts an action whose refusal will be reported: one that sends nothing (already as asked)
     /// mustn't report an earlier change's reason.
-    func forgetRefusal() { refusal = nil }
+    func forgetRefusal() {
+        refusal = nil
+        readBackFailed = false // that was the last change's: this one starts clean
+    }
+
+    /// A change still waiting (for its answer or its read-back) is dropped: not known to be done.
+    private func dropPending(_ why: String) {
+        if pending || verifyingSeq != nil {
+            readBackFailed = true
+            if !pilotAnswered, refusal == nil { refusal = why }
+        }
+        verifyTask?.cancel()
+        verifyingSeq = nil
+        pending = false
+    }
+
+    /// Changes superseded by a later one before they were answered (by changeMark), for whoever
+    /// waits on one to say it isn't known to be done. Only the last few are kept.
+    @ObservationIgnored private var unansweredMarks: [Int] = []
+    func wasAnswered(_ mark: Int) -> Bool { !unansweredMarks.contains(mark) }
     /// Reads after refused setPilots, still to come: they put the controls right, leaving the
     /// error as the status (one per refusal: a slider drag can be refused several times over).
     @ObservationIgnored private var quietReads = 0
@@ -687,9 +711,7 @@ final class Model {
         recoveryTask = nil
         let generation = connectGeneration
         bulb.connect(to: ip)
-        verifyTask?.cancel()
-        verifyingSeq = nil
-        pending = false
+        dropPending("Another bulb was chosen (or reconnected) before it answered.")
         mismatch = nil
         wrongBulb = false
         unsent = [] // a slider move still waiting was for the previous bulb
@@ -919,10 +941,8 @@ final class Model {
             live = false
             registerTask?.cancel() // not the other bulb's pushes
             registerTask = nil
-            // Its replies are dropped from now on: a change waiting on a read-back isn't pending.
-            verifyTask?.cancel()
-            verifyingSeq = nil
-            pending = false
+            // Its replies are dropped from now on: a change waiting on a read-back isn't known to be done.
+            dropPending("A different bulb answered at this address.")
             status = "A different bulb answered at this address"
             recover()
             return false
@@ -1578,7 +1598,7 @@ final class Model {
     /// Brighter or dimmer by a step, from the level as setPilot last knew it (sent as the new
     /// level, so a change from elsewhere it hasn't heard of yet is overwritten).
     func adjustDimming(by delta: Int) {
-        guard delta != 0 else { refusal = nil; return } // nothing to do: no earlier reason applies
+        guard delta != 0 else { forgetRefusal(); return } // nothing to do: no earlier reason applies
         noteUndoPoint()
         dimming = min(max(dimming + Double(delta), minDimming), 100)
         // The new level, not dimDelta: a retry (its reply lost or late) would add the step again.
@@ -1614,9 +1634,7 @@ final class Model {
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
         // A read-back still due from a change before the show would compare against that change
         // (a false "didn't apply") and hold back the live updates the controls follow.
-        verifyTask?.cancel()
-        verifyingSeq = nil
-        pending = false
+        dropPending("A light show took over the bulb before it answered.")
         mismatch = nil
         pilotSwitches = false
         bulb.send("setPilot", pilot, retry: false)
@@ -1913,7 +1931,6 @@ final class Model {
             wrongBulb = false
         }
         lastHeard = .now
-        notAnsweringSince = nil // it's answering
         let method = reply["method"] as? String ?? "?"
         if reply["hmac"] != nil { bulbSigns = true }
         if let err = reply["error"] as? [String: Any] {
@@ -1924,6 +1941,7 @@ final class Model {
             }
             link = .connected
             localNetworkDenied = false
+            notAnsweringSince = nil // answering, if refusing
             // A refused change or read-back: nothing to read back (a read that works unsigned would
             // replace the error below with "didn't apply"), and nothing is pending any more.
             // A read-back already on its way (the refusal came after it went out) will do.
@@ -1980,6 +1998,7 @@ final class Model {
         }
         let anyResult = reply["result"]
         if let r = anyResult as? [String: Any], let replyMAC = r["mac"] as? String, !isChosenBulb(replyMAC) { return }
+        notAnsweringSince = nil // the chosen bulb's answering
         // Device info: every read's reply, as it came.
         if BulbAPI.deviceInfo.contains(method), let anyResult {
             info[method] = JSONText.pretty(anyResult)

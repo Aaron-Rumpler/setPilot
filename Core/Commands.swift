@@ -24,12 +24,18 @@ enum Scripting {
                 return ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering,
                     message: "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."))
             }
+            // Waits from here are what's left of the one timeout, counted from when it was asked
+            // for (switching bulbs, which lands elsewhere, gets the whole of it).
+            deadline = command.changes ? asked.addingTimeInterval(Model.answerTimeout) : nil
+            defer { deadline = nil }
             return await runNow(command, fade: fade, on: model)
         }
         queue = Task { @MainActor in _ = await task.value }
         return await task.value
     }
     private static var queue: Task<Void, Never>?
+    /// When the command being run has to have gone out by (see run).
+    private static var deadline: Date?
 
     private static func runNow(_ command: ScriptCommand, fade: Int?, on model: Model) async -> ScriptResult {
         if let fade, !(0...Fade.maximum).contains(fade) {
@@ -257,9 +263,13 @@ enum Scripting {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
             throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
         }
-        guard await model.waitUntilControllable() else {
+        let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
+        guard await model.waitUntilControllable(timeout: max(left, 0)) else {
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
-            if model.link == .connected, !model.status.isEmpty { throw ScriptError(code: .refused, message: model.status) }
+            // Not if it's just been found not answering (it may still show as connected).
+            if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty {
+                throw ScriptError(code: .refused, message: model.status)
+            }
             #if os(iOS)
             throw ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
             #else
@@ -318,11 +328,12 @@ enum Scripting {
     }
 }
 
-private extension ScriptCommand {
+extension ScriptCommand {
     /// Whether it changes the light (or which bulb), rather than only reading.
     var changes: Bool {
         switch self {
         // Switching bulbs is the way out of one that isn't answering, and lands on another.
+    // (Used by PhoneRelay too.)
         case .get, .list, .switchBulb: false
         default: true
         }

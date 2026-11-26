@@ -26,7 +26,7 @@ struct SetPilotMobileApp: App {
             }
             guard await model.waitUntilControllable() else {
                 // Answering but refusing to say how it is (a wrong signing key, say): that reason.
-                if model.link == .connected, !model.status.isEmpty { throw WidgetError(localizedStringResource: "\(model.status)") }
+                if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty { throw WidgetError(localizedStringResource: "\(model.status)") }
                 throw WidgetError(localizedStringResource: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
             }
             switch command {
@@ -42,9 +42,15 @@ struct SetPilotMobileApp: App {
                 model.adjustDimming(by: delta)
             }
             // Refused, unanswered or not sent (a deleted scene in a preset): say so, as Shortcuts do.
+            let mark = model.changeMark
             if let problem = await model.outcome() { throw WidgetError(localizedStringResource: "\(problem)") }
             // Done once read back as asked, as for Shortcuts (Scripting.answered).
             await model.waitUntilSettled()
+            // Another change (the watch, a slider) meanwhile: what's here is its, not this one's.
+            if model.changeMark != mark {
+                if model.wasAnswered(mark) { return }
+                throw WidgetError(localizedStringResource: "Another change went before this one was answered, so it isn't known to be done.")
+            }
             if model.pending || model.readBackFailed {
                 model.markNotAnswering()
                 throw WidgetError(localizedStringResource: "The bulb took the change but didn't answer the read-back.")

@@ -47,7 +47,8 @@ final class PhoneLink: NSObject {
     /// Live changes sent and not yet answered: normally at most one, but a command sent meanwhile
     /// sends the waiting one alongside.
     private var liveInFlight = 0
-    private var livePending: (values: LightValues, fields: Set<PilotField>)?
+    /// The latest live change waiting for the one before to be answered, with when it was made.
+    private var livePending: (values: LightValues, fields: Set<PilotField>, at: Date)?
 
     /// For values changed continuously: the first change goes at once, and while one is on its
     /// way only the latest is kept, going as soon as the iPhone answers. So the bulb follows as
@@ -55,22 +56,25 @@ final class PhoneLink: NSObject {
     func sendLive(_ values: LightValues, fields: Set<PilotField>) {
         liveBusy = true
         if liveInFlight > 0 {
-            livePending = (values, fields.union(livePending?.fields ?? []))
+            livePending = (values, fields.union(livePending?.fields ?? []), .now)
             return
         }
-        transmitLive(values, fields: fields)
+        transmitLive(values, fields: fields, at: .now)
     }
 
-    private func transmitLive(_ values: LightValues, fields: Set<PilotField>) {
+    private func transmitLive(_ values: LightValues, fields: Set<PilotField>, at: Date) {
         liveInFlight += 1
-        transmit(.set(values, fields: Array(fields)), quiet: false) { [weak self] _ in
+        transmit(.set(values, fields: Array(fields)), quiet: false, asked: at) { [weak self] _ in
             guard let self else { return }
             self.liveInFlight -= 1
             guard self.liveInFlight == 0 else { return } // the latest is still on its way
-            if let next = self.livePending {
+            if let next = self.livePending, Date.now.timeIntervalSince(next.at) < BulbTiming.answerTimeout {
                 self.livePending = nil
-                self.transmitLive(next.values, fields: next.fields)
+                self.transmitLive(next.values, fields: next.fields, at: next.at)
             } else {
+                // Nothing waiting, or too old to send now (it would land late): the state that
+                // comes back shows where the light is.
+                self.livePending = nil
                 self.liveBusy = false
                 self.liveSettled += 1
             }
@@ -81,15 +85,17 @@ final class PhoneLink: NSObject {
     /// (background refreshes). A live change still waiting goes first, so it isn't lost or
     /// applied after this.
     /// `done`: true once the iPhone has answered without an error.
-    func send(_ command: WatchCommand, quiet: Bool = false, done: (@MainActor (Bool) -> Void)? = nil) {
+    /// `asked`: when it was asked for (a tap that waited for the session), sent with it so the
+    /// iPhone counts its waits from then.
+    func send(_ command: WatchCommand, quiet: Bool = false, asked: Date = .now, done: (@MainActor (Bool) -> Void)? = nil) {
         if !quiet, let next = livePending {
             livePending = nil
-            transmitLive(next.values, fields: next.fields)
+            if Date.now.timeIntervalSince(next.at) < BulbTiming.answerTimeout { transmitLive(next.values, fields: next.fields, at: next.at) }
         }
         // What's waiting for the iPhone and bulb to confirm, for its spinner.
         let key = Self.pendingKey(command)
         if let key { pendingCounts[key, default: 0] += 1 }
-        transmit(command, quiet: quiet) { [weak self] ok in
+        transmit(command, quiet: quiet, asked: asked) { [weak self] ok in
             if let key, let self {
                 // Counted: the same one tapped twice spins until the last has answered.
                 let left = (self.pendingCounts[key] ?? 1) - 1
@@ -112,7 +118,7 @@ final class PhoneLink: NSObject {
         }
     }
 
-    private func transmit(_ command: WatchCommand, quiet: Bool, done: (@MainActor (Bool) -> Void)? = nil) {
+    private func transmit(_ command: WatchCommand, quiet: Bool, asked: Date = .now, done: (@MainActor (Bool) -> Void)? = nil) {
         let session = WCSession.default
         // Not answered: `done` still comes afterwards, as a reply would.
         guard session.activationState == .activated, session.isReachable else {
@@ -128,7 +134,7 @@ final class PhoneLink: NSObject {
             waiting += 1
             error = nil
         }
-        session.sendMessage([WatchKey.command: data, WatchKey.sentAt: Date.now.timeIntervalSince1970], replyHandler: { reply in
+        session.sendMessage([WatchKey.command: data, WatchKey.sentAt: asked.timeIntervalSince1970], replyHandler: { reply in
             let snapshot = (reply[WatchKey.snapshot] as? Data).flatMap { try? JSONDecoder().decode(LightSnapshot.self, from: $0) }
             let message = reply[WatchKey.error] as? String
             let info = (reply[WatchKey.deviceInfo] as? Data).flatMap { try? JSONDecoder().decode([DeviceInfoEntry].self, from: $0) }
@@ -217,19 +223,33 @@ final class PhoneLink: NSObject {
         guard url.scheme == "setpilot" else { return }
         let session = WCSession.default
         guard Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else {
-            error = "That tap took too long to reach the iPhone, so it wasn't sent. Tap again."
+            error = "That tap waited too long to be sent, so it wasn't. Tap again."
             return
         }
         if session.activationState != .activated {
             waitingURL = (url, at) // the launch race: the session's on its way
+            dropWhenDue(url, at: at)
             return
         }
         guard session.isReachable else {
-            waitingURL = nil
-            error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+            // Often only for a moment (just launched): kept until the tap's time is up, then said
+            // and dropped, never sent after that.
+            waitingURL = (url, at)
+            dropWhenDue(url, at: at)
             return
         }
-        perform(url)
+        perform(url, at: at)
+    }
+
+    /// The waiting tap, if it's still waiting once its time is up: dropped, saying why.
+    private func dropWhenDue(_ url: URL, at: Date) {
+        let left = BulbTiming.answerTimeout - Date.now.timeIntervalSince(at)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(left, 0)))
+            guard let self, let waiting = self.waitingURL, waiting.url == url, waiting.at == at else { return }
+            self.waitingURL = nil
+            self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+        }
     }
 
     /// Acts on a tap that was waiting for the session to come up.
@@ -239,16 +259,16 @@ final class PhoneLink: NSObject {
         open(waiting.url, at: waiting.at)
     }
 
-    private func perform(_ url: URL) {
+    private func perform(_ url: URL, at: Date) {
         switch url.host() {
         case "preset":
-            if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id)) }
+            if let id = UUID(uuidString: url.lastPathComponent) { send(.applyPreset(id), asked: at) }
         case "power":
-            send(.togglePower) // the iPhone knows how it is now; our copy may be from last time
+            send(.togglePower, asked: at) // the iPhone knows how it is now; our copy may be from last time
         case "brighter":
-            send(.dimDelta(10)) // from the controls
+            send(.dimDelta(10), asked: at) // from the controls
         case "dimmer":
-            send(.dimDelta(-10))
+            send(.dimDelta(-10), asked: at)
         default:
             refresh()
         }
@@ -299,11 +319,10 @@ extension PhoneLink: WCSessionDelegate {
             if reachable {
                 self.refresh()
                 self.openWaitingURL()
-            } else if self.waitingURL != nil {
-                // A tap that launched the app, with the iPhone out of reach: said, and dropped (it
-                // mustn't go when the iPhone comes back, after being told it couldn't).
-                self.waitingURL = nil
-                self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on."
+            } else if let waiting = self.waitingURL {
+                // A tap that launched the app, with the iPhone out of reach so far (often only for
+                // a moment): sent if it comes within reach in the tap's time, else said and dropped.
+                self.dropWhenDue(waiting.url, at: waiting.at)
             }
         }
     }

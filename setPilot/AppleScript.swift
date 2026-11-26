@@ -146,7 +146,7 @@ extension AppDelegate {
                 return
             }
             // Answering but refusing to say how it is (a wrong signing key, say): that reason.
-            if model.link == .connected, !model.status.isEmpty {
+            if !model.recentlyNotAnswering, model.link == .connected, !model.status.isEmpty {
                 fail(.refused, model.status)
             } else {
                 fail(.notAnswering, "The bulb isn't answering, so its state isn't known.")

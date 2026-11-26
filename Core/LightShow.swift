@@ -324,6 +324,13 @@ final class LightShowPlayer {
 
     func play() {
         guard player.currentItem != nil else { return }
+        if runOver {
+            // A new run: the last one's speed still to come (the light left as the show had it)
+            // isn't this one's.
+            speedTask?.cancel()
+            speedTask = nil
+            pendingSpeed = nil
+        }
         runOver = false
         if saved == nil { restoreNote = nil } // a new run (not resuming): the last one's note is done
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
@@ -459,7 +466,14 @@ final class LightShowPlayer {
         }
         // Observed values change only when they need to: this runs 100 times a second.
         let playing = player.rate != 0
-        if playing != isPlaying { isPlaying = playing }
+        if playing != isPlaying {
+            // Started some other way than Play (a media key, Control Center): still a run.
+            if playing, runOver {
+                runOver = false
+                if saved == nil { restoreNote = nil }
+            }
+            isPlaying = playing
+        }
         // Not while a seek lands either: the player still has the old time until then.
         if !scrubbing, !seeking, abs(now - time) >= 0.05 || !playing { if now != time { time = now } }
         guard playing, let show, !show.cues.isEmpty else { return }
