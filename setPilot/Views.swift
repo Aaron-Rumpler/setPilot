@@ -356,7 +356,7 @@ struct LightControls: View {
                 HStack(spacing: 8) {
                     Text("Scene").frame(width: ChannelSlider.labelWidth, alignment: .leading)
                     // The bulb's scenes, then setPilot's custom scenes, then anything else it reported
-                    Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }
+                    ScenePicker(model: model)
                         .labelsHidden()
                         .fixedSize()
                     Text(verbatim: "ID \(model.sceneId)") // verbatim: no "1,000"

@@ -296,7 +296,7 @@ struct RootView: View {
                                  mired: true, value: model.binding(\.temp))
                 }
             case .scene:
-                Picker("Scene", selection: model.sceneChoice) { SceneMenuItems(model: model) }
+                ScenePicker(model: model)
                     .pickerStyle(.navigationLink)
                 MobileSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }

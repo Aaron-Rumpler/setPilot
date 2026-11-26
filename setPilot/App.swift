@@ -48,7 +48,7 @@ struct SetPilotApp: App {
                 }
             }
         MenuBarExtra {
-            MenuBarPanel(model: model).flashingGuard()
+            MenuBarPanel(model: model).flashingGuard(elsewhere: true)
         } label: {
             MenuBarIcon(isOn: model.isOn == true)
                 // The label exists from launch, even when no window opens (launched at login).

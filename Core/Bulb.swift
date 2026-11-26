@@ -148,7 +148,7 @@ final class Bulb {
                     self.onError?(method, "\(method): couldn't send (no way to reach the bulb right now)", tag)
                     return
                 }
-                if attempt > 0, let until, Date.now >= until { break } // its time's up: no more tries
+                if let until, Date.now >= until { return } // its time's up: no more tries (and no error: it was cut off, not unanswered)
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
                 try? await Task.sleep(for: .seconds(wait))

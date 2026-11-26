@@ -1336,6 +1336,10 @@ final class Model {
             scheduleVerify(retried: retry)
         case "setState":
             startChange() // a new change, as for setPilot
+            // The last change's read-back isn't this one's.
+            verifyTask?.cancel()
+            verifyingSeq = nil
+            pending = false
             powerBefore = isOn // what a refusal puts back, whatever this one carries
             if let s = p["state"] as? Bool {
                 isOn = s
@@ -1472,7 +1476,8 @@ final class Model {
                     while !Task.isCancelled, pending, !pilotAnswered, Date() < end { try? await Task.sleep(for: .milliseconds(50)) }
                     // Switched off meanwhile: on its own it would switch it back on. Owed instead.
                     guard !Task.isCancelled else { return }
-                    guard connectGeneration == generation, pending, pilotAnswered else {
+                    // Within the change's time, and before its read-back (which would miss it).
+                    guard connectGeneration == generation, pending, pilotAnswered, Date() < end, verifyingSeq == nil else {
                         lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
                         delayedSpeed = nil
                         return
@@ -1930,6 +1935,7 @@ final class Model {
             return false
         }
         let reads = pilotReads
+        let wasUnreachable = link == .unreachable
         let reading = ensureLive()
         let end = Date().addingTimeInterval(timeout)
         while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
@@ -1941,9 +1947,10 @@ final class Model {
         let ready = canControl && (!reading || pilotReads != reads)
         // Not answering, after a whole wait: the hold starts. Not for a short wait (what was left
         // of a change's time) or a bulb that's answering but refusing.
-        // Found not answering (its own retries gave up: unreachable): the hold starts. Not for a
-        // wait cut short (what was left of a change's time) while the bulb's still being tried.
-        if !ready, link == .unreachable { markNotAnswering() }
+        // Found not answering (its own retries gave up during this wait), or a whole wait with it
+        // not answering: the hold starts. Not for a wait cut short (what was left of a change's
+        // time) while the bulb's being tried again.
+        if !ready, link == .unreachable, !wasUnreachable || timeout >= Self.answerTimeout - 0.01 { markNotAnswering() }
         return ready
     }
 
@@ -1984,6 +1991,8 @@ final class Model {
                 try? await Task.sleep(for: .seconds(0.3 - Date.now.timeIntervalSince(sent)))
             }
             guard !Task.isCancelled, pending else { return } // settled meanwhile (refused, or no answer)
+            // Never answered: its retries' giving up says so (and puts a switch back), not a read.
+            guard pilotAnswered else { return }
             bulb.cancelRetries("setPilot") // none of the change's own lands after it's read back
             verifyingSeq = sendSeq
             // This read settles the state; a quiet read still owed for an earlier refusal would

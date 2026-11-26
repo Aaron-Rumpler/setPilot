@@ -82,25 +82,33 @@ extension Library {
         for i in file.presets.indices where file.presets[i].favourite == nil {
             file.presets[i].favourite = presets.first { $0.id == file.presets[i].id }?.favourite
         }
+        var taken = 0 // what was actually added or replaced, per kind as it's merged
         func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] {
             var out = mine
+            taken = 0
             for item in theirs {
                 if let i = out.firstIndex(where: { $0.id == item.id }) {
-                    if clash == .replace { out[i] = item }
+                    if clash == .replace { out[i] = item; taken += 1 }
                 } else {
                     out.append(item)
+                    taken += 1
                 }
             }
             return out
         }
         presets = merged(presets, file.presets)
+        let presetCount = taken
         customScenes = merged(customScenes, file.customScenes)
+        let sceneCount = taken
         var scales = cctScales
-        for (mac, list) in file.cctScales { scales[mac.lowercased()] = merged(scales[mac.lowercased()] ?? [], list) }
+        var scaleCount = 0
+        for (mac, list) in file.cctScales {
+            scales[mac.lowercased()] = merged(scales[mac.lowercased()] ?? [], list)
+            scaleCount += taken
+        }
         cctScales = scales
-        let scaleCount = file.cctScales.values.reduce(0) { $0 + $1.count }
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
-        return "Imported \(count(file.presets.count, "preset")), \(count(file.customScenes.count, "custom scene")) and \(count(scaleCount, "CCT scale"))."
+        return "Imported \(count(presetCount, "preset")), \(count(sceneCount, "custom scene")) and \(count(scaleCount, "CCT scale"))."
     }
 }
 

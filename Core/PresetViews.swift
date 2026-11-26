@@ -243,23 +243,23 @@ enum SceneChoice: Hashable {
 }
 
 extension Model {
-    var sceneChoice: Binding<SceneChoice> {
+    /// The scene in use, as the picker lists it.
+    var currentSceneChoice: SceneChoice {
+        if sceneId == Scenes.inlineCustom, let id = customSceneId { return .custom(id) }
+        return .builtin(sceneId)
+    }
+
+    /// The Scene picker's selection: a flashing custom scene is asked about first (`confirm`, the
+    /// window's), as everywhere a person starts one.
+    func sceneChoice(_ confirm: ConfirmFlashing) -> Binding<SceneChoice> {
         Binding(
-            get: {
-                if self.sceneId == Scenes.inlineCustom, let id = self.customSceneId { return .custom(id) }
-                return .builtin(self.sceneId)
-            },
+            get: { self.currentSceneChoice },
             set: { choice in
                 switch choice {
                 case .builtin(let id): self.setScene(id)
                 case .custom(let id):
                     guard let s = self.library.customScene(id) else { return }
-                    // Asked first if it flashes, as everywhere a person starts one.
-                    if s.flashes, Flashing.asks {
-                        FlashingRequests.shared.ask(s.name) { _ = self.playCustom(s) }
-                    } else {
-                        _ = self.playCustom(s)
-                    }
+                    confirm(s.name, flashes: s.flashes) { _ = self.playCustom(s) }
                 }
             }
         )
@@ -284,7 +284,17 @@ struct SceneMenuItems: View {
             Section { ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) } }
         }
         if model.sceneIsUnlisted {
-            Section { Text(Scenes.name(model.sceneId)).tag(model.sceneChoice.wrappedValue) }
+            Section { Text(Scenes.name(model.sceneId)).tag(model.currentSceneChoice) }
         }
+    }
+}
+
+/// The Scene picker, asking about a flashing custom scene in the window it's in.
+struct ScenePicker: View {
+    let model: Model
+    @Environment(\.confirmFlashing) private var confirmFlashing
+
+    var body: some View {
+        Picker("Scene", selection: model.sceneChoice(confirmFlashing)) { SceneMenuItems(model: model) }
     }
 }

@@ -75,13 +75,19 @@ enum SpotlightIndex {
             let before = Set((UserDefaults.standard.stringArray(forKey: indexedKey) ?? []).compactMap(UUID.init(uuidString:)))
             let now = Set(presets.map(\.id) + scenes.map(\.id))
             let gone = Array(before.subtracting(now))
+            // Kept as indexed until they're out of the index, so a failed removal is tried again.
+            var stillIndexed: [UUID] = []
             if !gone.isEmpty {
-                try? await index.deleteAppEntities(identifiedBy: gone, ofType: PresetEntity.self)
-                try? await index.deleteAppEntities(identifiedBy: gone, ofType: CustomSceneEntity.self)
+                do {
+                    try await index.deleteAppEntities(identifiedBy: gone, ofType: PresetEntity.self)
+                    try await index.deleteAppEntities(identifiedBy: gone, ofType: CustomSceneEntity.self)
+                } catch {
+                    stillIndexed = gone
+                }
             }
             try? await index.indexAppEntities(presets)
             try? await index.indexAppEntities(scenes)
-            UserDefaults.standard.set(now.map(\.uuidString), forKey: indexedKey)
+            UserDefaults.standard.set((Array(now) + stillIndexed).map(\.uuidString), forKey: indexedKey)
         }
     }
 }

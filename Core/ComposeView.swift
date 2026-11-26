@@ -118,7 +118,7 @@ extension Model {
         }
         clampDraftKelvin()
         d.dimming = Int(dimming)
-        d.scene = sceneChoice.wrappedValue
+        d.scene = currentSceneChoice
         d.speed = min(max(Int(speed), 10), 200)
         d.includeSpeed = false
         // A scene that can't be sent (Rhythm, a deleted custom scene): the picker needs a choice,
@@ -136,10 +136,10 @@ extension Model {
     /// Compose starts from the bulb's new state.
     /// If it can't be sent (a scene or scale in it deleted meanwhile), the draft stays, and the
     /// status says why.
-    func sendDraft() {
-        // A flashing custom scene: asked first, as everywhere a person starts one.
-        if case .custom(let id, _)? = draftChange.colour, let scene = library.customScene(id), scene.flashes, Flashing.asks {
-            FlashingRequests.shared.ask(scene.name) { [weak self] in self?.sendDraftNow() }
+    /// `confirm`: the window's question about flashing light, for a flashing custom scene.
+    func sendDraft(_ confirm: ConfirmFlashing) {
+        if case .custom(let id, _)? = draftChange.colour, let scene = library.customScene(id) {
+            confirm(scene.name, flashes: scene.flashes) { [weak self] in self?.sendDraftNow() }
             return
         }
         sendDraftNow()
@@ -169,6 +169,7 @@ struct ComposeToggle: View {
 /// Send. On iPhone each is a list row.
 struct ComposeControls: View {
     let model: Model
+    @Environment(\.confirmFlashing) private var confirmFlashing
     /// Watched so the preview follows a change to the fade time setting (Model.fade isn't observed).
     @AppStorage(Model.fadeKey) private var fadeSetting = -1
 
@@ -239,10 +240,10 @@ struct ComposeControls: View {
                 // A click doesn't end a number field's editing either (see ⌘Return below).
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 DispatchQueue.main.async {
-                    if model.canControl, model.draftHasChange { model.sendDraft() }
+                    if model.canControl, model.draftHasChange { model.sendDraft(confirmFlashing) }
                 }
                 #else
-                model.sendDraft()
+                model.sendDraft(confirmFlashing)
                 #endif
             } label: {
                 Label("Send", systemImage: "paperplane.fill")
@@ -258,7 +259,7 @@ struct ComposeControls: View {
                 Button("Send") {
                     NSApp.keyWindow?.makeFirstResponder(nil)
                     DispatchQueue.main.async {
-                        if model.canControl, model.draftHasChange { model.sendDraft() }
+                        if model.canControl, model.draftHasChange { model.sendDraft(confirmFlashing) }
                     }
                 }
                 .keyboardShortcut(.return, modifiers: .command)

@@ -51,11 +51,16 @@ extension Flashing {
 extension View {
     /// Where the question about flashing light is asked, for the views inside; with `outside`,
     /// also for scenes started from outside the app (FlashingRequests).
-    func flashingGuard(outside: Bool = false) -> some View { modifier(FlashingGuard(outside: outside)) }
+    /// `elsewhere`: a place that can't show the question (the Mac's menu bar panel) hands it to
+    /// the main window.
+    func flashingGuard(outside: Bool = false, elsewhere: Bool = false) -> some View {
+        modifier(FlashingGuard(outside: outside, elsewhere: elsewhere))
+    }
 }
 
 private struct FlashingGuard: ViewModifier {
     let outside: Bool
+    let elsewhere: Bool
     @AppStorage(Flashing.askKey) private var asks = true
     @State private var pending: Pending?
     /// The name in the question, kept while it closes (pending is cleared first).
@@ -69,7 +74,8 @@ private struct FlashingGuard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, action in
-                if asks && flashes { pending = Pending(name: name, action: action) } else { action() }
+                guard asks && flashes else { return action() }
+                if elsewhere { FlashingRequests.shared.ask(name, action) } else { pending = Pending(name: name, action: action) }
             })
             .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
             .onChange(of: FlashingRequests.shared.request?.id, initial: true) {
