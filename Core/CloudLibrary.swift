@@ -1311,7 +1311,7 @@ final class CloudLibrary {
         if let record { saved.householdJoin = record }
         let new = unsentHere()
         // Deletions here not sent: only of what the other device brought there (joined adding).
-        let deleting = record?.addMine == true ? saved.deleting.filter { record?.items[$0] != nil } : []
+        let deleting: Set<String> = record?.addMine == true ? Set(saved.deleting.filter { record?.items[$0] != nil }) : []
         if new.isEmpty || record?.addMine == true {
             switchKeeping(new, deleting: deleting, to: other)
         } else {
