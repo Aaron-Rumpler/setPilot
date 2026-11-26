@@ -248,6 +248,8 @@ final class Model {
 
     /// A change whose time ran out before it could go (or be answered), the bulb answering.
     static let tooLate = "That came too late to send (it waited too long before the bulb could take it); try again."
+    /// A change sent with little of its time left, and not answered within it.
+    static let timeRanOut = "Its time ran out before the bulb answered, so it isn't known whether it took the change."
 
     /// The latest change, unanswered so far (or its read-back unanswered): as no answer.
     private var unanswered: ChangeResult {
@@ -264,7 +266,10 @@ final class Model {
         // as the change's end), with a moment over.
         var end = Date().addingTimeInterval(timeout)
         if t == ticket { end = max(end, changeEnd.addingTimeInterval(Self.answerTimeout + 1)) }
-        while results[t] == nil, t > forgottenUpTo, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+        // A read-back asked again on a fresh connection (readBackEnd) is waited for too.
+        while results[t] == nil, t > forgottenUpTo, Date() < (t == ticket ? max(end, readBackEnd) : end) {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
         if t <= forgottenUpTo, results[t] == nil { return .notKnown("Many changes followed, so what became of this one isn't known.") }
         if results[t] == nil { settle(t, t == ticket ? unanswered : .notAnswered("The bulb didn't answer.")) }
         return results[t] ?? .notAnswered("The bulb didn't answer.")
@@ -896,8 +901,18 @@ final class Model {
         // A change still waiting for its answer loses its retries with the old connection: said
         // now (and a switch put back), and the read below shows how the light is.
         abandonUnanswered("The connection was made afresh before the bulb answered, so it isn't known whether it took the change.", unknown: true)
-        // A read-back under way loses its retries too: asked again, as its own.
+        // A scene's speed still to go or be answered loses its tries too: not known (the read-back
+        // mustn't report it as not applied).
+        if pending, pilotAnswered, delayedSpeed != nil || speedAwaited {
+            delayedSpeed?.cancel()
+            delayedSpeed = nil
+            speedAwaited = false
+            lastPilot["speed"] = nil
+            settle(ticket, .notKnown("The connection was made afresh before the bulb answered the scene's speed, so it isn't known whether it took it."))
+        }
+        // A read-back under way loses its retries too: asked again, as its own (and waited for).
         let readingBack = verifyingSeq != nil && pending
+        if readingBack { readBackEnd = Date.now.addingTimeInterval(BulbTiming.replyWindow + 0.3) }
         bulb.connect(to: a) // the old connection's retries stop, unanswered: asked again below
         if consoleWaiting != nil {
             consoleWaiting = nil
@@ -1276,6 +1291,7 @@ final class Model {
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
         if method == "setPilot" || method == "setState" {
             startChange()
+            if method == "setState" { stateTicket = ticket }
             // The last change's read-back and delayed speed aren't this one's.
             verifyTask?.cancel()
             delayedSpeed?.cancel()
@@ -1961,7 +1977,9 @@ final class Model {
         let reads = pilotReads
         let wasUnreachable = link == .unreachable
         let started = Date.now
-        let reading = ensureLive()
+        // Reading if one goes now, or one sent for having gone quiet is still unanswered (it isn't
+        // sent again within 25 s): either way, ready only once it's answered.
+        let reading = ensureLive() || (lastStaleRead > lastHeard && link == .connected)
         let end = Date().addingTimeInterval(timeout)
         while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if reading {
@@ -2049,8 +2067,16 @@ final class Model {
         // too late, not the bulb not answering.
         let cut = changeEnd < changeStarted.addingTimeInterval(BulbTiming.replyWindow - 0.05)
         if unknown || cut {
-            settle(ticket, .notKnown(cut && !unknown ? Self.tooLate : message))
+            let why = cut && !unknown ? Self.timeRanOut : message
+            settle(ticket, .notKnown(why))
+            status = why
             pilotSwitches = false
+            // How the light is, as it may or may not have taken it (a fresh connection reads it
+            // itself).
+            if !unknown {
+                quietReads += 1
+                bulb.send("getPilot", retry: true)
+            }
             return
         }
         refusal = message
@@ -2073,6 +2099,8 @@ final class Model {
     @ObservationIgnored private var changeStarted = Date.distantPast
     /// The console setState's change (its reply is its only while it's still the latest).
     @ObservationIgnored private var stateTicket = 0
+    /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
+    @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).
     @ObservationIgnored private var changeEnd = Date.distantPast
     /// Set by the shared runner just before a change it makes: when it has to have gone by

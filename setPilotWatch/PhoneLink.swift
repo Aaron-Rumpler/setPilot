@@ -142,16 +142,17 @@ final class PhoneLink: NSObject {
                 if !quiet { self.waiting -= 1 }
                 if let snapshot { self.apply(snapshot) }
                 if let info { self.deviceInfo = info }
+                if let message, !quiet { self.error = message } // before `done`, which may read it
                 done?(message == nil)
-                if let message, !quiet { self.error = message }
             }
         }, errorHandler: { error in
             let text = error.localizedDescription
             Task { @MainActor in
+                if !quiet {
+                    self.waiting -= 1
+                    self.error = "Your iPhone didn't answer: \(text)"
+                }
                 done?(false)
-                guard !quiet else { return }
-                self.waiting -= 1
-                self.error = "Your iPhone didn't answer: \(text)"
             }
         })
     }
@@ -222,7 +223,8 @@ final class PhoneLink: NSObject {
     func open(_ url: URL, at: Date = .now) {
         guard url.scheme == "setpilot" else { return }
         let session = WCSession.default
-        guard Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else {
+        // (Only for a change: opening the app is never late.)
+        guard !Self.isChange(url) || Date.now.timeIntervalSince(at) < BulbTiming.answerTimeout else {
             error = "That tap waited too long to be sent, so it wasn't. Tap again."
             return
         }

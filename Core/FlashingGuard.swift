@@ -98,6 +98,11 @@ private struct FlashingGuard: ViewModifier {
     }
 }
 
+extension Preset {
+    /// The same light (a favourite starred meanwhile doesn't count as a change).
+    func sameLight(as other: Preset) -> Bool { colour == other.colour && dimming == other.dimming }
+}
+
 extension Model {
     /// Whether a custom scene flashes as it would play: at `speed`, or with none given, the
     /// speed the bulb's on (as fast as it may go: at least as timed).
@@ -124,7 +129,7 @@ extension Model {
             // action that launched the app), and the status says why if it doesn't go.
             FlashingRequests.shared.ask(preset.name) { [self] in
                 // What was asked about: not a preset edited or deleted meanwhile.
-                guard library.presets.first(where: { $0.id == preset.id }) == preset else {
+                guard let now = library.presets.first(where: { $0.id == preset.id }), now.sameLight(as: preset) else {
                     status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
                     return
                 }

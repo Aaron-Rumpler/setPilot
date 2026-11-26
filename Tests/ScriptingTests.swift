@@ -17,6 +17,15 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(encoded(command("setpilot://power?on=off")), encoded(.power(false)))
         XCTAssertEqual(encoded(command("setpilot://x-callback-url/brightness?level=40")), encoded(.brightness(40)))
         XCTAssertEqual(encoded(command("setpilot://dimmer?step=5")), encoded(.adjustBrightness(-5)))
+        XCTAssertEqual(encoded(command("setpilot://brighter")), encoded(.adjustBrightness(10)))
+        XCTAssertEqual(encoded(command("setpilot://brighter?step=100")), encoded(.adjustBrightness(100)))
+        // A step is 1–100; the action says which way.
+        for bad in ["0", "101", "-5"] {
+            guard case .failure(let error) = URLCommands.command(from: URL(string: "setpilot://dimmer?step=\(bad)")!) else {
+                return XCTFail("step=\(bad) was taken")
+            }
+            XCTAssertEqual(error.code, .badArguments)
+        }
         XCTAssertEqual(encoded(command("setpilot://scene?name=Ocean&speed=150&on=1")), encoded(.scene("Ocean", speed: 150, power: true)))
         XCTAssertEqual(encoded(command("setpilot://temperature?kelvin=2700&scale=bulb")), encoded(.temperature(2700, scale: "bulb", power: nil)))
         XCTAssertEqual(encoded(command("setpilot://colour?r=255&w=10")), encoded(.colour(r: 255, g: 0, b: 0, c: 0, w: 10, power: nil)))

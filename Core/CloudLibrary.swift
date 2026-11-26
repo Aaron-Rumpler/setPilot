@@ -101,9 +101,11 @@ final class CloudLibrary {
         var pendingHousehold: SharedZone?
         /// Back in the account's own library after a household (MirrorPlan), until the first fetch.
         var mirroring: MirrorPlan?
-        /// A household this device mirrored on leaving: marked so in the join record once all of
-        /// the mirror has gone up (tried again until it's done).
-        var markMirrored: LeftJoin?
+        /// When this device went into the household it's in (a leave claimed after it is this
+        /// membership's, not an earlier one's).
+        var joinedAt: Date?
+        /// When it last fetched the household in full (a claim's `asOf`).
+        var householdFetched: Date?
     }
 
     /// Left in the account's own library by the device that joined a household: which, how, and
@@ -115,29 +117,34 @@ final class CloudLibrary {
         var zone: SharedZone
         var addMine: Bool
         var items: [String: Date]
-        /// This join's own (a rejoin of the same household is another): what `mirrored` and
-        /// `history` are about. Nil in records from builds before it, matching any.
+        /// This join's own (a rejoin of the same household is another). Nil in records from
+        /// builds before it.
         var joinID: UUID? = nil
-        /// Left, and the household mirrored into the account's own library (and sent) by the
-        /// device that left first: a device that's behind takes that library rather than
-        /// offering its older copy of the household (which would bring back what it removed).
-        var mirrored: Bool? = nil
-        /// Earlier joins left and mirrored, kept when another household's join replaces this record,
-        /// so a device still in one of them (offline throughout) knows.
-        var history: [LeftJoin]? = nil
+        /// When it was joined (a leave after it is this join's).
+        var at: Date? = nil
+        /// Households left (this one or earlier ones), each claimed by the one device that
+        /// mirrors it into the account's own library; kept when another household's join
+        /// replaces this record, so a device still in one of them (offline throughout) knows.
+        var leaves: [Leave]? = nil
 
-        func isJoin(_ zone: SharedZone, _ id: UUID?) -> Bool { self.zone == zone && LeftJoin.sameJoin(joinID, id) }
+        /// The leave of `zone` claimed after `date` (a membership from then), if any.
+        func leave(of zone: SharedZone, after date: Date) -> Leave? {
+            (leaves ?? []).first { $0.zone == zone && $0.at > date }
+        }
+        /// Left since it was joined: nothing to follow.
+        var isLeft: Bool { leave(of: zone, after: at ?? .distantPast) != nil }
     }
 
-    /// A join that's been left and mirrored (HouseholdJoin.history), or one this device is to
-    /// mark so once its mirror has gone up (Saved.markMirrored).
-    struct LeftJoin: Codable, Equatable {
+    /// A household left, claimed by the device that mirrors it (`by`, its install's ID), at `at`,
+    /// with its copy as of `asOf` (its last full fetch of the household): the other devices take
+    /// the own library it mirrors into, keeping what they changed after `asOf` and hadn't sent.
+    struct Leave: Codable, Equatable {
         var zone: SharedZone
-        var joinID: UUID?
-
-        static func sameJoin(_ a: UUID?, _ b: UUID?) -> Bool { a == nil || b == nil || a == b }
-        func isJoin(_ zone: SharedZone, _ id: UUID?) -> Bool { self.zone == zone && Self.sameJoin(joinID, id) }
+        var at: Date
+        var by: UUID
+        var asOf: Date
     }
+
     /// A household this device had, as it was when it was taken out (householdSeen): its items
     /// (record name, when last changed in the household), and changes made here to it that
     /// hadn't gone up yet, which go up on rejoining.
@@ -148,6 +155,9 @@ final class CloudLibrary {
         /// before rejoining, may hold an older copy), with when they were made.
         var changed: [String: SeenChange] = [:]
         var deleted: Set<String> = []
+        /// When this device went into it, and last fetched it in full (Saved's).
+        var joinedAt: Date? = nil
+        var fetchedAt: Date? = nil
     }
 
     /// Going back to the account's own library from a household: what's here is offered with the
@@ -158,6 +168,11 @@ final class CloudLibrary {
         var stamps: [String: Date]
         /// The library as it was at the join (the join record's): only those may be deleted.
         var joinItems: [String: Date]
+        /// The household mirrored (with this device's times in it): signed out before the mirror
+        /// was gone through, it's done again on signing in (householdSeen).
+        var zone: SharedZone? = nil
+        var joinedAt: Date? = nil
+        var asOf: Date? = nil
     }
 
     struct SeenChange: Codable {
@@ -381,6 +396,11 @@ final class CloudLibrary {
     /// Signed out, or another account: forget what was synced (keeping the library here), and on
     /// signing in offer it to the account. The engine keeps going: it resets its own state.
     private func reset(reseed: Bool) {
+        // A mirror not yet gone through: done again on signing in (leftWhileAway), as a
+        // household this device was taken out of.
+        if let plan = saved.mirroring, let zone = plan.zone, saved.householdSeen == nil {
+            saved.householdSeen = SeenHousehold(zone: zone, items: plan.stamps, joinedAt: plan.joinedAt, fetchedAt: plan.asOf)
+        }
         saved.mirroring = nil // another account's own library, or none: nothing to mirror into
         saved.meta = [:]
         saved.unreadable = nil // nothing taken from iCloud any more: all of it's this device's
@@ -468,7 +488,7 @@ final class CloudLibrary {
                 items[name] = saved.meta[name]?.modified ?? .now
             }
         }
-        let join = HouseholdJoin(zone: household, addMine: addMine, items: items, joinID: UUID())
+        let join = HouseholdJoin(zone: household, addMine: addMine, items: items, joinID: UUID(), at: .now)
         await saveJoinRecord(join, replacing: true)
         return join
     }
@@ -500,26 +520,24 @@ final class CloudLibrary {
                 return try? JSONDecoder().decode(HouseholdJoin.self, from: data)
             }
             if replacing {
-                // A new join: the joins left before it kept (this one's too, if it was mirrored),
-                // for devices still in them.
-                var history = old?.history ?? []
-                if let old, old.mirrored == true { history.append(LeftJoin(zone: old.zone, joinID: old.joinID)) }
-                merged.history = history.isEmpty ? nil : Array(history.suffix(20))
+                // A new join: the households left before it kept, for devices still in them.
+                merged.leaves = old?.leaves
             } else if existing != nil {
                 // Another household's or join's (one joined since on another device), or one this
-                // build can't read: left as it is, not overwritten with this one's.
-                guard let old, old.isJoin(join.zone, join.joinID) else { return }
+                // build can't read, or left meanwhile: left as it is, not overwritten with this one's.
+                guard let old, old.zone == join.zone, join.joinID == nil || old.joinID == join.joinID, !old.isLeft else { return }
                 merged.addMine = old.addMine
                 merged.joinID = old.joinID
-                merged.mirrored = old.mirrored // left meanwhile: stays so
-                merged.history = old.history
+                merged.at = old.at
+                merged.leaves = old.leaves
                 merged.items = old.items.merging(join.items) { max($0, $1) }
             }
             guard let data = try? JSONEncoder().encode(merged) else { return }
             let record = existing ?? CKRecord(recordType: Self.joinRecordType, recordID: id)
             record.encryptedValues["join"] = data
             do {
-                let (results, _) = try await db.modifyRecords(saving: [record], deleting: [], savePolicy: replacing ? .allKeys : .ifServerRecordUnchanged)
+                // Only if unchanged since read, replacing too: a leave claimed meanwhile is kept.
+                let (results, _) = try await db.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged)
                 if case .failure(let error as CKError)? = results[id], error.code == .serverRecordChanged { continue }
                 return
             } catch let error as CKError where error.code == .serverRecordChanged {
@@ -581,6 +599,10 @@ final class CloudLibrary {
             return .none
         }
         if let seen = saved.householdSeen, seen.zone != household {
+            // One left since, another found: the left one goes to the own library first (so its
+            // items aren't taken for new to this one).
+            await leftWhileAway(seen)
+            guard saved.shared == nil, saved.switchPending != true else { return .skipped }
             saved.householdSeen = nil
             persist()
         }
@@ -644,7 +666,7 @@ final class CloudLibrary {
     /// What's known here of how a household was joined: the record the device that joined left
     /// (if it's for this household), and what this device had of it before an account change.
     private func knowledge(of household: SharedZone) -> (record: HouseholdJoin?, seen: SeenHousehold?) {
-        (saved.householdJoin.flatMap { $0.zone == household && $0.mirrored != true ? $0 : nil },
+        (saved.householdJoin.flatMap { $0.zone == household && !$0.isLeft ? $0 : nil },
          saved.householdSeen.flatMap { $0.zone == household ? $0 : nil })
     }
 
@@ -785,6 +807,9 @@ final class CloudLibrary {
     /// Leaves the household library (this device keeps a copy of it, which goes to the account's own).
     func leaveHousehold() async {
         guard saved.shared != nil else { return }
+        // Up to date first: this device's copy is what goes to the own library.
+        try? await engine?.fetchChanges()
+        guard saved.shared != nil else { return }
         do {
             _ = try await container.sharedCloudDatabase.deleteRecordZone(withID: zoneID)
         } catch let error as CKError where error.code == .zoneNotFound || error.code == .unknownItem {
@@ -816,18 +841,56 @@ final class CloudLibrary {
         return (nil, nil, true)
     }
 
-    /// Whether a join (of `zone`; `joinID` if known) has been left and mirrored by another device.
-    private static func mirrored(_ join: HouseholdJoin?, _ zone: SharedZone, _ joinID: UUID?) -> Bool {
-        guard let join else { return false }
-        return (join.isJoin(zone, joinID) && join.mirrored == true) || (join.history ?? []).contains { $0.isJoin(zone, joinID) }
+    /// The device's own ID, for claiming a leave.
+    private static let deviceID: UUID = {
+        let key = "cloudLibrary.deviceID"
+        if let s = UserDefaults.standard.string(forKey: key), let id = UUID(uuidString: s) { return id }
+        let id = UUID()
+        UserDefaults.standard.set(id.uuidString, forKey: key)
+        return id
+    }()
+
+    /// Who mirrors a household left (`zone`, the membership from `joinedAt`): the leave already
+    /// claimed for it, or this device's claim, made now in the join record (only if it hasn't
+    /// changed since read, so two devices leaving at once can't both claim it). `items`: what
+    /// every device brought to it (the record's, if it's that household's join).
+    private func claimLeave(_ zone: SharedZone, joinedAt: Date, asOf: Date) async -> (leave: Leave?, items: [String: Date]) {
+        let db = container.privateCloudDatabase
+        let id = CKRecord.ID(recordName: Self.joinRecordName, zoneID: Self.ownZone)
+        var items: [String: Date] = [:]
+        for _ in 0..<4 {
+            let read = await readJoinRecord()
+            // Couldn't read it, or one this build can't read: mirrored here, unclaimed.
+            if read.failed || (read.record != nil && read.join == nil) { return (nil, items) }
+            if let claimed = read.join?.leave(of: zone, after: joinedAt) { return (claimed, items) }
+            if let join = read.join, join.zone == zone { items = join.items }
+            let mine = Leave(zone: zone, at: .now, by: Self.deviceID, asOf: asOf)
+            var join = read.join ?? HouseholdJoin(zone: zone, addMine: true, items: [:], at: .distantPast)
+            join.leaves = Array(((join.leaves ?? []) + [mine]).suffix(20))
+            guard let data = try? JSONEncoder().encode(join) else { return (nil, items) }
+            let record = read.record ?? CKRecord(recordType: Self.joinRecordType, recordID: id)
+            record.encryptedValues["join"] = data
+            do {
+                let (results, _) = try await db.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged)
+                if case .failure(let error as CKError)? = results[id] {
+                    if error.code == .serverRecordChanged { continue } // changed meanwhile: read again
+                    return (mine, items) // couldn't save (offline, say): mirrored here all the same
+                }
+                return (mine, items)
+            } catch let error as CKError where error.code == .serverRecordChanged {
+                continue
+            } catch {
+                return (mine, items)
+            }
+        }
+        return (nil, items)
     }
 
     /// Back to the account's own library from a household that's been left (here, elsewhere, or
-    /// by its owner stopping): with what every device of the account brought to it (the join
-    /// record's items, not only this device's). The first device back mirrors the household into
-    /// the own library, and once that's gone up marks the join mirrored; one after it (behind,
-    /// offline say) takes that library instead, keeping only its own changes not yet sent.
-    /// One at a time (the zone's deletion and a failed send can both start one).
+    /// by its owner stopping). One device mirrors it into the own library: the one that claims
+    /// the leave (claimLeave). The others take that library, keeping what they changed after
+    /// that device's copy and hadn't sent. One leave at a time here (the zone's deletion and a
+    /// failed send can both start one).
     private func leaveToOwn() async {
         if let leaving { return await leaving.value }
         let task = Task {
@@ -842,45 +905,52 @@ final class CloudLibrary {
 
     private func leaveNow() async {
         guard let household = saved.shared else { return }
-        let mine = saved.householdJoin.flatMap { $0.zone == household ? $0.joinID : nil }
-        let read = await readJoinRecord()
+        let joinedAt = saved.joinedAt ?? .distantPast
+        let asOf = saved.householdFetched ?? .distantPast
+        let claim = await claimLeave(household, joinedAt: joinedAt, asOf: asOf)
         // Already back (another path), or another Apple ID meanwhile (which resets it): nothing more.
         guard saved.shared == household else { return }
-        if Self.mirrored(read.join, household, mine) {
-            // What's here deleted and not yet sent: deleted in the own library too.
+        if let leave = claim.leave, leave.by != Self.deviceID {
+            // Another device's: what's here goes, but changes it may not have had.
             let deletions = saved.deleting
-            dropAllHere { saved.meta[$0]?.unsent != true }
+            dropAllHere { name in
+                guard let meta = saved.meta[name] else { return true }
+                return !meta.unsent && meta.modified <= leave.asOf
+            }
             switchLibrary(to: nil, mirror: true, deleteRemoved: false)
             carryDeletions(deletions)
             return
         }
-        // Mirrored here: with every device's additions if it's this join's record (not another
-        // household's, or an earlier join's that a failed save left).
-        let everyone = read.join.flatMap { $0.isJoin(household, mine) && !read.failed ? $0.items : nil } ?? [:]
-        switchLibrary(to: nil, mirror: true, joinedItems: everyone)
-        saved.markMirrored = LeftJoin(zone: household, joinID: mine)
-        persist()
+        switchLibrary(to: nil, mirror: true, joinedItems: claim.items, left: (household, joinedAt, asOf))
     }
 
-    /// A household this device was taken out of (an account change) and that's been left since:
-    /// mirrored by another device, what's here of it that wasn't changed here goes (the own
-    /// library has it as the household last had it); otherwise this device mirrors it, as the
-    /// first one back would.
+    /// A household this device was taken out of (an account change) and that's been left since,
+    /// or one it was mirroring when signed out: as a leave (leaveNow), from what it had of it.
     private func leftWhileAway(_ seen: SeenHousehold) async {
-        let mine = saved.householdJoin.flatMap { $0.zone == seen.zone ? $0.joinID : nil }
-        let read = await readJoinRecord()
+        let joinedAt = seen.joinedAt ?? .distantPast
+        let asOf = seen.fetchedAt ?? .distantPast
+        let claim = await claimLeave(seen.zone, joinedAt: joinedAt, asOf: asOf)
         guard saved.shared == nil, saved.switchPending != true, saved.householdSeen?.zone == seen.zone else { return }
-        if Self.mirrored(read.join, seen.zone, mine) {
-            dropAllHere { seen.items[$0] != nil && seen.changed[$0] == nil }
-            carryDeletions(seen.deleted)
-        } else {
-            var stamps = seen.items
-            for (name, change) in seen.changed { stamps[name] = change.modified }
-            let everyone = read.join.flatMap { $0.isJoin(seen.zone, mine) && !read.failed ? $0.items : nil } ?? [:]
-            saved.mirroring = MirrorPlan(stamps: stamps, joinItems: everyone)
-            saved.markMirrored = LeftJoin(zone: seen.zone, joinID: mine)
-            seed() // offered with the household's times
+        // Deleted here meanwhile (signed out, or not sent before): deleted in the own library too.
+        let deletions = deletionsSince(seen)
+        if let leave = claim.leave, leave.by != Self.deviceID {
+            dropAllHere { name in
+                guard let then = seen.items[name] else { return false } // not the household's
+                return seen.changed[name] == nil && then <= leave.asOf
+            }
+            carryDeletions(deletions)
+            return
         }
+        var stamps = seen.items
+        for (name, change) in seen.changed {
+            // Changed again since (signed out): as of now.
+            let now = Self.kind(of: name).flatMap { kind in current(kind)[change.id] }.map(Self.hash)
+            stamps[name] = now != nil && now != change.hash ? .now : change.modified
+        }
+        for name in deletions { stamps[name] = nil }
+        saved.mirroring = MirrorPlan(stamps: stamps, joinItems: claim.items, zone: seen.zone, joinedAt: joinedAt, asOf: asOf)
+        seed() // offered with the household's times
+        carryDeletions(deletions)
     }
 
     /// Deletions made in a household and not sent, carried to the own library on leaving it.
@@ -903,68 +973,20 @@ final class CloudLibrary {
         }
     }
 
-    /// Marks the household this device mirrored as mirrored in the join record, once nothing of
-    /// the mirror is waiting to go up: the record's join if it's that one, else in its history
-    /// (another household joined since), else a record of its own (none: an older build joined).
-    private func markMirroredIfSent() {
-        guard let mark = saved.markMirrored, !markingMirrored, saved.shared == nil, saved.mirroring == nil,
-              let engine, engine.state.pendingRecordZoneChanges.isEmpty else { return }
-        markingMirrored = true
-        Task {
-            defer { markingMirrored = false }
-            let db = container.privateCloudDatabase
-            let id = CKRecord.ID(recordName: Self.joinRecordName, zoneID: Self.ownZone)
-            for _ in 0..<4 {
-                let read = await readJoinRecord()
-                if read.failed { return } // tried again after the next sync
-                var join: HouseholdJoin
-                if let current = read.join, current.isJoin(mark.zone, mark.joinID) {
-                    join = current
-                    join.mirrored = true
-                } else if let current = read.join {
-                    join = current
-                    if !Self.mirrored(current, mark.zone, mark.joinID) {
-                        join.history = Array(((current.history ?? []) + [mark]).suffix(20))
-                    }
-                } else if read.record != nil {
-                    return // one this build can't read: left alone
-                } else {
-                    join = HouseholdJoin(zone: mark.zone, addMine: true, items: [:], joinID: mark.joinID, mirrored: true)
-                }
-                guard let data = try? JSONEncoder().encode(join) else { return }
-                let record = read.record ?? CKRecord(recordType: Self.joinRecordType, recordID: id)
-                record.encryptedValues["join"] = data
-                do {
-                    let (results, _) = try await db.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged)
-                    if case .failure(let error as CKError)? = results[id] {
-                        if error.code == .serverRecordChanged { continue }
-                        return // tried again after the next sync
-                    }
-                } catch let error as CKError where error.code == .serverRecordChanged {
-                    continue
-                } catch {
-                    return
-                }
-                if saved.markMirrored == mark { saved.markMirrored = nil; persist() }
-                return
-            }
-        }
-    }
-
-    private var markingMirrored = false
-
     /// Syncs another library from now on: a new engine on its database, with what's here offered to it.
     /// Back to the account's own library from a household (`mirror`): it becomes what's here.
     /// `join`: the household's join record, kept while in it (for leaving it: MirrorPlan).
     /// `deleteRemoved`: false when another device has mirrored already (its library is the
     /// household's; nothing in it is to be removed).
     private func switchLibrary(to shared: SharedZone?, offerMine: Bool = true, mirror: Bool = false, join: HouseholdJoin? = nil,
-                               joinedItems extra: [String: Date] = [:], deleteRemoved: Bool = true) {
+                               joinedItems extra: [String: Date] = [:], deleteRemoved: Bool = true,
+                               left: (zone: SharedZone, joinedAt: Date, asOf: Date)? = nil) {
         // A newer build's items this one can't read: offered as oldest, so its version wins.
         var stamps = saved.meta.mapValues(\.modified)
         for name in (saved.unreadable ?? [:]).keys { stamps[name] = .distantPast }
         let plan: MirrorPlan? = mirror && saved.shared != nil
-            ? MirrorPlan(stamps: stamps, joinItems: deleteRemoved ? (saved.householdJoin?.items ?? [:]).merging(extra) { max($0, $1) } : [:]) : nil
+            ? MirrorPlan(stamps: stamps, joinItems: deleteRemoved ? (saved.householdJoin?.items ?? [:]).merging(extra) { max($0, $1) } : [:],
+                         zone: left?.zone, joinedAt: left?.joinedAt, asOf: left?.asOf) : nil
         // Into a household with no join record to keep (an older build joined, or one wasn't
         // saved): what the account's own library had now (just synced), for leaving it later.
         var kept = join
@@ -975,7 +997,10 @@ final class CloudLibrary {
         }
         saved = Saved(shared: shared)
         saved.mirroring = plan
-        if shared != nil { saved.householdJoin = kept }
+        if shared != nil {
+            saved.householdJoin = kept
+            saved.joinedAt = .now
+        }
         if !offerMine { saved.seeded = true }
         progress.householdQuestion = nil // answered by this, or moot
         persist()
@@ -1232,7 +1257,7 @@ final class CloudLibrary {
                 }
                 let seen = saved.shared.map { zone in
                     SeenHousehold(zone: zone, items: saved.meta.filter { !$0.value.unsent && saved.unreadable?[$0.key] == nil }.mapValues(\.modified),
-                                  changed: changed, deleted: saved.deleting)
+                                  changed: changed, deleted: saved.deleting, joinedAt: saved.joinedAt, fetchedAt: saved.householdFetched)
                 }
                 saved = Saved()
                 saved.householdSeen = seen
@@ -1260,7 +1285,6 @@ final class CloudLibrary {
                 saved.householdJoin = nil
                 saved.householdSeen = nil
                 saved.pendingHousehold = nil
-                saved.markMirrored = nil // the last account's
                 saved.switchPending = true
                 persist()
                 progress.accountSwitched = true
@@ -1295,10 +1319,10 @@ final class CloudLibrary {
                 if m.record.recordType == Self.joinRecordType {
                     if saved.shared == nil, let data: Data = m.record.encryptedValues["join"],
                        let join = try? JSONDecoder().decode(HouseholdJoin.self, from: data) {
-                        if join.mirrored != true {
+                        if !join.isLeft {
                             saved.householdJoin = join
                             joined = true
-                        } else if saved.householdJoin.map({ join.isJoin($0.zone, $0.joinID) }) == true {
+                        } else if saved.householdJoin?.zone == join.zone {
                             saved.householdJoin = nil // that one's been left: nothing to follow
                         }
                     }
@@ -1385,7 +1409,10 @@ final class CloudLibrary {
                 saved.mirroring = nil // the own library's been gone through
                 persist()
             }
-            markMirroredIfSent()
+            if case .didFetchChanges = event, saved.shared != nil {
+                saved.householdFetched = .now // as of now, for a leave's claim
+                persist()
+            }
             finishRound()
 
         default:

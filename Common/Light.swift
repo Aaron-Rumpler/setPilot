@@ -156,34 +156,49 @@ enum Flashing {
     /// A scene whose steps differ and come round faster than 3 a second, played at `speed`
     /// (10–200; 100 plays the steps as timed, 200 twice as fast).
     static func flashes(_ scene: CustomScene, speed: Int = 100) -> Bool {
-        flashes(timing: scene.timing, steps: scene.steps.map { ($0.look, $0.shortest) }, speed: speed)
+        flashes(timing: scene.timing, steps: scene.steps.map {
+            StepTime(look: $0.look, hold: $0.hold, fade: $0.fade, holdJitter: $0.holdJitter, fadeJitter: $0.fadeJitter)
+        }, speed: speed)
     }
 
     /// An inline scene as sent to the bulb (setPilot's `elm`, a light show cue's say), at `speed`.
     static func flashes(elm: [String: Any], speed: Int = 100) -> Bool {
         guard let steps = elm["steps"] as? [[NSNumber]] else { return false }
         let timing = (elm["modifier"] as? NSNumber).flatMap { CustomScene.Timing(rawValue: $0.intValue) } ?? .steps
-        // Mode, the channels, kelvin and level are the look; hold and fade the time.
+        // Mode, the channels, kelvin and level are the look; hold and fade the time, and the
+        // jitter byte (bits 2–4 the hold's, 5–7 the fade's) how much shorter each can be.
         let parsed = steps.filter { $0.count >= 10 }.map { step in
-            // At its shortest with its jitter (elm's jitter byte: bits 2–4 the hold's, 5–7 the fade's).
             let jitter = step.count > 10 ? step[10].intValue : 0
             let holds = CustomScene.Step.holdJitters, fades = CustomScene.Step.fadeJitters
             let h = jitter >> 2 & 7, f = jitter >> 5 & 7
-            let hold = h < holds.count ? holds[h] : 100, fade = f < fades.count ? fades[f] : 100 // unknown: at its widest
-            let ms = Double(step[8].intValue) * (1 - Double(hold) / 100) + Double(step[9].intValue) * (1 - Double(fade) / 100)
-            return (Array(step.prefix(8).map(\.intValue)), Int(ms))
+            return StepTime(look: Array(step.prefix(8).map(\.intValue)), hold: step[8].intValue, fade: step[9].intValue,
+                            holdJitter: h < holds.count ? holds[h] : 100, fadeJitter: f < fades.count ? fades[f] : 100) // unknown: at its widest
         }
         return flashes(timing: timing, steps: parsed, speed: speed)
     }
 
-    private static func flashes(timing: CustomScene.Timing, steps: [([Int], Int)], speed: Int) -> Bool {
-        guard steps.count >= 2, Set(steps.map(\.0)).count >= 2 else { return false }
-        let scale = 100 / Double(min(max(speed, 10), 200))
-        switch timing {
-        case .slow: return 3000 * scale < 333 // never, at any speed
-        case .quick: return 900 * scale < 333
-        case .steps: return steps.contains { Double($0.1) * scale < 333 }
+    private struct StepTime {
+        var look: [Int]
+        var hold: Int
+        var fade: Int
+        var holdJitter: Int
+        var fadeJitter: Int
+
+        /// At its shortest (ms), with its jitter, its hold and fade as the timing has them.
+        func shortest(_ timing: CustomScene.Timing) -> Double {
+            let (h, f): (Int, Int) = switch timing {
+            case .steps: (hold, fade)
+            case .slow: (1500, 1500)
+            case .quick: (400, 500)
+            }
+            return Double(max(h, 0)) * (1 - Double(holdJitter) / 100) + Double(max(f, 0)) * (1 - Double(fadeJitter) / 100)
         }
+    }
+
+    private static func flashes(timing: CustomScene.Timing, steps: [StepTime], speed: Int) -> Bool {
+        guard steps.count >= 2, Set(steps.map(\.look)).count >= 2 else { return false }
+        let scale = 100 / Double(min(max(speed, 10), 200))
+        return steps.contains { $0.shortest(timing) * scale < 333 }
     }
 }
 
@@ -311,10 +326,7 @@ struct CustomScene: Codable, Hashable, Identifiable, Sendable {
         static let jitterChances = [100, 90, 50, 10]
 
         var jitters: Bool { holdJitter > 0 || fadeJitter > 0 }
-        /// How long the step can take at its shortest, with its jitter (ms; Flashing).
-        var shortest: Int {
-            Int(Double(hold) * (1 - Double(holdJitter) / 100) + Double(fade) * (1 - Double(fadeJitter) / 100))
-        }
+
 
         /// elm's per-step jitter byte: bits 0–1 the chance, 2–4 the hold's, 5–7 the fade's (as
         /// indexes into the firmware's tables, which these lists are reordered from).

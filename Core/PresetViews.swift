@@ -39,7 +39,15 @@ struct PresetGrid: View {
                     ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
                         Button {
                             let flashes = model.flashes(preset.colour)
-                            confirmFlashing(preset.name, flashes: flashes) { model.apply(preset) }
+                            confirmFlashing(preset.name, flashes: flashes) {
+                                // As asked about: not if it's been edited or deleted meanwhile (the Mac's
+                                // menu bar panel asks in the main window).
+                                guard let now = model.library.presets.first(where: { $0.id == preset.id }), now.sameLight(as: preset) else {
+                                    model.status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
+                                    return
+                                }
+                                model.apply(now)
+                            }
                         } label: {
                             PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
                                        isScene: preset.colour.isScene, isFavourite: preset.isFavourite)

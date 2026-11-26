@@ -27,11 +27,13 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
         throw WatchIntentError(localizedStringResource: "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on.")
     }
     try Task.checkCancellation() // dismissed meanwhile: nothing goes
-    let ok = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
-        MainActor.assumeIsolated { link.send(.script(data, fade: fade), asked: asked) { done.resume(returning: $0) } } // called right away, here
+    // The reason taken with the answer (the shared error may be cleared by another send before
+    // this resumes).
+    let (ok, reason) = await withCheckedContinuation { (done: CheckedContinuation<(Bool, String?), Never>) in
+        MainActor.assumeIsolated { link.send(.script(data, fade: fade), asked: asked) { done.resume(returning: ($0, link.error)) } } // called right away, here
     }
     guard ok, let snapshot = link.snapshot else {
-        throw WatchIntentError(localizedStringResource: "\(link.error ?? "Your iPhone didn't answer.")")
+        throw WatchIntentError(localizedStringResource: "\(reason ?? "Your iPhone didn't answer.")")
     }
     return snapshot
 }

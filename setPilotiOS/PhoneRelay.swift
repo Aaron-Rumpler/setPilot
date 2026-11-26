@@ -174,7 +174,7 @@ final class PhoneRelay: NSObject {
         }
         // Ready, but with too little of its time left for a try and its answer: not sent.
         let deadline = asked.addingTimeInterval(Model.answerTimeout)
-        let reads = switch command { case .sync, .deviceInfo: true; default: false }
+        let reads = switch command { case .sync, .deviceInfo, .updatePreset: true; default: false } // nothing sent
         if deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0], !reads {
             return .scripted(ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering, message: Model.tooLate)))
         }
@@ -403,13 +403,16 @@ extension PhoneRelay: WCSessionDelegate {
                 // What became of the change it sent, as Shortcuts say it: refused, not answered,
                 // not applied, or not known (another change went before it was answered).
                 var why: String?
+                var code: ScriptError.Code?
                 if sends, let model, let ticket {
                     switch await model.result(of: ticket) {
                     case .done: break
-                    case .notApplied(let m), .refused(let m), .notAnswered(let m), .notKnown(let m): why = m
+                    case .notApplied(let m): (why, code) = (m, .notApplied)
+                    case .refused(let m): (why, code) = (m, .refused)
+                    case .notAnswered(let m), .notKnown(let m): (why, code) = (m, .notAnswering)
                     }
                 }
-                finish(message, model?.snapshot ?? LightSnapshot(), error: why)
+                finish(message, model?.snapshot ?? LightSnapshot(), error: why, code: code?.rawValue)
             }
         }
     }

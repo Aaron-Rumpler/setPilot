@@ -296,6 +296,7 @@ struct StatusWidgetView: View {
                     }
                     .toggleStyle(.button)
                     .labelStyle(.iconOnly)
+                    .opacity(s?.link == .connected ? 1 : 0.5) // its state is only the last known
                     .accessibilityLabel("Power")
                 }
                 .buttonStyle(.plain)
@@ -326,6 +327,7 @@ struct StatusWidgetView: View {
                 }
                 .toggleStyle(.button)
                 .labelStyle(.iconOnly)
+                .opacity(s?.link == .connected ? 1 : 0.5) // its state is only the last known
                 .accessibilityLabel("Power")
             }
         }

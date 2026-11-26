@@ -80,11 +80,14 @@ struct LightShow {
     /// inline scene that flashes itself (at the cue's speed).
     var flashes: Bool {
         // At the fastest speed it's played at: speed goes in a cue of its own (just after the
-        // scene's, docs/LIGHT-SHOW.md), so any up to the next cue that changes the light's colour.
+        // scene's, docs/LIGHT-SHOW.md), so any up to the next cue that changes the light's colour;
+        // and the bulb may keep one set earlier in the show.
         let looks: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
+        var earlier = 100
         for (i, cue) in cues.enumerated() {
+            defer { if let v = (cue.pilot["speed"] as? NSNumber)?.intValue { earlier = max(earlier, v) } }
             guard let elm = cue.pilot["elm"] as? [String: Any] else { continue }
-            var speed = (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100
+            var speed = max(earlier, (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100)
             for later in cues.dropFirst(i + 1) {
                 if later.pilot.keys.contains(where: looks.contains) { break }
                 if let v = (later.pilot["speed"] as? NSNumber)?.intValue { speed = max(speed, v) }
