@@ -149,6 +149,8 @@ final class CloudLibrary {
         var zone: SharedZone
         var joinID: UUID?
         var joinedAt: Date?
+        /// When this device last fetched it in full.
+        var fetchedAt: Date? = nil
     }
 
     /// How a household was left, for the account's other devices (a record in its own library,
@@ -191,8 +193,13 @@ final class CloudLibrary {
         /// Only records last changed before the leave: the account's other devices may already
         /// be sending theirs (following it), which stay.
         var before: Date?
-        /// What the copy's stamped with: the leave's time (later changes win over it).
+        /// What the copy's stamped with: when each item last changed in the household (so the
+        /// later change wins, whichever device made it); the leave's time for any without.
         var stamp: Date? = nil
+        var stamps: [String: Date]? = nil
+        /// Names the household had (the join record's): removed from the own library whatever
+        /// their date, unless they're here.
+        var householdHad: Set<String>? = nil
     }
 
     /// What was here when signed out (Saved.signedOut).
@@ -201,6 +208,8 @@ final class CloudLibrary {
         var hashes: [String: Data]
         /// Signed back in: what was here then and isn't now (deleted while signed out).
         var gone: Set<String>? = nil
+        /// Asked (left fresh elsewhere) whether to keep these, and not answered yet.
+        var heldFresh: [String: Date]? = nil
         /// The keep-or-remove question's been answered (asked again at launch until it is).
         var answered: Bool? = nil
     }
@@ -264,7 +273,14 @@ final class CloudLibrary {
             requeueUnsent()
         }
         retryUnreadable()
-        if saved.askingFresh == true, let held = saved.newHere { progress.householdQuestion = .leftFresh(held.count) }
+        if saved.askingFresh == true, let held = saved.newHere {
+            progress.householdQuestion = .leftFresh(held.count)
+            Self.showQuestion()
+        }
+        if saved.leftQuestion != nil {
+            progress.leftHousehold = true // asked again (checkHousehold may find it answered elsewhere)
+            Self.showQuestion()
+        }
         if let note = saved.signedOut, note.answered != true { progress.signedOut = true }
         Task {
             await checkHousehold()
@@ -455,7 +471,7 @@ final class CloudLibrary {
                 // Offered as oldest (iCloud's copy wins); back from a household, as of the leave
                 // (the own library becomes what's here; what the account's other devices bring
                 // after it, stamped later, wins over it).
-                let stamp: Date = saved.replacing.map { $0.stamp ?? $0.before ?? .now } ?? .distantPast
+                let stamp: Date = saved.replacing.map { $0.stamps?[name] ?? $0.stamp ?? $0.before ?? .now } ?? .distantPast
                 saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: stamp,
                                         orderModified: stamp, systemFields: saved.meta[name]?.systemFields)
                 pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
@@ -625,6 +641,16 @@ final class CloudLibrary {
         // Kept until they're gone (a quit part way is picked up at launch: checkHousehold).
         saved.toLeave = others.map { SharedZone(zoneName: $0.zoneName, ownerName: $0.ownerName) }
         persist()
+        // Put out of one and asked about it: the account's other devices follow here instead.
+        if let put = saved.leftQuestion {
+            let read = await readRecord(Self.leaveRecordName(put.zone))
+            if !read.failed {
+                _ = await saveRecord(Self.leaveRecordName(put.zone), type: Self.leaveRecordType,
+                                     HouseholdLeave(zone: put.zone, joinID: put.joinID, mode: .joined(household), at: .now), over: read.record)
+            }
+            saved.leftQuestion = nil
+            progress.leftHousehold = false
+        }
         if let other = others.first {
             let was = membership ?? Membership(zone: SharedZone(zoneName: other.zoneName, ownerName: other.ownerName), joinID: nil, joinedAt: nil)
             let leave = HouseholdLeave(zone: was.zone, joinID: was.joinID, mode: .joined(household), at: .now)
@@ -769,7 +795,7 @@ final class CloudLibrary {
     private func lookUpHousehold(after choice: AccountChoice?) async -> HouseholdLookup {
         // Not while the question about another Apple ID is open: this device's library is
         // decided on first (answering it looks again).
-        guard saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil, engine != nil else { return .skipped }
+        guard !joining, saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil, engine != nil else { return .skipped }
         guard let zones = try? await container.sharedCloudDatabase.allRecordZones() else { return .skipped }
         guard saved.shared == nil, saved.switchPending != true, saved.leftQuestion == nil else { return .skipped } // joined (or switched) meanwhile
         let households = zones.filter { $0.zoneID.zoneName == Self.ownZone.zoneName && $0.zoneID.ownerName != CKCurrentUserDefaultName }
@@ -909,7 +935,7 @@ final class CloudLibrary {
                 // Changed while nothing was sent (settling): its content isn't what was synced.
                 let changed = meta.unsent || meta.hash != Self.hash(item)
                 if changed || since.map({ meta.modified > $0 }) == true {
-                    out[kind, default: [:]][id] = (item, changed ? max(meta.modified, .now) : meta.modified)
+                    out[kind, default: [:]][id] = (item, changed ? .now : meta.modified)
                 }
             }
         }
@@ -1047,7 +1073,7 @@ final class CloudLibrary {
     /// The membership this device has (its household, the join, since when).
     private var membership: Membership? {
         saved.shared.map { zone in
-            Membership(zone: zone, joinID: knowledge(of: zone)?.joinID, joinedAt: saved.joinedAt)
+            Membership(zone: zone, joinID: knowledge(of: zone)?.joinID, joinedAt: saved.joinedAt, fetchedAt: saved.householdFetched)
         }
     }
 
@@ -1059,8 +1085,10 @@ final class CloudLibrary {
         let put = saved.leftQuestion
         guard let was = put ?? membership, saved.leaving == nil else { return }
         progress.leftHousehold = false
+        var fetched = false
         if put == nil {
-            try? await engine?.fetchChanges() // up to date first: this copy is what it becomes
+            // Up to date first: this copy is what it becomes.
+            fetched = (try? await engine?.fetchChanges()) != nil
         }
         guard !leavingNow else { return } // tapped again while it's under way
         leavingNow = true
@@ -1077,7 +1105,7 @@ final class CloudLibrary {
                 return follow(leave)
             }
             let leave = HouseholdLeave(zone: was.zone, joinID: was.joinID, mode: keep ? .keep : .fresh, at: .now,
-                                       copyAsOf: put == nil ? .now : saved.householdFetched ?? saved.joinedAt,
+                                       copyAsOf: fetched ? .now : was.fetchedAt ?? was.joinedAt,
                                        joinedAt: knowledge(of: was.zone)?.at ?? was.joinedAt)
             switch await saveRecord(Self.leaveRecordName(was.zone), type: Self.leaveRecordType, leave, over: read.record) {
             case .saved:
@@ -1103,6 +1131,7 @@ final class CloudLibrary {
     /// The rest of this device's leave, once its record's written (and again at launch, if it
     /// didn't get through): the household left, then the own library made what's here.
     private func finishLeaving(_ leave: HouseholdLeave) async {
+        guard saved.switchPending != true else { return }
         // Left for another household, and stopped part way (relaunched): the join's finished
         // here (it was accepted), or, not there after all, asked as if put out.
         if case .joined(let target) = leave.mode {
@@ -1155,7 +1184,9 @@ final class CloudLibrary {
         let cutoff = leave.joinedAt.map { min($0.addingTimeInterval(120), leave.at.addingTimeInterval(-120)) } ?? leave.at.addingTimeInterval(-120)
         let unreadable = leave.mode == .fresh ? [:] : saved.unreadable ?? [:]
         let ids = saved.meta.mapValues(\.id)
-        switchLibrary(to: nil, replacing: ReplacePlan(keep: keep, before: cutoff, stamp: leave.at))
+        let stamps = saved.meta.mapValues(\.modified)
+        let had = Set(knowledge(of: leave.zone)?.items.keys ?? [:].keys)
+        switchLibrary(to: nil, replacing: ReplacePlan(keep: keep, before: cutoff, stamp: leave.at, stamps: stamps, householdHad: had))
         // A newer build's items go to the own library as they are (as part of the copy).
         if !unreadable.isEmpty, let engine {
             saved.unreadable = unreadable
@@ -1201,9 +1232,16 @@ final class CloudLibrary {
         case .keep:
             // Later than the copy (made then), so what's this device's wins over it; with what
             // changed after the copy was last fetched, which it may not have.
+            // (Not known how up to date the copy was: everything synced here is brought too, as of
+            // when it last changed, so the later change wins.)
             let after = leave.at.addingTimeInterval(1)
-            let new = unsentHere(since: leave.copyAsOf).mapValues { list in list.mapValues { ($0.0, max($0.1, after)) } }
-            switchKeeping(new, deleting: deletions, to: nil)
+            let unsent = unsentHere()
+            let new = unsentHere(since: leave.copyAsOf ?? .distantPast).mapValues { list in list.mapValues { $0 } }
+            var stamped = new
+            for (kind, list) in new {
+                for (id, entry) in list where unsent[kind]?[id] != nil { stamped[kind]?[id] = (entry.0, max(entry.1, after)) }
+            }
+            switchKeeping(stamped, deleting: deletions, to: nil)
         case .fresh:
             let new = unsentHere()
             if new.isEmpty {
@@ -1237,7 +1275,7 @@ final class CloudLibrary {
         if let record { saved.householdJoin = record }
         let new = unsentHere()
         if new.isEmpty || record?.addMine == true {
-            switchKeeping(new, to: other)
+            switchKeeping(new, deleting: saved.deleting, to: other)
         } else {
             hold(new)
             ask(record == nil ? .noRecord : .newItems(new.values.reduce(0) { $0 + $1.count }), other)
@@ -1250,14 +1288,18 @@ final class CloudLibrary {
         var names: [String: Date] = [:]
         for (kind, list) in new { for (id, (_, at)) in list { names[Self.recordName(kind, id)] = at } }
         dropAllHere { names[$0] == nil }
+        // Deletions here not sent yet go where it goes too.
+        let deleted = saved.deleting.union(saved.deletedHere ?? [])
         switchLibrary(to: nil, offerMine: false)
         saved.newHere = names
+        if !deleted.isEmpty { saved.deletedHere = deleted }
         persist()
     }
 
     /// Resumed at launch (or Sync Now): a leave under way, a household gone while the app wasn't
     /// running, or a question of keeping a copy that another device may have answered since.
     private func checkHousehold() async {
+        guard saved.switchPending != true else { return } // the account's library is decided first
         if let zones = saved.toLeave {
             var still: [SharedZone] = []
             for zone in zones {
@@ -1352,7 +1394,9 @@ final class CloudLibrary {
     /// back to the account's own library after leaving a household, which becomes what's here.
     private func switchLibrary(to shared: SharedZone?, offerMine: Bool = true, join: HouseholdJoin? = nil, replacing: ReplacePlan? = nil) {
         let householdJoin = saved.householdJoin
+        let toLeave = saved.toLeave
         saved = Saved(shared: shared)
+        saved.toLeave = toLeave // the account's still, whichever library
         saved.replacing = replacing
         // The account's join record stays known (it's in its own library, fetched again anyway).
         saved.householdJoin = join ?? householdJoin
@@ -1705,7 +1749,7 @@ final class CloudLibrary {
                 if saved.newHere?[name] != nil || saved.returning != nil { continue }
                 // Back from a household, the own library becomes what's here: anything else goes.
                 if let plan = saved.replacing, Self.kind(of: name) != nil, !plan.keep.contains(name),
-                   (m.record.modificationDate ?? .distantPast) < (plan.before ?? .distantFuture) {
+                   (m.record.modificationDate ?? .distantPast) < (plan.before ?? .distantFuture) || plan.householdHad?.contains(name) == true {
                     saved.deleting.insert(name)
                     engine?.state.add(pendingRecordZoneChanges: [.deleteRecord(m.record.recordID)])
                     continue
@@ -1713,7 +1757,7 @@ final class CloudLibrary {
                 if let (kind, id, item) = take(m.record) { changes[kind, default: [:]].updateValue(item, forKey: id) }
             }
             // Joined on another device: this one follows (not while a lookup's syncing for it).
-            if joined, saved.switchPending != true, householdLookup == nil { Task { await findHousehold() } }
+            if joined, saved.switchPending != true, householdLookup == nil, !joining { Task { await findHousehold() } }
             for d in e.deletions where d.recordID.zoneID == zoneID {
                 let name = d.recordID.recordName
                 if saved.newHere?[name] != nil || saved.returning != nil { continue } // held here, or still being worked out
@@ -1822,13 +1866,19 @@ final class CloudLibrary {
         }
         // Held for where it goes (left elsewhere, say): those aren't the library's.
         for name in (saved.newHere ?? [:]).keys { hashes[name] = nil }
-        let note = SignedOut(membership: membership ?? saved.leftQuestion ?? saved.returning?.membership, hashes: hashes)
+        var note = SignedOut(membership: membership ?? saved.leftQuestion ?? saved.returning?.membership, hashes: hashes)
         let wasShared = saved.shared != nil
         let householdJoin = saved.householdJoin
         let leaving = saved.leaving
+        let toLeave = saved.toLeave
+        // The question about what's only here (left fresh elsewhere): asked again on signing in.
+        var heldNote: [String: Date]?
+        if saved.askingFresh == true { heldNote = saved.newHere }
         saved = Saved()
         saved.householdJoin = householdJoin
         saved.leaving = leaving // finished on signing back in
+        saved.toLeave = toLeave
+        note.heldFresh = heldNote
         saved.signedOut = note
         persist()
         if wasShared {
@@ -1838,8 +1888,14 @@ final class CloudLibrary {
         progress.leftHousehold = false
         progress.householdQuestion = nil
         status = "Not signed in to iCloud"
-        progress.signedOut = true // keep what's here, or remove it
-        Self.showQuestion()
+        // Keep what's here, or remove it (not while leaving with a copy: what's here is the copy).
+        if leaving == nil {
+            progress.signedOut = true
+            Self.showQuestion()
+        } else {
+            saved.signedOut?.answered = true
+            persist()
+        }
     }
 
     /// The answer to "signed out of iCloud": keep what's here, or remove it from this device.
@@ -1874,6 +1930,16 @@ final class CloudLibrary {
                 let found = await self.findHousehold()
                 if found != .joined, self.saved.shared == nil, self.saved.switchPending != true { self.seed() }
             }
+            return
+        }
+        // Asked whether to keep what's only here (left fresh elsewhere): asked again.
+        if let held = note.heldFresh {
+            let here = Set(Kind.allCases.flatMap { kind in current(kind).keys.map { Self.recordName(kind, $0) } })
+            saved.signedOut = nil
+            saved.newHere = held.filter { here.contains($0.key) }
+            saved.askingFresh = true
+            persist()
+            ask(.leftFresh(saved.newHere?.count ?? 0), nil)
             return
         }
         var new: [String: Date] = [:]
@@ -1911,6 +1977,9 @@ final class CloudLibrary {
         saved.signedOut = nil
         saved.returning = nil
         saved.askingFresh = nil
+        saved.leaving = nil // the last account's
+        saved.toLeave = nil
+        saved.deletedHere = nil
         progress.leftHousehold = false
         progress.householdQuestion = nil
         progress.signedOut = false
