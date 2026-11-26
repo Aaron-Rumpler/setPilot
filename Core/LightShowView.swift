@@ -243,8 +243,16 @@ private struct LightShowScreen: View {
                 if player.isPlaying {
                     player.togglePlay()
                 } else {
+                    let opened = player.opened
                     confirmFlashing(player.show?.title ?? player.showName ?? "This light show",
-                                    flashes: player.show?.flashes ?? false) { player.play() } // play, whatever it's doing by now
+                                    flashes: player.show?.flashes(bulbSpeed: Int(model.speed)) ?? false) {
+                        // The show asked about, not another opened meanwhile (a Handoff, say).
+                        guard player.opened == opened else {
+                            player.error = "Another show was opened while asking: press Play again."
+                            return
+                        }
+                        player.play() // play, whatever it's doing by now
+                    }
                 }
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")

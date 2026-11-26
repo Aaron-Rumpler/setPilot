@@ -225,6 +225,7 @@ final class Model {
         // Shortcut or watch tap that waited for the bulb).
         changeEnd = min(changeStarted.addingTimeInterval(BulbTiming.replyWindow), changeDeadline ?? .distantFuture)
         changeDeadline = nil
+        readBackEnd = .distantPast
         ticket += 1
         refusal = nil
         pilotAnswered = false
@@ -279,7 +280,8 @@ final class Model {
     /// show taking over): done if it was answered, otherwise not known to be done. Not taken for
     /// the bulb not answering.
     private func dropPending(_ why: String) {
-        if pending || verifyingSeq != nil { settle(ticket, pilotAnswered ? .done : .notKnown(why)) }
+        // Done only if all of it was answered (a scene's speed too).
+        if pending || verifyingSeq != nil { settle(ticket, pilotAnswered && delayedSpeed == nil && !speedAwaited ? .done : .notKnown(why)) }
         verifyTask?.cancel()
         verifyingSeq = nil
         pending = false
@@ -364,7 +366,9 @@ final class Model {
             if let tag, tag != ticket { return }
             // A retry's read (recover) going unanswered: still not answering, as already said.
             if method == "getPilot", link == .unreachable {
-                if tag == ticket, verifyingSeq != nil { settle(ticket, unanswered) }
+                // A change still waiting (its read-back, or a read that wasn't its own): the bulb's
+                // gone, so not answered; a switch as far as known didn't happen.
+                unansweredRead()
                 quietReads = 0
                 pending = false
                 verifyingSeq = nil
@@ -392,7 +396,7 @@ final class Model {
                     }
                     recover()
                 }
-                if tag == ticket, verifyingSeq != nil { settle(ticket, unanswered) } // its read-back
+                unansweredRead() // its read-back, or a change waiting
                 pending = false
                 verifyingSeq = nil
             case "setPilot"?:
@@ -1291,7 +1295,10 @@ final class Model {
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
         if method == "setPilot" || method == "setState" {
             startChange()
-            if method == "setState" { stateTicket = ticket }
+            if method == "setState" {
+                stateTicket = ticket
+                powerBefore = isOn // what a refusal puts back
+            }
             // The last change's read-back and delayed speed aren't this one's.
             verifyTask?.cancel()
             delayedSpeed?.cancel()
@@ -1867,6 +1874,8 @@ final class Model {
     @ObservationIgnored private var lastHeard = Date.distantPast
     /// How long without hearing from the bulb before `ensureLive` reads the state again.
     static let staleAfter: Double = 25
+    /// When the state was last read (a getPilot answered).
+    @ObservationIgnored private var lastPilotRead = Date.distantPast
     /// When `ensureLive` last read the state because the bulb had gone quiet.
     @ObservationIgnored private var lastStaleRead = Date.distantPast
 
@@ -1979,7 +1988,7 @@ final class Model {
         let started = Date.now
         // Reading if one goes now, or one sent for having gone quiet is still unanswered (it isn't
         // sent again within 25 s): either way, ready only once it's answered.
-        let reading = ensureLive() || (lastStaleRead > lastHeard && link == .connected)
+        let reading = ensureLive() || (lastStaleRead > lastPilotRead && link == .connected)
         let end = Date().addingTimeInterval(timeout)
         while !canControl && Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
         if reading {
@@ -2052,6 +2061,19 @@ final class Model {
         }
     }
 
+    /// A read went unanswered with a change still waiting (for its answer or its read-back): it
+    /// isn't coming (the bulb's gone), so the change is settled as not answered, and a switch
+    /// not answered is put back.
+    private func unansweredRead() {
+        if pending || verifyingSeq != nil { settle(ticket, unanswered) }
+        // A switch not answered (or one whose time ran out, read to see): as far as known, not made.
+        if pilotSwitches, !pilotAnswered {
+            isOn = powerBefore
+            lastState = powerBefore
+        }
+        pilotSwitches = false
+    }
+
     /// The latest change went unanswered and its tries stopped without saying so (cut off by its
     /// time, or by a fresh connection): settled as not answered, as its retries giving up would.
     /// `unknown`: its tries were cut short (a fresh connection), not given up on: not known, so
@@ -2070,10 +2092,9 @@ final class Model {
             let why = cut && !unknown ? Self.timeRanOut : message
             settle(ticket, .notKnown(why))
             status = why
-            pilotSwitches = false
             // How the light is, as it may or may not have taken it (a fresh connection reads it
-            // itself).
-            if !unknown {
+            // itself). A switch is kept as asked until that says (or fails to: put back then).
+            if unknown { pilotSwitches = false } else {
                 quietReads += 1
                 bulb.send("getPilot", retry: true)
             }
@@ -2119,6 +2140,8 @@ final class Model {
         if let want = lastState, let got = result["state"] as? Bool, got != want {
             diffs.append("state \(want ? "on" : "off")→\(got ? "on" : "off")")
         }
+        // Already settled (as not known: its speed cut off by a fresh connection): nothing to say.
+        guard results[ticket] == nil else { return }
         mismatch = diffs.isEmpty ? nil : "Bulb didn't apply: " + diffs.joined(separator: ", ")
         status = diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state"
         settle(ticket, mismatch.map { .notApplied($0) } ?? .done)
@@ -2228,6 +2251,8 @@ final class Model {
         switch method {
         case "getPilot":
             pilotReads += 1
+            lastPilotRead = .now
+            if !pending { pilotSwitches = false } // how it is, read: nothing to put back
             if let seq = verifyingSeq {
                 // A newer setPilot went out after this check started; its own check will follow.
                 guard seq == sendSeq else { return }

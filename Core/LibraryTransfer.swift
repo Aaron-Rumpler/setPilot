@@ -97,9 +97,13 @@ extension Library {
         for (mac, list) in file.cctScales {
             let elsewhere = Set(cctScales.filter { $0.key != mac.lowercased() }.values.flatMap { $0.map(\.id) })
             let here = scales(for: mac)
-            var names = here.map(\.name) + list.map(\.name)
+            // This bulb's, and the file's others for it (not the one being named).
+            var names = here.map(\.name)
+            var others = list.map(\.name)
             var renumbered = list
             for i in renumbered.indices where elsewhere.contains(renumbered[i].id) {
+                var taken = names
+                taken += others.enumerated().filter { $0.offset != i }.map(\.element)
                 let new = Self.bulbsOwnID(renumbered[i].id, mac)
                 newIDs[renumbered[i].id] = new
                 renumbered[i].id = new
@@ -107,9 +111,10 @@ extension Library {
                 if let copy = here.first(where: { $0.id == new }) {
                     renumbered[i].name = copy.name
                 } else {
-                    renumbered[i].name = unique(renumbered[i].name, in: names)
+                    renumbered[i].name = unique(renumbered[i].name, in: taken)
                 }
                 names.append(renumbered[i].name)
+                others[i] = renumbered[i].name
             }
             file.cctScales[mac] = renumbered
         }

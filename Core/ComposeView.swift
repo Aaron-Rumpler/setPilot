@@ -142,7 +142,15 @@ extension Model {
         if case .custom(let id, _)? = change.colour, let scene = library.customScene(id) {
             // What was asked about goes: not the draft as it may be by the time it's answered
             // (the Mac's menu bar panel stays open to editing while the main window asks).
-            confirm(scene.name, flashes: flashes(change.colour)) { [weak self] in self?.sendDraftNow(change) }
+            confirm(scene.name, flashes: flashes(change.colour)) { [weak self] in
+                guard let self else { return }
+                // Its scene as asked about too (not edited or deleted meanwhile).
+                guard library.customScene(id) == scene else {
+                    status = "“\(scene.name)” was changed or deleted while being asked about; send it again."
+                    return
+                }
+                sendDraftNow(change)
+            }
             return
         }
         sendDraftNow(change)

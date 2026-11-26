@@ -1265,7 +1265,19 @@ final class CloudLibrary {
                 makeEngine()
                 engineFresh = false // made for this change, which is handled below
             }
+            // Signed out, then in as someone else (reported as a sign-in): as another Apple ID.
+            var otherUser = false
             switch e.changeType {
+            case .signIn(let user):
+                otherUser = Self.noteUser(user)
+            case .switchAccounts(_, let user):
+                _ = Self.noteUser(user)
+            default:
+                break
+            }
+            switch e.changeType {
+            case .signIn where otherUser:
+                switchedAccounts()
             case .signIn:
                 guard saved.shared == nil, !fresh else { break }
                 reset(reseed: false)
@@ -1280,14 +1292,7 @@ final class CloudLibrary {
                 }
             // Another Apple ID: ask what to do with what's here (AccountSwitchPrompt).
             case .switchAccounts:
-                reset(reseed: false)
-                // Another Apple ID: the last one's household is nothing to this one.
-                saved.householdJoin = nil
-                saved.householdSeen = nil
-                saved.pendingHousehold = nil
-                saved.switchPending = true
-                persist()
-                progress.accountSwitched = true
+                switchedAccounts()
             case .signOut: reset(reseed: false); status = "Not signed in to iCloud"
             @unknown default: break
             }
@@ -1389,9 +1394,18 @@ final class CloudLibrary {
                     ensureZone()
                     retry.append(.saveRecord(id))
                 case .unknownItem:
-                    // Gone from iCloud: save it afresh.
-                    saved.meta[id.recordName]?.systemFields = nil
-                    retry.append(.saveRecord(id))
+                    let name = id.recordName
+                    if saved.meta[name]?.systemFields != nil, let kind = Self.kind(of: name),
+                       let key: String = kind.hashed ? failure.record.encryptedValues["mac"] : itemID(name, kind) {
+                        // It was in iCloud, and another device has deleted it since: deleted here
+                        // too, not brought back by a change made here meanwhile (a reorder, say).
+                        saved.meta[name] = nil
+                        changes[kind, default: [:]].updateValue(nil, forKey: key)
+                    } else {
+                        // Never in iCloud (or its record lost): saved afresh.
+                        saved.meta[name]?.systemFields = nil
+                        retry.append(.saveRecord(id))
+                    }
                 case .networkFailure, .networkUnavailable, .zoneBusy, .serviceUnavailable, .notAuthenticated,
                      .operationCancelled, .requestRateLimited:
                     break // the engine tries again by itself
@@ -1418,6 +1432,27 @@ final class CloudLibrary {
         default:
             break
         }
+    }
+
+    private static let accountUserKey = "cloudLibrary.accountUser"
+
+    /// Remembers the Apple ID signed in (its user record); whether it's another than the last one.
+    private static func noteUser(_ user: CKRecord.ID) -> Bool {
+        let last = UserDefaults.standard.string(forKey: accountUserKey)
+        UserDefaults.standard.set(user.recordName, forKey: accountUserKey)
+        return last != nil && last != user.recordName
+    }
+
+    /// Another Apple ID: the question about what's here is asked (AccountSwitchPrompt), and the
+    /// last one's household is nothing to this one.
+    private func switchedAccounts() {
+        reset(reseed: false)
+        saved.householdJoin = nil
+        saved.householdSeen = nil
+        saved.pendingHousehold = nil
+        saved.switchPending = true
+        persist()
+        progress.accountSwitched = true
     }
 
     /// Whether this build can read an item of iCloud's (a newer build's may have more in it).

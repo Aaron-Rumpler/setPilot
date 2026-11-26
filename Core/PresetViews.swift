@@ -39,10 +39,12 @@ struct PresetGrid: View {
                     ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
                         Button {
                             let flashes = model.flashes(preset.colour)
+                            let scene = model.library.customSceneOf(preset.colour)
                             confirmFlashing(preset.name, flashes: flashes) {
                                 // As asked about: not if it's been edited or deleted meanwhile (the Mac's
                                 // menu bar panel asks in the main window).
-                                guard let now = model.library.presets.first(where: { $0.id == preset.id }), now.sameLight(as: preset) else {
+                                guard let now = model.library.presets.first(where: { $0.id == preset.id }),
+                                      model.unchanged(now, asked: preset, scene: scene) else {
                                     model.status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
                                     return
                                 }
@@ -267,7 +269,7 @@ extension Model {
                 case .builtin(let id): self.setScene(id)
                 case .custom(let id):
                     guard let s = self.library.customScene(id) else { return }
-                    confirm(s.name, flashes: self.flashes(s)) { _ = self.playCustom(s) }
+                    confirm(s.name, flashes: self.flashes(s)) { self.playAsked(s) }
                 }
             }
         )

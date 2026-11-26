@@ -97,7 +97,6 @@ final class PhoneRelay: NSObject {
 
     /// The change number before the command in hand sent its change (set once the bulb's ready).
     private var sentFrom: Int?
-    private static let notAnswering = "The bulb isn't answering. Check it's powered and on the same network as your iPhone."
 
     /// The bulb can take a command now. As everywhere (Model.waitUntilControllable): waits as long
     /// as the bulb's own retries, and not at all if it's just been found not answering (a burst of
@@ -135,7 +134,12 @@ final class PhoneRelay: NSObject {
             return .now(model.snapshot)
         case .savePreset(let name):
             // The light as it is: not saved from a state that may be out of date.
-            guard await bulbReady(model) else { return .failed(model.snapshot, Self.notAnswering) }
+            let started = Date.now
+            guard await bulbReady(model) else {
+                // Why, as everything says it (refused, or not answering).
+                return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                              error: Scripting.notReady(model, left: Model.answerTimeout, waitStarted: started)))
+            }
             // Not every light can be a preset (Rhythm, say): the status says why.
             guard model.savePreset(named: name) != nil else { return .failed(model.snapshot, model.status) }
             return .now(model.snapshot)
@@ -193,7 +197,10 @@ final class PhoneRelay: NSObject {
             // when this answers. Later state reaches it as the iPhone's usual updates.
             return .now(model.snapshot)
         case .compose(let change):
-            guard model.send(change) else { return .failed(model.snapshot, model.refusal ?? model.status) }
+            guard model.send(change) else {
+                return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                              error: ScriptError(code: .refused, message: model.refusal ?? model.status)))
+            }
         case .modeChoice(let choice):
             model.setModeChoice(choice)
         case .temperatureScale(let id):
@@ -378,7 +385,7 @@ extension PhoneRelay: WCSessionDelegate {
             }
         }()
         if changes, Date.now.timeIntervalSince(message.asked) > Model.answerTimeout {
-            finish(message, model?.snapshot ?? LightSnapshot(), error: "That came too late to send (the bulb was busy or not answering); try again.",
+            finish(message, model?.snapshot ?? LightSnapshot(), error: Model.tooLate,
                    code: ScriptError.Code.notAnswering.rawValue)
             return
         }

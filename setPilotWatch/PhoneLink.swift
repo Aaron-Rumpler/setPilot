@@ -121,13 +121,19 @@ final class PhoneLink: NSObject {
     private func transmit(_ command: WatchCommand, quiet: Bool, asked: Date = .now, done: (@MainActor (Bool) -> Void)? = nil) {
         let session = WCSession.default
         // Not answered: `done` still comes afterwards, as a reply would.
+        // (Each failure's reason set just before `done`, which may read it.)
         guard session.activationState == .activated, session.isReachable else {
-            if !quiet { error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
-            Task { @MainActor in done?(false) }
+            Task { @MainActor in
+                if !quiet { self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
+                done?(false)
+            }
             return
         }
         guard let data = try? JSONEncoder().encode(command) else {
-            Task { @MainActor in done?(false) }
+            Task { @MainActor in
+                if !quiet { self.error = "Couldn't send that; update both apps." }
+                done?(false)
+            }
             return
         }
         if !quiet {

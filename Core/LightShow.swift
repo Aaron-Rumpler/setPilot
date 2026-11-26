@@ -77,22 +77,17 @@ struct LightShow {
     }
 
     /// More than 3 changes of the light in some second (Flashing), or a cue that starts an
-    /// inline scene that flashes itself (at the cue's speed).
-    var flashes: Bool {
-        // At the fastest speed it's played at: speed goes in a cue of its own (just after the
-        // scene's, docs/LIGHT-SHOW.md), so any up to the next cue that changes the light's colour;
-        // and the bulb may keep one set earlier in the show.
-        let looks: Set<String> = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
-        var earlier = 100
-        for (i, cue) in cues.enumerated() {
-            defer { if let v = (cue.pilot["speed"] as? NSNumber)?.intValue { earlier = max(earlier, v) } }
-            guard let elm = cue.pilot["elm"] as? [String: Any] else { continue }
-            var speed = max(earlier, (cue.pilot["speed"] as? NSNumber)?.intValue ?? 100)
-            for later in cues.dropFirst(i + 1) {
-                if later.pilot.keys.contains(where: looks.contains) { break }
-                if let v = (later.pilot["speed"] as? NSNumber)?.intValue { speed = max(speed, v) }
-            }
-            if Flashing.flashes(elm: elm, speed: speed) { return true }
+    /// inline scene that flashes itself, at the fastest speed it may play at.
+    var flashes: Bool { flashes(bulbSpeed: 100) }
+
+    /// The same, with the bulb on `bulbSpeed` before the show: the bulb keeps a speed it's given,
+    /// so an inline scene may play at any speed the show sets (seeking back, or played again
+    /// without putting the light back), or at the one it started on.
+    func flashes(bulbSpeed: Int) -> Bool {
+        let speeds = cues.compactMap { ($0.pilot["speed"] as? NSNumber)?.intValue }
+        let fastest = max(100, bulbSpeed, speeds.max() ?? 100)
+        if cues.contains(where: { ($0.pilot["elm"] as? [String: Any]).map { Flashing.flashes(elm: $0, speed: fastest) } ?? false }) {
+            return true
         }
         var start = 0
         for end in cues.indices {
@@ -162,6 +157,8 @@ final class LightShowPlayer {
     private(set) var show: LightShow?
     private(set) var showName: String?
     var error: String?
+    /// Counts shows opened: a question about one isn't the answer for another opened meanwhile.
+    @ObservationIgnored private(set) var opened = 0
     /// Why the light wasn't wholly put back after the last show, until the next one starts.
     private(set) var restoreNote: String?
 
@@ -307,6 +304,7 @@ final class LightShowPlayer {
     }
 
     func openShow(_ url: URL) {
+        opened += 1
         restoreNote = nil // about the last show
         #if os(iOS)
         LightShowLiveActivity.shared.end() // it names the show: the next play starts one for this
@@ -350,7 +348,7 @@ final class LightShowPlayer {
     /// flashing show not yet confirmed waits for Play in the window.
     func togglePlayFromOutside() {
         if isPlaying { pause(); return }
-        if show?.flashes == true, Flashing.asks, !confirmed {
+        if show?.flashes(bulbSpeed: Int(model.speed)) == true, Flashing.asks, !confirmed {
             restoreNote = Self.flashingNote
             return
         }
@@ -510,7 +508,7 @@ final class LightShowPlayer {
             // Started some other way than Play (a media key, Control Center): still a run.
             // A flashing show started without Play (a media key, Control Center), which asks first:
             // paused until Play.
-            if playing, !confirmed, show?.flashes == true, Flashing.asks {
+            if playing, !confirmed, show?.flashes(bulbSpeed: Int(model.speed)) == true, Flashing.asks {
                 player.pause()
                 restoreNote = Self.flashingNote
                 return

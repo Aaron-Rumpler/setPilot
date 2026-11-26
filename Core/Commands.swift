@@ -121,8 +121,8 @@ enum Scripting {
             break
         }
         // A speed while it's off is only kept for later: nothing goes, so no time is needed.
-        let sends: Bool = { if case .speed = command, model.isOn == false { return false }; return true }()
-        try await ready(model, sends: sends)
+        // (Decided once the wait has read the light.)
+        try await ready(model) { if case .speed = command, model.isOn == false { return false }; return true }
         model.mismatch = nil // an earlier change's: this one's own read-back says
         // Its tries end with its time, counted from when it was asked (taken by its change).
         model.changeDeadline = deadline
@@ -269,8 +269,9 @@ enum Scripting {
     }
 
     /// The bulb chosen and controllable, or why not.
-    /// `sends`: false for a command that sends nothing (it needs no time left for an answer).
-    private static func ready(_ model: Model, sends: Bool = true) async throws {
+    /// `sends`: false for a command that sends nothing (it needs no time left for an answer),
+    /// asked once the light's been read.
+    private static func ready(_ model: Model, sends: () -> Bool = { true }) async throws {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
             throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
         }
@@ -280,7 +281,7 @@ enum Scripting {
             throw notReady(model, left: left, waitStarted: started)
         }
         // Ready, but with too little of its time left for a try and its answer: not sent.
-        if sends, let deadline, deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0] {
+        if let deadline, deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0], sends() {
             throw ScriptError(code: .notAnswering, message: Model.tooLate)
         }
     }
