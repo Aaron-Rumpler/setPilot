@@ -212,6 +212,7 @@ final class CloudLibrary {
         #endif
     }
 
+    #if WIZ_ICLOUD
     /// Everything here taken as already in iCloud, so nothing goes up unless it's changed here.
     private func markAllKnown() {
         for kind in Kind.allCases {
@@ -223,6 +224,7 @@ final class CloudLibrary {
         saved.seeded = true
         persist()
     }
+    #endif
 
     /// Fetches and sends now (Settings' Sync Now).
     func syncNow() async {
