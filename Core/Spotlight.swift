@@ -35,7 +35,7 @@ struct OpenCustomSceneIntent: OpenIntent {
                     model.status = "“\(scene.name)” was changed or deleted while being asked about; start it again."
                     return
                 }
-                Task { if let error = await Scripting.run(.customScene(id, power: true), on: model).error { model.status = error.message } }
+                Task { if let error = await Scripting.run(.customScene(id, power: true), confirmed: true, on: model).error { model.status = error.message } }
             }
             return .result()
         }

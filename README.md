@@ -386,8 +386,9 @@ collected or tracked) and a String Catalog, ready for translation.
   they'd play) carry a warning for people sensitive to flashing light, and playing one in the app
   (Play, a preset of one, the Scene picker, Compose, the Light and Dock menus, quick actions,
   Spotlight, the light show's Play) asks first; "Don't Ask Again" turns the question off, and
-  Settings has a switch for each. Widgets, Control Center and the watch, which can't ask, leave
-  them to the app; Shortcuts, `setpilot://` links and the command line play them without asking.
+  Settings has a switch for each. Widgets, Control Center, the watch, Shortcuts, `setpilot://`
+  links, the command line and AppleScript can't ask, so they leave them to the app while the
+  question is on (refused, saying why).
 - Live updates need port 38900 free (e.g. not used by Home Assistant on the same Mac). A bulb chosen
   by DNS name is resolved to its IPv4 address for them.
 - R, G, B, C and W don't correspond directly to LED drive: the firmware remaps them (with a white

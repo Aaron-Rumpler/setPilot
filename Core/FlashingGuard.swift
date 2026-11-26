@@ -151,7 +151,7 @@ extension Model {
                     status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
                     return
                 }
-                Task { if let error = await Scripting.run(.preset(preset.id.uuidString), on: self).error { status = error.message } }
+                Task { if let error = await Scripting.run(.preset(preset.id.uuidString), confirmed: true, on: self).error { status = error.message } }
             }
         } else {
             _ = apply(preset)

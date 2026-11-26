@@ -16,7 +16,13 @@ enum Scripting {
     /// before it is still waiting for the bulb).
     /// `asked`: when it was asked for, if before now (a watch tap that's waited its turn on the
     /// iPhone): the wait is counted from then.
-    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, on model: Model) async -> ScriptResult {
+    /// `confirmed`: a flashing scene that's been asked about (in the app); otherwise one is refused
+    /// while "Ask before playing" is on (Shortcuts, links, the CLI and AppleScript can't ask).
+    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, confirmed: Bool = false, on model: Model) async -> ScriptResult {
+        if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
+            return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
+                message: "“\(name)” flashes quickly, so it's only started in setPilot, which asks first (or turn off Ask Before Playing in Settings)."))
+        }
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
             let queued = Date.now
@@ -319,9 +325,8 @@ enum Scripting {
         }
     }
 
-    /// The flashing custom scene a command would play (at its speed), by name: for the places a
-    /// person starts one (a widget, the watch), which refuse it, as they can't ask first.
-    /// Shortcuts, links and the command line don't ask.
+    /// The flashing custom scene a command would play (at its speed), by name: refused where it
+    /// can't be asked about first (widgets, the watch, Shortcuts, links, the CLI, AppleScript).
     static func flashingScene(_ command: ScriptCommand, _ model: Model) -> String? {
         let lib = model.library
         func scene(_ q: String) -> CustomScene? { find(q, in: lib.customScenes, name: { $0.name }, id: { $0.id.uuidString }) }
