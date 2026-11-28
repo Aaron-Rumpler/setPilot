@@ -32,7 +32,7 @@ struct OpenCustomSceneIntent: OpenIntent {
             FlashingRequests.shared.ask(scene.name) {
                 // As asked about: not if it's been edited or deleted meanwhile.
                 guard model.library.customScene(target.id) == scene else {
-                    model.status = "“\(scene.name)” was changed or deleted while being asked about; start it again."
+                    model.status = "“\(scene.name)” was changed or deleted while being asked about; start it again"
                     return
                 }
                 Task { if let error = await Scripting.run(.customScene(id, power: true), confirmed: true, on: model).error { model.status = error.message } }

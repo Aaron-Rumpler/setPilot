@@ -150,6 +150,12 @@ extension Model {
             d.scene = .builtin(1)
             if d.kind == .scenes { d.includeColour = false }
         }
+        // A scale this device hasn't (or can't use): Send would play the bulb's own temperature
+        // instead, so Colour goes off, as for a missing scene.
+        if d.scaleID != nil, draftScale == nil, d.kind == .temperature {
+            if d.includeColour { status = "The draft's CCT scale isn't on this device yet, so Change Colour was turned off." }
+            d.includeColour = false
+        }
         d.scaleID = draftScale?.id
         clampDraftKelvin()
         (d.r, d.g, d.b, d.c, d.w) = (min(max(d.r, 0), 255), min(max(d.g, 0), 255), min(max(d.b, 0), 255),

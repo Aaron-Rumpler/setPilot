@@ -78,19 +78,37 @@ struct LightShow {
 
     /// More than 3 changes of the light in some second (Flashing), or a cue that starts an
     /// inline scene that flashes itself, at the fastest speed it may play at, or one that can't
-    /// be judged (one of the bulb's stored scenes, or an elm that can't be read).
+    /// be judged (`cantBeJudged`).
     var flashes: Bool { flashes(bulbSpeed: 100) }
 
     /// The same, with the bulb on `bulbSpeed` before the show: the bulb keeps a speed it's given,
     /// so an inline scene may play at any speed the show sets (seeking back, or played again
     /// without putting the light back), or at the one it started on.
-    func flashes(bulbSpeed: Int) -> Bool {
+    func flashes(bulbSpeed: Int) -> Bool { cantBeJudged || flashesAsJudged(bulbSpeed: bulbSpeed) }
+
+    /// A cue starts something whose flashing can't be judged: one of the bulb's stored scenes,
+    /// another ID that isn't built in sent without an elm object (whatever the bulb keeps under
+    /// it), or an elm that isn't an object or whose steps can't be read.
+    var cantBeJudged: Bool {
+        cues.contains { cue in
+            if let id = (cue.pilot["sceneId"] as? NSNumber)?.intValue {
+                if Scenes.isStoredSlot(id) { return true }
+                if !Scenes.isBuiltIn(id), !(cue.pilot["elm"] is [String: Any]) { return true }
+            }
+            guard let elm = cue.pilot["elm"] else { return false }
+            return (elm as? [String: Any])?["steps"] as? [[NSNumber]] == nil
+        }
+    }
+
+    /// Whether it flashes by what can be judged (the cues' timing, and inline scenes that can be read).
+    func flashesAsJudged(bulbSpeed: Int) -> Bool {
         let speeds = cues.compactMap { ($0.pilot["speed"] as? NSNumber)?.intValue }
         let fastest = max(100, bulbSpeed, speeds.max() ?? 100)
         if cues.contains(where: { cue in
-            if let id = (cue.pilot["sceneId"] as? NSNumber)?.intValue, Scenes.isStoredSlot(id) { return true }
-            guard let elm = cue.pilot["elm"] else { return false }
-            return (elm as? [String: Any]).map { Flashing.flashes(elm: $0, speed: fastest) } ?? true
+            // (A stored scene plays instead of any elm with it.)
+            if let id = (cue.pilot["sceneId"] as? NSNumber)?.intValue, Scenes.isStoredSlot(id) { return false }
+            guard let elm = cue.pilot["elm"] as? [String: Any], elm["steps"] is [[NSNumber]] else { return false }
+            return Flashing.flashes(elm: elm, speed: fastest)
         }) {
             return true
         }
@@ -250,8 +268,12 @@ final class LightShowPlayer {
     @ObservationIgnored private var sentDelay: Double?
     @ObservationIgnored private var settingsObserver: NSObjectProtocol?
 
-    /// The one on screen, for Handoff (there's one at a time).
-    static weak var current: LightShowPlayer?
+    /// The one on screen, for Handoff (there's one at a time). Held by HandoffRouter, where
+    /// SwiftUI sees it change.
+    static var current: LightShowPlayer? {
+        get { HandoffRouter.shared.lightShowPlayer }
+        set { HandoffRouter.shared.lightShowPlayer = newValue }
+    }
 
     init(model: Model) {
         self.model = model
@@ -337,7 +359,7 @@ final class LightShowPlayer {
             // A flashing one opened while playing: paused, for Play to ask first.
             if s.flashes(bulbSpeed: model.flashingSpeed), Flashing.asks, player.rate != 0 {
                 player.pause()
-                restoreNote = Self.flashingNote
+                restoreNote = flashingNote
             }
             showName = url.lastPathComponent
             showURL = url
@@ -358,17 +380,29 @@ final class LightShowPlayer {
 
     func togglePlay() { isPlaying ? pause() : play() }
 
-    static let flashingNote = "This show flashes quickly: press Play to start it, so you're asked first."
+    static let flashingNotes = [
+        "This show flashes quickly: press Play to start it, so you're asked first.",
+        "setPilot can't tell how fast this show changes the light: press Play to start it, so you're asked first.",
+    ]
+    /// The note asking for Play, for the open show.
+    var flashingNote: String { Self.flashingNotes[showFlashesUnknown ? 1 : 0] }
 
     /// Whether the open show flashes, at the speed the bulb may play its scenes at.
     var showFlashes: Bool { show?.flashes(bulbSpeed: model.flashingSpeed) == true }
+
+    /// Whether it may, by what can't be judged only (a stored scene it cues, say): asked about
+    /// and warned of as "may flash".
+    var showFlashesUnknown: Bool {
+        guard let show else { return false }
+        return show.cantBeJudged && !show.flashesAsJudged(bulbSpeed: model.flashingSpeed)
+    }
 
     /// Play or pause from outside the window (the Live Activity), where there's no asking: a
     /// flashing show not yet confirmed waits for Play in the window.
     func togglePlayFromOutside() {
         if isPlaying { pause(); return }
         if showFlashes, Flashing.asks, !confirmed {
-            restoreNote = Self.flashingNote
+            restoreNote = flashingNote
             return
         }
         play()
@@ -385,7 +419,7 @@ final class LightShowPlayer {
             pendingSpeed = nil
         }
         runOver = false
-        if saved == nil || restoreNote == Self.flashingNote { restoreNote = nil } // a new run's, or the note asking for Play
+        if saved == nil || Self.flashingNotes.contains(restoreNote ?? "") { restoreNote = nil } // a new run's, or the note asking for Play
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
         player.play()
     }
@@ -529,7 +563,7 @@ final class LightShowPlayer {
             // paused until Play.
             if playing, !confirmed, showFlashes, Flashing.asks {
                 player.pause()
-                restoreNote = Self.flashingNote
+                restoreNote = flashingNote
                 return
             }
             if playing, runOver {
@@ -799,6 +833,12 @@ extension Model {
            let scene = saved.customScene.flatMap(library.customScene), flashes(scene, speed: max(Int(v.speed), flashingSpeed)) {
             apply(v, fields: [.dimming])
             return "“\(scene.name)” flashes quickly, so it wasn't started again: only the brightness and power were put back"
+        }
+        // One of the bulb's stored scenes can't be judged, so it's asked about wherever it's
+        // started: not started again unasked either.
+        if v.mode == .scene, Scenes.isStoredSlot(v.sceneId), Flashing.asks {
+            apply(v, fields: [.dimming])
+            return "“\(Scenes.name(v.sceneId))” may flash quickly, so it wasn't started again: only the brightness and power were put back"
         }
         // Only now (it's being put back): not a deleted scene's ID above.
         if v.mode == .scene, v.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }

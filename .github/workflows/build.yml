@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       variants:
-        description: Also compile with Account.xcconfig's other settings (iCloud on, App Groups off, both on)
+        description: Also compile with every other combination of App Groups and iCloud (on or off) from Account.xcconfig
         type: boolean
         default: false
 

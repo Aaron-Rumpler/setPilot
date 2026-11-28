@@ -84,7 +84,7 @@ func badArguments(_ message: String) -> Never {
     fail(ScriptError(code: .badArguments, message: message))
 }
 func int(_ s: String?, _ what: String) -> Int {
-    guard let s, let n = Int(s) else { badArguments("\(what) must be a whole number.") }
+    guard let s, let n = Int(s) else { badArguments("\(what) has to be a whole number.") }
     return n
 }
 
@@ -124,11 +124,11 @@ case "colour", "color", "rgb", "rgbcw":
     let v = rest.map { int($0, "Each channel") } + Array(repeating: 0, count: 5 - rest.count)
     command = .colour(r: v[0], g: v[1], b: v[2], c: v[3], w: v[4], power: switchOn)
 case "temp", "temperature", "kelvin":
-    command = .temperature(int(rest.first, "The kelvin"), scale: scaleOption, power: switchOn)
+    command = .temperature(int(rest.first, "kelvin"), scale: scaleOption, power: switchOn)
 case "scene":
     guard !rest.isEmpty else { badArguments("scene takes a scene's name or number.") }
     command = .scene(rest.joined(separator: " "), speed: speedOption.map { int($0, "The speed") }, power: switchOn)
-case "custom", "custom-scene":
+case "custom", "custom-scene", "customscene":
     guard !rest.isEmpty else { badArguments("custom takes one of your custom scenes' names.") }
     command = .customScene(rest.joined(separator: " "), power: switchOn)
 case "speed": command = .speed(int(rest.first, "The speed"))
@@ -147,7 +147,7 @@ case "set":
     guard !(onFlag && offFlag) else { badArguments("--on or --off, not both.") }
     // An empty part is an error (as in links), not skipped.
     let rgb = rgbOption.map { $0.split(separator: ",", omittingEmptySubsequences: false).map { int(String($0).trimmingCharacters(in: .whitespaces), "Each channel") } }
-    command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "The kelvin") }, scale: scaleOption,
+    command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "kelvin") }, scale: scaleOption,
                                 scene: sceneOption, customScene: customOption,
                                 speed: speedOption.map { int($0, "The speed") },
                                 brightness: brightnessOption.map { int($0, "The brightness") },
@@ -170,7 +170,7 @@ if let most = maxWords[verb], rest.count > most {
 }
 
 // An option the command doesn't use is a mistake, not something to drop without a word.
-let colourVerbs: Set = ["colour", "color", "rgb", "rgbcw", "temp", "temperature", "kelvin", "scene", "custom", "custom-scene", "set"]
+let colourVerbs: Set = ["colour", "color", "rgb", "rgbcw", "temp", "temperature", "kelvin", "scene", "custom", "custom-scene", "customscene", "set"]
 let optionUse: [(String, Bool, Set<String>)] = [
     ("--on", onFlag, colourVerbs),
     ("--scale", scaleOption != nil, ["temp", "temperature", "kelvin", "set"]),

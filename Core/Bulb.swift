@@ -97,7 +97,8 @@ final class Bulb {
     }
 
     /// `retry` sends up to 5 times (tryWaits: 0.4 s apart, doubling, capped at 1.5 s; given up on
-    /// at about 5.7 s, replyWindow) until a reply with the same method arrives. Use it for one-off commands, not slider drags.
+    /// at about 5.7 s, replyWindow) until a reply with the same method arrives. Use it for one-off
+    /// commands, not slider drags.
     /// `params` nil leaves the key out of the request altogether.
     /// `tag`: the change it's for, given back with an error about it.
     /// `until`: no try goes after it.

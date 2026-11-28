@@ -193,8 +193,7 @@ extension ScriptCommand {
     /// reading: it's the way out of one that isn't answering.)
     var changes: Bool {
         switch self {
-        // Switching bulbs is the way out of one that isn't answering, and lands on another.
-        // (Used by the watch relay and the command-line tool too.)
+        // (Used by the runner, links, the watch relay and the command-line tool.)
         case .get, .list, .switchBulb: false
         default: true
         }

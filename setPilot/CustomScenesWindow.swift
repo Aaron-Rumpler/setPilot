@@ -29,6 +29,7 @@ struct CustomScenesWindow: View {
                             }
                             .disabled(!model.canControl)
                             Button("Duplicate") { selection = lib.duplicate(scene).id }
+                                .disabled(!lib.canEdit(Library.customScenesKey))
                             ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
                             if let link = SharedItem.scene(scene).link { Button("Copy Link") { Pasteboard.copy(link.absoluteString) } }
                             Divider()
@@ -42,9 +43,10 @@ struct CustomScenesWindow: View {
                     ContentUnavailableView {
                         Label("No Custom Scenes", systemImage: "sparkles")
                     } description: {
-                        Text("Scenes of up to 12 steps, each with its own colour, level, hold and fade.")
+                        Text(lib.newerNote(Library.customScenesKey) ?? "Scenes of up to 12 steps, each with its own colour, level, hold and fade.")
                     } actions: {
                         Button("New Scene") { selection = lib.addCustomScene().id }
+                            .disabled(!lib.canEdit(Library.customScenesKey))
                     }
                 }
             }
@@ -52,6 +54,7 @@ struct CustomScenesWindow: View {
             .toolbar {
                 ToolbarItem {
                     Button { selection = lib.addCustomScene().id } label: { Label("New Scene", systemImage: "plus") }
+                        .disabled(!lib.canEdit(Library.customScenesKey))
                         .help("New custom scene")
                 }
             }

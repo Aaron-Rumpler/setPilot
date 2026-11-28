@@ -111,9 +111,11 @@ struct ControlsView: View {
                     link.send(.playCustom(id, switchOn: false))
                 }
             })) {
-                ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
+                // Not the bulb's stored scenes: they can't be judged for flashing, so not offered here.
+                ForEach(Scenes.all.filter { !Scenes.isStoredSlot($0.id) }) { Text($0.name).tag(WatchScene.builtin($0.id)) }
                 ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
-                if !Scenes.isKnown(v.sceneId) && currentScene(s, v) == .builtin(v.sceneId) {
+                // The light's own scene when it isn't listed above, so the picker still shows it.
+                if (!Scenes.isKnown(v.sceneId) || Scenes.isStoredSlot(v.sceneId)) && currentScene(s, v) == .builtin(v.sceneId) {
                     Text(Scenes.name(v.sceneId)).tag(WatchScene.builtin(v.sceneId))
                 }
             }
@@ -217,7 +219,7 @@ struct WatchComposeView: View {
                                  tint: ColourTemperature.color(kelvin: kelvin))
                     case .scenes:
                         Picker("Scene", selection: $scene) {
-                            ForEach(Scenes.all) { Text($0.name).tag(WatchScene.builtin($0.id)) }
+                            ForEach(Scenes.all.filter { !Scenes.isStoredSlot($0.id) }) { Text($0.name).tag(WatchScene.builtin($0.id)) }
                             ForEach(link.scenes) { Text($0.name).tag(WatchScene.custom($0.id)) }
                         }
                         Toggle("Change Speed", isOn: $includeSpeed)
@@ -320,12 +322,12 @@ struct WatchComposeView: View {
         power = .leave
         if let id = s.customScene, link.scenes.contains(where: { $0.id == id }) {
             scene = .custom(id)
-        } else if Scenes.isKnown(s.sceneId) {
+        } else if Scenes.isKnown(s.sceneId), !Scenes.isStoredSlot(s.sceneId) {
             scene = .builtin(s.sceneId)
         }
-        // A scene that can't be sent (Rhythm, a deleted custom scene): Colour starts off, so a
-        // brightness change leaves it playing (as on the iPhone).
-        let sendable = s.mode != .scene || Scenes.isKnown(s.sceneId)
+        // A scene that can't be sent (Rhythm, a deleted custom scene, a stored one, which isn't
+        // offered): Colour starts off, so a brightness change leaves it playing (as on the iPhone).
+        let sendable = s.mode != .scene || (Scenes.isKnown(s.sceneId) && !Scenes.isStoredSlot(s.sceneId))
             || (s.customScene.map { id in link.scenes.contains { $0.id == id } } ?? false)
         includeColour = sendable
         kind = s.mode.choice

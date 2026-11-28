@@ -5,7 +5,8 @@ extension Model {
     /// plain warm-to-cool scale). Not made the one in use (see below).
     @discardableResult
     func newScale() -> CCTScale? {
-        guard let mac = chosenMAC else { return nil }
+        // Not while the stored scales are a newer build's (Library.newerNote): it would be lost.
+        guard let mac = chosenMAC, library.canEdit(Library.cctScalesKey) else { return nil }
         var scale = defaultScale ?? CCTScale(name: "Scale", points: [
             .init(kelvin: 2700, w: 255), .init(kelvin: 6500, c: 255),
         ])
@@ -18,7 +19,7 @@ extension Model {
     }
 
     func duplicateScale(_ scale: CCTScale) -> CCTScale? {
-        guard let mac = chosenMAC else { return nil }
+        guard let mac = chosenMAC, library.canEdit(Library.cctScalesKey) else { return nil }
         var copy = scale
         copy.id = UUID()
         copy.name = uniqueScaleName(scale.name + " copy", for: mac)
@@ -120,9 +121,15 @@ struct CCTScaleEditor: View {
     var body: some View {
         if let mac = model.chosenMAC, let binding = binding(mac) {
             let scale = binding.wrappedValue
+            // Not edited while the stored scales are a newer build's: changes would be lost.
+            let locked = !model.library.canEdit(Library.cctScalesKey)
             Form {
+                if let note = model.library.newerNote(Library.cctScalesKey) {
+                    Section { Label(note, systemImage: "info.circle").foregroundStyle(.secondary) }
+                }
                 Section {
                     NameField(name: binding.name, untitled: "Untitled Scale")
+                        .disabled(locked)
                     ScaleStrip(scale: scale)
                         .frame(height: 14)
                         .clipShape(Capsule())
@@ -138,7 +145,7 @@ struct CCTScaleEditor: View {
                     } label: {
                         Text(verbatim: "Extend Below \(scale.sorted.first?.kelvin ?? 0) K") // verbatim: no "1,541"
                     }
-                    .disabled(scale.points.count >= 32 || scale.extendedDownwards() == nil)
+                    .disabled(scale.points.count >= 32 || scale.extendedDownwards() == nil || locked)
                 } footer: {
                     Text("Between points, each channel changes in a straight line with kelvin, as in the bulb's own table, so a scale made from the bulb's default gives exactly what its temperature setting gives. Extending continues the line between the two lowest points until red is full, as WiZ's table would (on the ESP25_SHRGB_01's default, at about 1540 K). Changes apply the next time the kelvin is set.")
                 }
@@ -153,6 +160,7 @@ struct CCTScaleEditor: View {
                                 pointMenu(binding, point)
                             }
                         }
+                        .disabled(locked)
                     }
                 }
                 Section {
@@ -165,7 +173,7 @@ struct CCTScaleEditor: View {
                     } label: {
                         Label("Add Point", systemImage: "plus")
                     }
-                    .disabled(scale.points.count >= 32 || (scale.sorted.last?.kelvin ?? 0) >= 20000)
+                    .disabled(scale.points.count >= 32 || (scale.sorted.last?.kelvin ?? 0) >= 20000 || locked)
                 }
             }
             .formStyle(.grouped)
@@ -182,7 +190,10 @@ struct CCTScaleEditor: View {
             get: { lib.scales(for: mac).first { $0.id == scaleID } ?? scale },
             // Not once it's gone (a field committing as the editor closes after a delete would put
             // it back: updateScale adds a scale it doesn't find).
-            set: { new in if lib.scales(for: mac).contains(where: { $0.id == scaleID }) { lib.updateScale(new, for: mac) } }
+            set: { new in
+                guard lib.canEdit(Library.cctScalesKey) else { return } // (the views are disabled too)
+                if lib.scales(for: mac).contains(where: { $0.id == scaleID }) { lib.updateScale(new, for: mac) }
+            }
         )
     }
 

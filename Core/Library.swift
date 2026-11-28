@@ -60,24 +60,40 @@ final class Library {
 
     /// Fields of decoded elements this build doesn't know (a newer build's), by ID: put back
     /// when they're saved or sent to iCloud, so they aren't lost here or on other devices.
-    @ObservationIgnored private var extras: [String: [String: Any]] = [:]
+    @ObservationIgnored private var extras: [String: [String: Extra]] = [:]
+
+    /// A field a newer build added, at any depth: a step's or a point's as well as an item's.
+    private enum Extra {
+        /// A field this build doesn't have: put back as it was.
+        case value(Any)
+        /// One it has, which is an object: its own fields' extras.
+        case fields([String: Extra])
+        /// One it has, which is a list: its elements' extras, by their ID (by place, "#0", for
+        /// elements without one).
+        case elements([String: [String: Extra]])
+    }
 
     /// Storage keys whose data is JSON but not a list (a newer build's format, say), with the IDs
     /// found in it: left as stored, with nothing saved over it (or sent to iCloud) until a build
-    /// that can read it.
-    @ObservationIgnored private var unparsed: [String: Set<String>] = [:]
+    /// that can read it. Observed: the list's views say so, and don't add or edit meanwhile.
+    private var unparsed: [String: Set<String>] = [:]
 
     /// Bulbs whose CCT scales are stored as something other than a list: kept as they were, by
-    /// MAC (written back over any made here meanwhile, which would mean losing the newer build's).
+    /// MAC. Scales made or taken for them meanwhile are kept aside (`heldKey`), not over them.
     @ObservationIgnored private var rawScales: [String: Any] = [:]
 
     /// What loading found, besides the lists.
     private struct Loaded {
         var unread: [String: [Unread]] = [:]
-        var extras: [String: [String: Any]] = [:]
+        var extras: [String: [String: Extra]] = [:]
         var unparsed: [String: Set<String>] = [:]
         var rawScales: [String: Any] = [:]
     }
+
+    /// Where a list's items are kept aside while its stored data can't take them: all of them
+    /// while it can't be read (`unparsed`), or for CCT scales those of bulbs kept raw. Shown
+    /// meanwhile, and put back in the list once it can be read.
+    private static func heldKey(_ key: String) -> String { key + "Held" }
 
     /// The IDs of a list's elements this build couldn't decode (or found in data it can't read).
     func unreadableIDs(_ key: String) -> Set<String> {
@@ -90,6 +106,25 @@ final class Library {
     /// Whether a list's stored data can't be read at all (CloudLibrary deletes none of its items).
     func isUnparsed(_ key: String) -> Bool { unparsed[key] != nil }
 
+    /// Bulbs (lower-case MACs) whose stored CCT scales aren't a list: CloudLibrary deletes none
+    /// of their scales, as what's here for them may not be all there is.
+    var rawScaleMACs: Set<String> { Set(rawScales.keys.map { $0.lowercased() }) }
+
+    /// Whether a list can be added to and edited here: not while its stored data is a newer
+    /// build's that this one can't read (nothing made meanwhile would reach that data, or iCloud).
+    func canEdit(_ key: String) -> Bool { unparsed[key] == nil }
+
+    /// For a list this build can't read: why it looks empty, to show in its place.
+    func newerNote(_ key: String) -> String? {
+        guard unparsed[key] != nil else { return nil }
+        let what = switch key {
+        case Self.presetsKey: "presets"
+        case Self.customScenesKey: "custom scenes"
+        default: "CCT scales"
+        }
+        return "Your \(what) were saved by a newer version of setPilot. Update setPilot on this device to see and edit them."
+    }
+
     /// Stops keeping undecodable elements with these IDs (deleted in iCloud), or all of them;
     /// they go from what's stored at the list's next save.
     func forgetUnreadable(_ ids: Set<String>? = nil) {
@@ -97,10 +132,16 @@ final class Library {
             unreadable = [:]
             unparsed = [:]
             rawScales = [:]
+            extras = [:]
             return
         }
         for key in unreadable.keys { unreadable[key]?.removeAll { $0.id.map(ids.contains) == true } }
+        for id in ids { extras[id] = nil }
     }
+
+    /// Stops keeping a newer build's fields for an item replaced by another copy (an import's),
+    /// which would otherwise pick them up.
+    func dropExtras(_ id: UUID) { extras[id.uuidString] = nil }
 
     /// Builds before item-by-item sync kept each list whole in iCloud key-value storage: take
     /// anything there that isn't here yet, once, so it goes up with the first sync.
@@ -214,14 +255,26 @@ final class Library {
     }
 
     private func save<T: Encodable>(_ value: T, _ key: String) {
-        // Stored data this build can't read at all stays as it is: nothing's written over it, or
-        // sent to iCloud from it.
-        guard unparsed[key] == nil else { return }
         // Sorted, so the same content always encodes the same.
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(value) else { return }
-        UserDefaults.standard.set(withUnreadable(data, key), forKey: key)
+        let defaults = UserDefaults.standard
+        var held: [String: Any] = [:]
+        let out = withUnreadable(data, key, held: &held)
+        // Stored data this build can't read at all stays as it is: nothing's written over it, or
+        // sent to iCloud from it. What's taken meanwhile (from iCloud, say) is kept aside.
+        guard unparsed[key] == nil else {
+            defaults.set(out, forKey: Self.heldKey(key))
+            return
+        }
+        defaults.set(out, forKey: key)
+        if key == Self.cctScalesKey, !held.isEmpty, JSONSerialization.isValidJSONObject(held),
+           let d = try? JSONSerialization.data(withJSONObject: held, options: .sortedKeys) {
+            defaults.set(d, forKey: Self.heldKey(key))
+        } else if Self.listKeys.contains(key) {
+            defaults.removeObject(forKey: Self.heldKey(key)) // in the list now, or deleted
+        }
         guard !fromCloud else { return }
         switch key {
         case Self.presetsKey: CloudLibrary.shared.localChanged(.preset)
@@ -236,47 +289,76 @@ final class Library {
         return try? JSONDecoder().decode(T.self, from: data)
     }
 
+    private static let listKeys = [presetsKey, customScenesKey, cctScalesKey]
+
     /// A list, element by element: the ones that won't decode go into `unread`, not the list.
-    private static func loadList<T: Codable>(_ key: String, _ loaded: inout Loaded) -> [T] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        guard let top = try? JSONSerialization.jsonObject(with: data) else {
-            keepUnparsed(data, key)
-            return []
+    /// Any kept aside (`heldKey`) are added.
+    private static func loadList<T: Codable & Identifiable>(_ key: String, _ loaded: inout Loaded) -> [T] where T.ID == UUID {
+        var list: [T] = []
+        if let data = UserDefaults.standard.data(forKey: key) {
+            if let top = try? JSONSerialization.jsonObject(with: data) {
+                if let array = top as? [Any] {
+                    let (l, rest): ([T], [Unread]) = decode(array, mac: nil, &loaded)
+                    list = l
+                    if !rest.isEmpty { loaded.unread[key] = rest }
+                } else {
+                    loaded.unparsed[key] = ids(in: top)
+                }
+            } else {
+                keepUnparsed(data, key)
+            }
         }
-        guard let array = top as? [Any] else {
-            loaded.unparsed[key] = ids(in: top)
-            return []
+        if let array = held(key) as? [Any] {
+            let (more, rest): ([T], [Unread]) = decode(array, mac: nil, &loaded)
+            let have = Set(list.map(\.id))
+            list += more.filter { !have.contains($0.id) }
+            if !rest.isEmpty { loaded.unread[key, default: []] += rest }
         }
-        let (list, rest): ([T], [Unread]) = decode(array, mac: nil, &loaded)
-        if !rest.isEmpty { loaded.unread[key] = rest }
         return list
     }
 
     /// CCT scales by bulb, the same way; a bulb's that aren't a list are kept raw (`rawScales`).
     private static func loadScales(_ loaded: inout Loaded) -> [String: [CCTScale]] {
         let key = cctScalesKey
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
-        guard let top = try? JSONSerialization.jsonObject(with: data) else {
-            keepUnparsed(data, key)
-            return [:]
-        }
-        guard let lists = top as? [String: Any] else {
-            loaded.unparsed[key] = ids(in: top)
-            return [:]
-        }
         var out: [String: [CCTScale]] = [:]
         var rest: [Unread] = []
-        for (mac, value) in lists {
-            guard let array = value as? [Any] else {
-                loaded.rawScales[mac] = value
-                continue
+        if let data = UserDefaults.standard.data(forKey: key) {
+            if let top = try? JSONSerialization.jsonObject(with: data) {
+                if let lists = top as? [String: Any] {
+                    for (mac, value) in lists {
+                        guard let array = value as? [Any] else {
+                            loaded.rawScales[mac] = value
+                            continue
+                        }
+                        let (list, r): ([CCTScale], [Unread]) = decode(array, mac: mac, &loaded)
+                        if !list.isEmpty { out[mac] = list }
+                        rest += r
+                    }
+                } else {
+                    loaded.unparsed[key] = ids(in: top)
+                }
+            } else {
+                keepUnparsed(data, key)
             }
-            let (list, r): ([CCTScale], [Unread]) = decode(array, mac: mac, &loaded)
-            if !list.isEmpty { out[mac] = list }
-            rest += r
+        }
+        // Kept aside: with the bulb's own again if they can be read now, or shown as before.
+        if let lists = held(key) as? [String: Any] {
+            for (mac, value) in lists {
+                guard let array = value as? [Any] else { continue }
+                let (more, r): ([CCTScale], [Unread]) = decode(array, mac: mac, &loaded)
+                let have = Set((out[mac] ?? []).map(\.id))
+                let new = more.filter { !have.contains($0.id) }
+                if !new.isEmpty { out[mac, default: []] += new }
+                rest += r
+            }
         }
         if !rest.isEmpty { loaded.unread[key] = rest }
         return out
+    }
+
+    /// What's kept aside for a list (`heldKey`), as JSON.
+    private static func held(_ key: String) -> Any? {
+        UserDefaults.standard.data(forKey: heldKey(key)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
     }
 
     private static func decode<T: Codable>(_ array: [Any], mac: String?, _ loaded: inout Loaded) -> ([T], [Unread]) {
@@ -308,11 +390,55 @@ final class Library {
     }
 
     /// The fields of `element` that `value`, decoded from it, doesn't encode: a newer build's.
-    private static func unknownFields<T: Encodable>(_ element: Any, of value: T) -> [String: Any]? {
-        guard let dict = element as? [String: Any],
-              let mine = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) as? [String: Any] else { return nil }
-        let unknown = dict.filter { mine[$0.key] == nil }
-        return unknown.isEmpty ? nil : unknown
+    private static func unknownFields<T: Encodable>(_ element: Any, of value: T) -> [String: Extra]? {
+        guard let mine = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) else { return nil }
+        return unknownFields(element, mine: mine)
+    }
+
+    /// The fields of an object that `mine` (the same, as encoded here) hasn't, at any depth.
+    private static func unknownFields(_ element: Any, mine: Any) -> [String: Extra]? {
+        guard let dict = element as? [String: Any], let known = mine as? [String: Any] else { return nil }
+        var out: [String: Extra] = [:]
+        for (k, v) in dict {
+            guard let m = known[k] else {
+                out[k] = .value(v)
+                continue
+            }
+            if let more = unknownFields(v, mine: m) {
+                out[k] = .fields(more)
+            } else if let list = v as? [Any], let mineList = m as? [Any] {
+                // Elements by ID (steps, points), so a step moved or deleted here keeps its own.
+                let byID = Dictionary(mineList.enumerated().map { (elementKey($1, $0), $1) }, uniquingKeysWith: { a, _ in a })
+                var elements: [String: [String: Extra]] = [:]
+                for (i, e) in list.enumerated() {
+                    let key = elementKey(e, i)
+                    if let m = byID[key], let more = unknownFields(e, mine: m) { elements[key] = more }
+                }
+                if !elements.isEmpty { out[k] = .elements(elements) }
+            }
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// A list element's ID, or for one without, its place.
+    private static func elementKey(_ element: Any, _ index: Int) -> String { id(of: element) ?? "#\(index)" }
+
+    /// `element` with these fields put back, where it still has what they were in (none it has now).
+    private static func adding(_ more: [String: Extra], to element: Any) -> Any {
+        guard var dict = element as? [String: Any] else { return element }
+        for (k, extra) in more {
+            switch extra {
+            case .value(let v):
+                if dict[k] == nil { dict[k] = v }
+            case .fields(let fields):
+                if let v = dict[k] { dict[k] = adding(fields, to: v) }
+            case .elements(let byKey):
+                if let list = dict[k] as? [Any] {
+                    dict[k] = list.enumerated().map { i, e in byKey[elementKey(e, i)].map { adding($0, to: e) } ?? e }
+                }
+            }
+        }
+        return dict
     }
 
     private static func id(of element: Any) -> String? {
@@ -345,17 +471,17 @@ final class Library {
 
     /// An element with the fields a newer build added put back (none it has now replaced).
     private func addingExtras(_ element: Any) -> Any {
-        guard var dict = element as? [String: Any], let id = Self.id(of: dict), let more = extras[id] else { return element }
-        for (k, v) in more where dict[k] == nil { dict[k] = v }
-        return dict
+        guard let id = Self.id(of: element), let more = extras[id] else { return element }
+        return Self.adding(more, to: element)
     }
 
     /// `data` (a list, or for CCT scales lists by bulb) with the elements this build couldn't
     /// decode put back where they were. One that decodes now (taken from iCloud since) isn't kept.
-    /// The fields a newer build added to the others go back too, and a bulb's scales kept raw.
-    private func withUnreadable(_ data: Data, _ key: String) -> Data {
+    /// The fields a newer build added to the others go back too, and a bulb's scales kept raw;
+    /// the scales here for that bulb go in `held`, to keep aside.
+    private func withUnreadable(_ data: Data, _ key: String, held: inout [String: Any]) -> Data {
         // The lists only (not which scale is in use).
-        guard [Self.presetsKey, Self.customScenesKey, Self.cctScalesKey].contains(key) else { return data }
+        guard Self.listKeys.contains(key) else { return data }
         var kept = unreadable[key] ?? []
         let raw = key == Self.cctScalesKey ? rawScales : [:]
         guard !kept.isEmpty || !extras.isEmpty || !raw.isEmpty,
@@ -378,7 +504,10 @@ final class Library {
             for mac in Set(lists.keys).union(byMAC.keys) {
                 lists[mac] = merged(lists[mac] as? [Any] ?? [], byMAC[mac] ?? [])
             }
-            for (mac, value) in raw { lists[mac] = value }
+            for (mac, value) in raw {
+                if let mine = lists[mac] as? [Any], !mine.isEmpty { held[mac] = mine }
+                lists[mac] = value
+            }
             out = lists
         } else {
             return data

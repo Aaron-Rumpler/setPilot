@@ -42,7 +42,6 @@ enum URLCommands {
         // it as it is); anything else is an error, not ignored without a word. (Power's own `on`
         // takes "toggle" too.)
         let switchOn: Bool? = flag("on") == true ? true : nil
-        if action != "power", value("on") != nil, flag("on") == nil { return .failure(bad("on is true or false.")) }
 
         let parsed: Result<ScriptCommand, ScriptError> = {
         switch action {
@@ -55,7 +54,7 @@ enum URLCommands {
                 guard let on = flag("on") else { return .failure(bad("on is true, false or toggle.")) }
                 return .success(.power(on))
             }
-        case "brightness", "dimming":
+        case "brightness", "dimming", "dim":
             guard let level = int("level") ?? int("value") else { return .failure(bad("Give level=1–100.")) }
             return .success(.brightness(level))
         case "brighter", "dimmer":
@@ -63,7 +62,7 @@ enum URLCommands {
             let step = int("step") ?? 10
             guard (1...100).contains(step) else { return .failure(bad("The step is 1–100.")) }
             return .success(.adjustBrightness(action == "brighter" ? step : -step))
-        case "colour", "color", "rgbcw":
+        case "colour", "color", "rgb", "rgbcw":
             let r = int("r") ?? 0, g = int("g") ?? 0, b = int("b") ?? 0, c = int("c") ?? 0, w = int("w") ?? 0
             return .success(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn))
         case "temperature", "temp", "kelvin":
@@ -107,6 +106,17 @@ enum URLCommands {
             return .failure(bad("Unknown action “\(action)”."))
         }
         }()
+        // The action first (an unknown one says so), then what doesn't go with it, said rather than
+        // ignored: `on` only where it switches the bulb on, a fade only on changes.
+        guard case .success(let command) = parsed else { return parsed }
+        let switches: Set<String> = ["colour", "color", "rgb", "rgbcw", "temperature", "temp", "kelvin", "scene", "custom-scene", "customscene"]
+        if value("on") != nil, action != "power" {
+            if !switches.contains(action) {
+                return .failure(bad(action == "set" ? "Use power=on with set, not on=." : "on doesn't go with \(action)."))
+            }
+            if flag("on") == nil { return .failure(bad("on is true or false.")) }
+        }
+        if value("fade") != nil, !command.changes { return .failure(bad("A fade doesn't go with \(action).")) }
         if let invalid { return .failure(bad("\(invalid) has to be a whole number.")) }
         return parsed
     }

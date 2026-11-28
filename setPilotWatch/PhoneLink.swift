@@ -204,11 +204,12 @@ final class PhoneLink: NSObject {
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
         // For the complications: reloaded only when something they show changes, or when the
-        // state they have is about to show as only the last known (or already does) and this
-        // one's fresher.
+        // state they have is within 10 minutes of showing as only the last known (or already
+        // does) and this one's fresher. 10, as the iPhone resends when it's heard only that often
+        // once the watch app's closed: a shorter window can miss the one that comes.
         SharedStore.save(s, SharedStore.snapshotKey)
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.bulbName ?? "")"
-        let staling = reloadedHeard.map { Date.now.addingTimeInterval(5 * 60) >= $0.addingTimeInterval(LightSnapshot.trustedFor) } ?? false
+        let staling = reloadedHeard.map { Date.now.addingTimeInterval(10 * 60) >= $0.addingTimeInterval(LightSnapshot.trustedFor) } ?? false
         let fresher = staling && (s.heardAt ?? .distantPast) > (reloadedHeard ?? .distantPast)
         trailingReload?.cancel()
         if key != widgetKey || fresher {

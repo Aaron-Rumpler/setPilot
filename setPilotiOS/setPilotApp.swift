@@ -53,7 +53,9 @@ struct SetPilotMobileApp: App {
         .onChange(of: phase) { _, new in
             if new == .active { model.resume() }
             // The widgets with when the bulb was last heard, once, before the app's suspended.
-            if new == .background { WidgetPublisher.shared.enteringBackground() }
+            // At .inactive, just before .background: still in the foreground, so the reload
+            // doesn't count against their budget.
+            if new == .inactive { WidgetPublisher.shared.enteringBackground() }
         }
     }
 }

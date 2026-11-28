@@ -13,8 +13,11 @@ struct LibraryFile: Codable, Sendable {
     var cctScales: [String: [CCTScale]]
 
     /// The format a file says it's in, read on its own: a newer file may not decode as this one.
-    static func format(of data: Data) -> Int? {
-        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["setPilotLibrary"] as? Int
+    /// Any number (2.5 is newer too), but not true (an NSNumber as well, told apart by CF's type).
+    static func format(of data: Data) -> Double? {
+        guard let n = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["setPilotLibrary"] as? NSNumber,
+              CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+        return n.doubleValue
     }
 
     /// "2 presets and 1 CCT scale": zero counts left out.
@@ -151,12 +154,16 @@ extension Library {
             file.presets[i].favourite = presets.first { $0.id == file.presets[i].id }?.favourite
         }
         var taken = 0 // what was actually added or replaced, per kind as it's merged
-        func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] {
+        func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] where T.ID == UUID {
             var out = mine
             taken = 0
             for item in theirs {
                 if let i = out.firstIndex(where: { $0.id == item.id }) {
-                    if clash == .replace { out[i] = item; taken += 1 }
+                    if clash == .replace {
+                        out[i] = item
+                        dropExtras(item.id) // the copy replaced's newer fields aren't this one's
+                        taken += 1
+                    }
                 } else {
                     out.append(item)
                     taken += 1
@@ -256,6 +263,10 @@ struct LibraryTransferSection: View {
                 result = format != nil
                     ? "That library file couldn't be read: it may be from a newer version of setPilot. Update setPilot here to import it."
                     : "That isn't a setPilot library file."
+                return
+            }
+            guard !file.presets.isEmpty || !file.customScenes.isEmpty || file.cctScales.values.contains(where: { !$0.isEmpty }) else {
+                result = "There's nothing in that file to add."
                 return
             }
             // Items already here: asked about first (IncomingItems).

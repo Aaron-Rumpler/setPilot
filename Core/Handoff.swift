@@ -13,6 +13,17 @@ final class HandoffRouter {
     /// A light show to open where another device was (LastShow.handoffInfo), once its screen shows.
     var lightShowResume: [String: Any]?
 
+    /// The light show player on screen (LightShowPlayer.current), weakly, and observed: a view
+    /// that read it before the player was made is told when it is.
+    var lightShowPlayer: LightShowPlayer? {
+        get {
+            access(keyPath: \.lightShowPlayer)
+            return playerStorage
+        }
+        set { withMutation(keyPath: \.lightShowPlayer) { playerStorage = newValue } }
+    }
+    @ObservationIgnored private weak var playerStorage: LightShowPlayer?
+
     func open(_ route: HandoffRoute, info: [String: Any]? = nil) {
         switch route {
         case .customScene(let id): sceneToSelect = id
@@ -24,8 +35,11 @@ final class HandoffRouter {
             let hasBulb = !(UserDefaults.standard.string(forKey: Model.addressKey) ?? "").isEmpty
             if let draft = info?["draft"] as? [String: Any], hasBulb {
                 let model = Shared.model
-                // Said first: takeDraft's own note (a scene missing here) matters more.
-                if model.composing, model.draft.loaded { model.status = "The draft here was replaced by the one from your other device." }
+                // Said first: takeDraft's own note (a scene missing here) matters more. Not for the
+                // same draft as here.
+                if model.composing, model.draft.loaded, !NSDictionary(dictionary: model.draft.handoffInfo).isEqual(to: draft as [AnyHashable: Any]) {
+                    model.status = "The draft here was replaced by the one from your other device."
+                }
                 model.takeDraft(draft)
                 model.composing = true
             }

@@ -5,7 +5,11 @@ import SwiftUI
 /// question comes up in the window it was asked from; "Don't Ask Again" turns the question off
 /// (Settings turns it back on), leaving the note on the scene or show.
 struct ConfirmFlashing {
-    fileprivate var run: (_ name: String, _ flashes: Bool, _ unknown: Bool, _ action: @escaping () -> Void) -> Void = { _, _, _, action in action() }
+    /// With no guard to ask (a view outside every `flashingGuard`): one that flashes doesn't go
+    /// unasked.
+    fileprivate var run: (_ name: String, _ flashes: Bool, _ unknown: Bool, _ action: @escaping () -> Void) -> Void = { _, flashes, _, action in
+        if !flashes || !Flashing.asks { action() }
+    }
 
     /// `unknown`: it can't be judged (one of the bulb's stored scenes), so it's asked about as one
     /// that may flash.
@@ -130,7 +134,7 @@ private struct FlashingGuard: ViewModifier {
                 Button("Cancel", role: .cancel) {}
             } message: { p in
                 Text(p.unknown
-                     ? "It's stored on the bulb, so setPilot can't tell how fast it changes the light. Take care if you, or anyone who'll see it, is sensitive to flashing light."
+                     ? "setPilot can't tell how fast it changes the light (a scene stored on the bulb, say). Take care if you, or anyone who'll see it, is sensitive to flashing light."
                      : "It changes the light more than 3 times a second. Take care if you, or anyone who'll see it, is sensitive to flashing light.")
             }
     }

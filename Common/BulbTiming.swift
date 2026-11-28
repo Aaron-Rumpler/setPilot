@@ -50,14 +50,16 @@ enum BulbReasons {
     #endif
 
     /// A scene that flashes, where it can't be asked about. `fromWatch`: asked for on the watch
-    /// (judged on the iPhone, which words it for the watch).
-    static func flashes(_ name: String, fromWatch: Bool = false) -> String {
+    /// (judged on the iPhone, which words it for the watch). `unknown`: one that can't be judged
+    /// (stored on the bulb), so it may.
+    static func flashes(_ name: String, fromWatch: Bool = false, unknown: Bool = false) -> String {
         #if os(watchOS)
         let watch = true
         #else
         let watch = fromWatch
         #endif
         let whereAsked = watch ? "in setPilot on your iPhone" : "in setPilot"
-        return "“\(name)” flashes quickly, so it's only started \(whereAsked), which asks first (or turn off \(askSetting) in setPilot's Settings)."
+        let what = unknown ? "may flash quickly (setPilot can't tell how fast it changes the light)" : "flashes quickly"
+        return "“\(name)” \(what), so it's only started \(whereAsked), which asks first (or turn off \(askSetting) in setPilot's Settings)."
     }
 }

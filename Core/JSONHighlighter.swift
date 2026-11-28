@@ -103,4 +103,38 @@ enum JSONText {
     }
 
     struct ParamsError: Error { let message: String }
+
+    /// Whether an object in `text` has the same key twice (as written: escapes aren't decoded).
+    /// JSONSerialization keeps one of them, and another parser (the bulb's) may take the other.
+    static func hasRepeatedKey(_ text: String) -> Bool {
+        let b = Array(text.utf8)
+        let quote = UInt8(ascii: "\""), backslash = UInt8(ascii: "\\"), colon = UInt8(ascii: ":")
+        let space: Set<UInt8> = [0x20, 0x09, 0x0A, 0x0D]
+        // Each open object's keys so far; nil for a list.
+        var objects: [Set<[UInt8]>?] = []
+        var i = 0
+        while i < b.count {
+            switch b[i] {
+            case UInt8(ascii: "{"): objects.append([])
+            case UInt8(ascii: "["): objects.append(nil)
+            case UInt8(ascii: "}"), UInt8(ascii: "]"): if !objects.isEmpty { objects.removeLast() }
+            case quote:
+                var j = i + 1
+                while j < b.count, b[j] != quote { j += b[j] == backslash ? 2 : 1 }
+                let string = Array(b[(i + 1)..<min(j, b.count)])
+                var k = j + 1
+                while k < b.count, space.contains(b[k]) { k += 1 }
+                // A string followed by a colon, in an object: a key.
+                if k < b.count, b[k] == colon, let last = objects.last, var keys = last {
+                    if keys.contains(string) { return true }
+                    keys.insert(string)
+                    objects[objects.count - 1] = keys
+                }
+                i = j
+            default: break
+            }
+            i += 1
+        }
+        return false
+    }
 }

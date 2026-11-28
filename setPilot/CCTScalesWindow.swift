@@ -19,6 +19,7 @@ struct CCTScalesWindow: View {
                             Button("Use for Temperature") { model.assignTemperatureScale(scale.id) }
                                 .disabled(scale.range == nil)
                             Button("Duplicate") { selection = model.duplicateScale(scale)?.id }
+                                .disabled(!model.library.canEdit(Library.cctScalesKey))
                             Divider()
                             Button("Delete…", role: .destructive) { deleting = scale }
                         }
@@ -29,12 +30,12 @@ struct CCTScalesWindow: View {
                     ContentUnavailableView {
                         Label("No Scales", systemImage: "thermometer.medium")
                     } description: {
-                        Text(model.chosenMAC == nil
+                        Text(model.library.newerNote(Library.cctScalesKey) ?? (model.chosenMAC == nil
                              ? "Connect to a bulb first: scales are kept per bulb."
-                             : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K.")
+                             : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K."))
                     } actions: {
                         Button("New Scale") { selection = model.newScale()?.id }
-                            .disabled(model.chosenMAC == nil)
+                            .disabled(model.chosenMAC == nil || !model.library.canEdit(Library.cctScalesKey))
                     }
                 }
             }
@@ -42,7 +43,7 @@ struct CCTScalesWindow: View {
             .toolbar {
                 ToolbarItem {
                     Button { selection = model.newScale()?.id } label: { Label("New Scale", systemImage: "plus") }
-                        .disabled(model.chosenMAC == nil)
+                        .disabled(model.chosenMAC == nil || !model.library.canEdit(Library.cctScalesKey))
                         .help(model.defaultScale == nil ? "New scale" : "New scale from the bulb's own table")
                 }
             }

@@ -47,7 +47,7 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
 private func summary(_ s: LightSnapshot) -> String {
     let name = s.bulbName ?? s.address ?? "Bulb"
     guard s.link == .connected else { return "\(name): not answering" }
-    guard let on = s.isOn else { return "\(name): state not known yet" }
+    guard let on = s.isOn else { return LightSummary.unknown(bulb: name) }
     let colour: String? = switch s.mode {
     case .temp: LightSummary.temperature(Int(s.temp), scale: nil)
     case .custom: LightSummary.temperature(Int(s.customKelvin), scale: s.scales?.first(where: { $0.id == s.activeScale })?.name)

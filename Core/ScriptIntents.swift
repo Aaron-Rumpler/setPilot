@@ -115,6 +115,8 @@ struct LightStateEntity: AppEntity {
     @Property(title: "Scene") var scene: String?
     @Property(title: "Speed") var speed: Int?
     @Property(title: "JSON") var json: String
+    /// Whether its power is known: `on` is false when it isn't, but it isn't said as off.
+    var known = true
 
     var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(summary)") }
 
@@ -125,12 +127,14 @@ struct LightStateEntity: AppEntity {
         case "scene": scene ?? "a scene"
         default: nil
         }
+        guard known else { return LightSummary.unknown(bulb: bulb) }
         return LightSummary.text(bulb: bulb, on: on, colour: colour, brightness: brightness)
     }
 
     init(_ s: LightState) {
         bulb = s.bulb.name ?? s.bulb.address ?? "Bulb"
         on = s.on ?? false
+        known = s.on != nil
         mode = s.mode
         brightness = s.dimming
         kelvin = s.temp
@@ -353,7 +357,7 @@ struct SetLightIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
         // The speed only with a scene (it isn't shown for the other kinds).
         var change = ScriptChange(speed: kind == .scene || kind == .customScene ? speed : nil, brightness: brightness,
                                   power: power == .on ? true : power == .off ? false : nil)
@@ -370,6 +374,8 @@ struct SetLightIntent: AppIntent {
             guard let customScene else { throw WizIntentError(localizedStringResource: "Choose a custom scene.") }
             change.customScene = customScene.id.uuidString
         }
-        return .result(value: LightStateEntity(try await script(.set(change), fade: fade)))
+        // Said, for Siri, as the watch's Set Light says it.
+        let state = LightStateEntity(try await script(.set(change), fade: fade))
+        return .result(value: state, dialog: "\(state.summary)")
     }
 }

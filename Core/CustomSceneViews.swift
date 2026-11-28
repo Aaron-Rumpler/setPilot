@@ -22,9 +22,15 @@ struct CustomSceneEditor: View {
 
     var body: some View {
         if let binding = sceneBinding {
+            // Not edited while the stored scenes are a newer build's: changes would be lost.
+            let locked = !model.library.canEdit(Library.customScenesKey)
             Form {
+                if let note = model.library.newerNote(Library.customScenesKey) {
+                    Section { Label(note, systemImage: "info.circle").foregroundStyle(.secondary) }
+                }
                 Section {
                     NameField(name: binding.name, untitled: "Untitled Scene")
+                        .disabled(locked)
                     HStack {
                         Button {
                             // At speed 100, so the preview shows the steps as timed. Judged at the
@@ -75,6 +81,7 @@ struct CustomSceneEditor: View {
                          ? "Each step holds and fades for as long as it says."
                          : "The bulb uses these times for every step instead of their own.")
                 }
+                .disabled(locked)
                 // Live, while previewing: the two settings that apply to a playing scene.
                 Section {
                     LiveSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
@@ -94,6 +101,7 @@ struct CustomSceneEditor: View {
                 } footer: {
                     Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Brightness above.")
                 }
+                .disabled(locked)
             }
             .formStyle(.grouped)
             .navigationTitle(binding.wrappedValue.name)
@@ -101,6 +109,7 @@ struct CustomSceneEditor: View {
             .inspector(isPresented: $showsStep) {
                 Form { stepSection(binding) }
                     .formStyle(.grouped)
+                    .disabled(locked)
                     .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
             }
             .toolbar {
@@ -254,6 +263,7 @@ struct CustomSceneEditor: View {
         return Binding(
             get: { lib.customScene(sceneID) ?? scene },
             set: { new in
+                guard lib.canEdit(Library.customScenesKey) else { return } // (the views are disabled too)
                 if let i = lib.customScenes.firstIndex(where: { $0.id == sceneID }) { lib.customScenes[i] = new }
             }
         )

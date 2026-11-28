@@ -10,6 +10,9 @@ enum LightSummary {
         return "\(bulb): on, \(colour ?? "a colour"), \(brightness)%"
     }
 
+    /// Its power not known (not read yet).
+    static func unknown(bulb: String) -> String { "\(bulb): state not known yet" }
+
     /// A colour temperature, with the CCT scale it's on (nil for the bulb's own).
     static func temperature(_ kelvin: Int, scale: String?) -> String {
         "\(kelvin) K" + (scale.map { " (\($0))" } ?? "")

@@ -30,46 +30,56 @@ struct PresetGrid: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if lib.presets.isEmpty {
-                Text("No presets yet. Set up the light, then save it as a preset.")
+                // Stored by a newer build this one can't read: why none show.
+                Text(lib.newerNote(Library.presetsKey) ?? "No presets yet. Set up the light, then save it as a preset.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                LazyVGrid(columns: gridColumns, spacing: 8) {
-                    ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
-                        Button {
-                            // One of the bulb's stored scenes can't be judged: always asked about.
-                            let scene = model.library.customSceneOf(preset.colour)
-                            confirmFlashing(preset.name, flashes: model.flashes(preset.colour), unknown: preset.colour.isStoredScene) {
-                                // As asked about: not if it's been edited or deleted meanwhile (the Mac's
-                                // menu bar panel asks in the main window).
-                                guard let now = model.library.presets.first(where: { $0.id == preset.id }),
-                                      model.unchanged(now, asked: preset, scene: scene) else {
-                                    model.status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
-                                    return
+                VStack(alignment: .leading, spacing: 8) {
+                    // (Some taken from iCloud meanwhile, with a newer build's list stored here.)
+                    if let note = lib.newerNote(Library.presetsKey) {
+                        Text(note)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    LazyVGrid(columns: gridColumns, spacing: 8) {
+                        ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
+                            Button {
+                                // One of the bulb's stored scenes can't be judged: always asked about.
+                                let scene = model.library.customSceneOf(preset.colour)
+                                confirmFlashing(preset.name, flashes: model.flashes(preset.colour), unknown: preset.colour.isStoredScene) {
+                                    // As asked about: not if it's been edited or deleted meanwhile (the Mac's
+                                    // menu bar panel asks in the main window).
+                                    guard let now = model.library.presets.first(where: { $0.id == preset.id }),
+                                          model.unchanged(now, asked: preset, scene: scene) else {
+                                        model.status = "“\(preset.name)” was changed or deleted while being asked about; start it again"
+                                        return
+                                    }
+                                    model.apply(now)
                                 }
-                                model.apply(now)
+                            } label: {
+                                PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
+                                           isScene: preset.colour.isScene, isFavourite: preset.isFavourite)
                             }
-                        } label: {
-                            PresetTile(name: preset.name, swatch: lib.swatch(preset.colour),
-                                       isScene: preset.colour.isScene, isFavourite: preset.isFavourite)
+                            .buttonStyle(.plain)
+                            #if os(iOS)
+                            .hoverEffect(.lift) // the iPad's pointer
+                            #endif
+                            .disabled(model.link != .connected)
+                            // The tile's own label is replaced: its star is said here.
+                            .accessibilityLabel(preset.isFavourite ? "\(preset.name), Favourite" : preset.name)
+                            .accessibilityValue("\(lib.spokenName(of: preset.colour)), \(preset.dimming)%")
+                            .accessibilityHint("Applies the preset")
+                            .help("\(lib.name(of: preset.colour)), \(preset.dimming)%")
+                            .contextMenu { menu(for: preset) }
+                            #if os(macOS)
+                            // Popovers, not an alert: the grid is also in the menu bar panel, which
+                            // can't show alerts.
+                            .popover(isPresented: prompting(preset), arrowEdge: .bottom) { prompt(for: preset) }
+                            #endif
                         }
-                        .buttonStyle(.plain)
-                        #if os(iOS)
-                        .hoverEffect(.lift) // the iPad's pointer
-                        #endif
-                        .disabled(model.link != .connected)
-                        // The tile's own label is replaced: its star is said here.
-                        .accessibilityLabel(preset.isFavourite ? "\(preset.name), Favourite" : preset.name)
-                        .accessibilityValue("\(lib.spokenName(of: preset.colour)), \(preset.dimming)%")
-                        .accessibilityHint("Applies the preset")
-                        .help("\(lib.name(of: preset.colour)), \(preset.dimming)%")
-                        .contextMenu { menu(for: preset) }
-                        #if os(macOS)
-                        // Popovers, not an alert: the grid is also in the menu bar panel, which
-                        // can't show alerts.
-                        .popover(isPresented: prompting(preset), arrowEdge: .bottom) { prompt(for: preset) }
-                        #endif
                     }
                 }
             }
@@ -145,16 +155,20 @@ struct PresetGrid: View {
         // Moves among the tiles shown: with only favourites showing, past the next favourite.
         let shown = featuredOnly ? lib.presets.favourites : lib.presets
         let i = shown.firstIndex(where: { $0.id == preset.id }) ?? 0
+        // Not while the stored presets are a newer build's: changes here would be lost.
+        let locked = !lib.canEdit(Library.presetsKey)
         Button("Rename…") {
             newName = preset.name
             promptIsRename[preset.id] = true
             renaming = preset
         }
+        .disabled(locked)
         Button("Update to Current Light") { model.updatePreset(preset.id) }
-        .disabled(model.currentColour == nil || !model.canControl)
+        .disabled(model.currentColour == nil || !model.canControl || locked)
         Button(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites") {
             model.setFavourite(preset.id, !preset.isFavourite)
         }
+        .disabled(locked)
         let shared = SharedItem.preset(preset, from: lib)
         ShareLink(item: shared, preview: SharePreview(preset.name))
         if let link = shared.link {
@@ -163,13 +177,14 @@ struct PresetGrid: View {
         Divider()
         // By ID, not the index the menu was built with: the presets can change while it's open
         // (iCloud, or the watch).
-        Button("Move Left") { move(preset.id, by: -1) }.disabled(i == 0)
-        Button("Move Right") { move(preset.id, by: 1) }.disabled(i >= shown.count - 1)
+        Button("Move Left") { move(preset.id, by: -1) }.disabled(i == 0 || locked)
+        Button("Move Right") { move(preset.id, by: 1) }.disabled(i >= shown.count - 1 || locked)
         Divider()
         Button("Delete…", role: .destructive) {
             promptIsRename[preset.id] = false
             deleting = preset
         }
+        .disabled(locked)
     }
 }
 
@@ -226,7 +241,8 @@ struct SavePresetButton: View {
             name = model.library.uniquePresetName(suggestedName)
             asking = true
         }
-        .disabled(!model.canControl || model.currentColour == nil)
+        // Not while the stored presets are a newer build's (Library.newerNote).
+        .disabled(!model.canControl || model.currentColour == nil || !model.library.canEdit(Library.presetsKey))
         .help("Save the light as it is now as a preset")
         .alert("Save as Preset", isPresented: $asking) {
             TextField("Name", text: $name)

@@ -53,6 +53,11 @@ enum Scenes {
     /// nothing here can judge for flashing, so they're always asked about (FlashingGuard).
     static func isStoredSlot(_ id: Int) -> Bool { (256...265).contains(id) }
 
+    /// One of the scenes built into the bulb (`all`, less the stored slots), which plays as its
+    /// firmware has it. Any other ID sent without a scene of its own (`elm`) plays whatever the
+    /// bulb keeps under it (a stored scene, or the inline one last sent), which can't be judged.
+    static func isBuiltIn(_ id: Int) -> Bool { isKnown(id) && !isStoredSlot(id) }
+
     /// What the bulb may report that isn't a scene you can set: pywizlight's 1000 for Rhythm
     /// (schdPsetId), or an ID newer than this list.
     static func name(_ id: Int) -> String {
@@ -161,6 +166,8 @@ enum Flashing {
     /// The question before playing one (FlashingGuard).
     static let askKey = "askFlashing"
     static let warning = "This flashes quickly (more than 3 times a second). Take care if you, or anyone who'll see it, is sensitive to flashing light."
+    /// For what can't be judged (one of the bulb's stored scenes, say): it may flash.
+    static let unknownWarning = "setPilot can't tell how fast this changes the light: it may flash quickly. Take care if you, or anyone who'll see it, is sensitive to flashing light."
     static let fasterWarning = "Played at a speed over 100, this can flash quickly (more than 3 times a second). Take care if you, or anyone who'll see it, is sensitive to flashing light."
 
     /// A scene whose steps differ and come round faster than 3 a second, played at `speed`

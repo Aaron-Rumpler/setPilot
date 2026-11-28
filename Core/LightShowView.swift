@@ -262,7 +262,7 @@ private struct LightShowScreen: View {
                 } else {
                     let opened = player.opened
                     confirmFlashing(player.show?.title ?? player.showName ?? "This light show",
-                                    flashes: player.showFlashes) {
+                                    flashes: player.showFlashes, unknown: player.showFlashesUnknown) {
                         // The show asked about, not another opened meanwhile (a Handoff, say).
                         guard player.opened == opened else {
                             player.error = "Another show was opened while asking: press Play again."
@@ -330,7 +330,9 @@ private struct LightShowScreen: View {
                 .foregroundStyle(.orange)
         } else if warnsFlashing, let show = player.show, player.showFlashes {
             // With the summary and any other warning (on iPhone this is the only place the title shows).
-            let text = ([summary(show), Flashing.warning] + show.warnings.prefix(1)).joined(separator: " · ")
+            // (One it cues that can't be judged, a stored scene say, only may flash.)
+            let warning = player.showFlashesUnknown ? Flashing.unknownWarning : Flashing.warning
+            let text = ([summary(show), warning] + show.warnings.prefix(1)).joined(separator: " · ")
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange).lineLimit(Self.statusLines).help(text)
         } else if let show = player.show, let warning = show.warnings.first {

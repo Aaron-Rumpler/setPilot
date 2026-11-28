@@ -37,8 +37,10 @@ struct ConsoleComposer: View {
 
     private var trimmedMethod: String { method.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var parsed: Result<[String: Any], JSONText.ParamsError> { JSONText.parseParams(params) }
-    /// The raw message, if it's a JSON object.
-    private var rawObject: [String: Any]? { Net.json(Data(raw.utf8)) }
+    /// The raw message, if it's a JSON object. Not one with a key repeated: JSONSerialization
+    /// keeps one of them and the bulb's parser may take the other, so it's checked as text.
+    private var rawObject: [String: Any]? { rawRepeatsKey ? nil : Net.json(Data(raw.utf8)) }
+    private var rawRepeatsKey: Bool { JSONText.hasRepeatedKey(raw) }
     /// The method being sent: the one typed, or the one in the raw message (if any).
     private var currentMethod: String { rawMode ? (rawObject?["method"] as? String ?? "") : trimmedMethod }
     private var known: BulbAPI.Method? { BulbAPI.method(currentMethod) }
@@ -242,6 +244,9 @@ struct ConsoleComposer: View {
                 } else {
                     Label("No method: sent as typed", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
+            } else if rawRepeatsKey {
+                Label("A key is repeated: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             } else {
                 Label("Not a JSON object: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
@@ -337,10 +342,10 @@ struct ConsoleComposer: View {
         guard canSend else { return }
         // A setPilot with an inline scene that flashes, or a speed that makes the custom scene
         // playing flash: asked about first, as anywhere in the app.
-        // Raw text that won't parse here but has a scene in it: the bulb's own parser may still
-        // take it, and what it would play can't be judged, so asked about anyway.
+        // Raw text that won't parse here (or repeats a key) but has a scene in it: the bulb's own
+        // parser may still take it, and what it would play can't be judged, so asked about anyway.
         if !flashOK, rawMode, rawObject == nil, raw.contains("elm") || raw.contains("sceneId") {
-            confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
+            confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
             return
         }
         if !flashOK, currentMethod == "setPilot" {
@@ -350,14 +355,21 @@ struct ConsoleComposer: View {
             // if one does (with the scene in the same setPilot, the bulb may drop it).
             let judged = max(speed ?? 0, model.flashingSpeed)
             // One of the bulb's stored scenes plays instead of any inline elm, and can't be judged.
-            if let id = (params?["sceneId"] as? NSNumber)?.intValue, Scenes.isStoredSlot(id) {
+            // Nor can any other ID that isn't built in, sent without an elm object: the bulb plays
+            // whatever it keeps under it (a stored scene, or the inline one last sent).
+            if let id = (params?["sceneId"] as? NSNumber)?.intValue,
+               Scenes.isStoredSlot(id) || (!Scenes.isBuiltIn(id) && !(params?["elm"] is [String: Any])) {
                 confirmFlashing(Scenes.name(id), flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
                 return
             }
-            // An elm that isn't an object can't be judged either.
-            if let p = params, let elm = p["elm"], (elm as? [String: Any]).map({ Flashing.flashes(elm: $0, speed: judged) }) ?? true {
-                confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
-                return
+            // An elm that isn't an object, or whose steps can't be read, can't be judged either.
+            if let p = params, let elm = p["elm"] {
+                let object = elm as? [String: Any]
+                let unknown = object?["steps"] as? [[NSNumber]] == nil
+                if unknown || object.map({ Flashing.flashes(elm: $0, speed: judged) }) == true {
+                    confirmFlashing("", flashes: true, unknown: unknown) { send(confirmed: confirmed, flashOK: true) }
+                    return
+                }
             }
             let light = ["sceneId", "elm", "r", "g", "b", "c", "w", "temp"]
             if let p = params, let speed, !light.contains(where: { p[$0] != nil }),

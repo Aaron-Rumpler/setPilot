@@ -19,6 +19,7 @@ struct CCTScalesList: View {
                     Button { model.assignTemperatureScale(scale.id) } label: { Label("Use for Temperature", systemImage: "checkmark") }
                         .disabled(scale.range == nil)
                     Button { _ = model.duplicateScale(scale) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                        .disabled(!model.library.canEdit(Library.cctScalesKey))
                     Button(role: .destructive) { deleting = scale } label: { Label("Delete", systemImage: "trash") }
                 }
             }
@@ -31,12 +32,12 @@ struct CCTScalesList: View {
                 ContentUnavailableView {
                     Label("No Scales", systemImage: "thermometer.medium")
                 } description: {
-                    Text(model.chosenMAC == nil
+                    Text(model.library.newerNote(Library.cctScalesKey) ?? (model.chosenMAC == nil
                          ? "Connect to a bulb first: scales are kept per bulb."
-                         : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K.")
+                         : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K."))
                 } actions: {
                     Button("New Scale") { created = model.newScale()?.id }
-                        .disabled(model.chosenMAC == nil)
+                        .disabled(model.chosenMAC == nil || !model.library.canEdit(Library.cctScalesKey))
                 }
             }
         }
@@ -47,7 +48,7 @@ struct CCTScalesList: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { created = model.newScale()?.id } label: { Label("New Scale", systemImage: "plus") }
-                    .disabled(model.chosenMAC == nil)
+                    .disabled(model.chosenMAC == nil || !model.library.canEdit(Library.cctScalesKey))
             }
         }
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }

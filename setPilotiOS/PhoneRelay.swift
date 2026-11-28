@@ -174,6 +174,12 @@ final class PhoneRelay: NSObject {
             model.sync()
             pause = .milliseconds(500)
         case .set(let values, let fields):
+            // A stored scene (Custom Mode 1–10) can't be judged for flashing, so it's refused
+            // when that's asked about, as Compose's is below: the watch can't ask.
+            if fields.contains(.colour), values.mode == .scene, Scenes.isStoredSlot(values.sceneId), Flashing.asks {
+                return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                              error: ScriptError(code: .refused, message: BulbReasons.flashes(Scenes.name(values.sceneId), fromWatch: true, unknown: true))))
+            }
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
             // when this answers. Later state reaches it as the iPhone's usual updates.
@@ -183,9 +189,15 @@ final class PhoneRelay: NSObject {
             // do: started on the iPhone instead (not queued there to start later, unasked-for).
             // Judged once the light's been read: until then its speed isn't known.
             if Flashing.asks, model.flashes(change.colour) {
-                let name = change.colour.flatMap(model.library.customSceneOf)?.name ?? "That scene"
+                // A stored scene by its slot's name, and worded as one that may flash (it can't be told).
+                var stored: Int?
+                if case .scene(let id, _)? = change.colour, Scenes.isStoredSlot(id) { stored = id }
+                let name = stored.map { Scenes.name($0) } ?? change.colour.flatMap(model.library.customSceneOf)?.name
+                // BulbReasons quotes the name, so with none it's said without one.
+                let message = name.map { BulbReasons.flashes($0, fromWatch: true, unknown: stored != nil) }
+                    ?? "That scene flashes quickly, so it's only started in setPilot on your iPhone, which asks first (or turn off “Ask Before Playing It” in setPilot's Settings)."
                 return .scripted(ScriptResult(state: Scripting.state(of: model),
-                                              error: ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: true))))
+                                              error: ScriptError(code: .refused, message: message)))
             }
             guard model.send(change) else {
                 return .scripted(ScriptResult(state: Scripting.state(of: model),

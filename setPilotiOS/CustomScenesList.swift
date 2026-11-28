@@ -30,6 +30,7 @@ struct CustomScenesList: View {
                         Button { confirmFlashing(scene.name, flashes: model.flashes(scene)) { model.playAsked(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
                         Button { lib.duplicate(scene) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                            .disabled(!lib.canEdit(Library.customScenesKey))
                         ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
                         if let link = SharedItem.scene(scene).link {
                             Button { Pasteboard.copy(link.absoluteString) } label: { Label("Copy Link", systemImage: "link") }
@@ -47,9 +48,10 @@ struct CustomScenesList: View {
                 ContentUnavailableView {
                     Label("No Custom Scenes", systemImage: "sparkles")
                 } description: {
-                    Text("Scenes of up to 12 steps, each with its own colour, level, hold and fade.")
+                    Text(lib.newerNote(Library.customScenesKey) ?? "Scenes of up to 12 steps, each with its own colour, level, hold and fade.")
                 } actions: {
                     Button("New Scene") { created = lib.addCustomScene().id }
+                        .disabled(!lib.canEdit(Library.customScenesKey))
                 }
             }
         }
@@ -60,6 +62,7 @@ struct CustomScenesList: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { created = lib.addCustomScene().id } label: { Label("New Scene", systemImage: "plus") }
+                    .disabled(!lib.canEdit(Library.customScenesKey))
             }
             if !lib.customScenes.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }

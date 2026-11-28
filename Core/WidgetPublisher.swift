@@ -28,6 +28,7 @@ final class WidgetPublisher {
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
+                WidgetPublisher.shared.wakeWait?.cancel()
                 WidgetPublisher.shared.asleep = true
                 WidgetPublisher.shared.publishUnknown()
             }
@@ -52,6 +53,7 @@ final class WidgetPublisher {
     /// The Mac's going to sleep: the not-known state stays until it's awake (a change as the
     /// network goes mustn't write over it).
     private var asleep = false
+    private var wakeWait: Task<Void, Never>?
 
     private func observe() {
         guard let model else { return }
@@ -156,7 +158,7 @@ final class WidgetPublisher {
         }
     }
 
-    /// The app's going to the background (iPhone): what the widgets hold may be up to minutes
+    /// The app's leaving the foreground (iPhone, at .inactive): what the widgets hold may be up to minutes
     /// older than the state (they're reloaded only as it's about to show as the last known), and
     /// nothing rewrites it once the app's suspended. Reloaded once, with when the bulb was last
     /// heard, so they show it as the bulb's own for the whole of `trustedFor` from now.
@@ -172,13 +174,26 @@ final class WidgetPublisher {
         publishUnknown()
     }
 
-    /// Back from sleep: the state as it is now (read again as the connection's made afresh),
-    /// reloaded whether or not it differs from the one before sleep.
+    /// Back from sleep: the state as it is now, reloaded whether or not it differs from the one
+    /// before sleep. Not until the bulb's been heard since waking, or the link's no longer
+    /// connected: until then the model still holds the state from before sleep, and the link
+    /// can stay connected through a quiet retry. Polled, as hearing it changes nothing observed.
     private func awoke() {
-        asleep = false
-        lastSnapshot = nil
-        widgetKey = nil
-        schedule()
+        wakeWait?.cancel()
+        let woke = Date.now
+        wakeWait = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let model = self.model else { return }
+                if model.heardSince(woke) || model.link != .connected {
+                    self.asleep = false
+                    self.lastSnapshot = nil
+                    self.widgetKey = nil
+                    self.schedule()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
     }
 
     /// Shown as not known, until the app (or a widget, hearing from the bulb itself) says again.

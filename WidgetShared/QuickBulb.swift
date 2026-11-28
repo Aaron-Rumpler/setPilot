@@ -75,7 +75,9 @@ enum QuickBulb {
     private static func remember(_ change: (inout LightSnapshot) -> Void) {
         guard var s = SharedStore.snapshot else { return }
         s.link = .connected // it's just answered
-        s.heardAt = .now
+        // Trusted for 15 minutes at most, whatever `trustedFor` is here: the state is partly
+        // guessed (nothing's read back), and the app may not be running to correct it.
+        s.heardAt = Date.now.addingTimeInterval(min(0, 15 * 60 - LightSnapshot.trustedFor))
         change(&s)
         SharedStore.save(s, SharedStore.snapshotKey)
     }

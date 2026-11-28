@@ -66,9 +66,10 @@ struct LightSnapshot: Codable, Equatable, Sendable {
 
     /// How long a state is shown as the bulb's own after it was last heard. The Mac app keeps
     /// running, and marks the state not known as it quits or the Mac sleeps, so its widgets need
-    /// re-stamping only rarely (they have a reload budget).
+    /// re-stamping less often (they have a reload budget). Not for longer, though: a crash or a
+    /// Force Quit skips that marking.
     #if os(macOS)
-    static let trustedFor: TimeInterval = 6 * 60 * 60
+    static let trustedFor: TimeInterval = 2 * 60 * 60
     #else
     static let trustedFor: TimeInterval = 15 * 60
     #endif

@@ -287,6 +287,7 @@ final class Model {
     /// show taking over): done if it was answered, otherwise not known to be done. Not taken for
     /// the bulb not answering.
     private func dropPending(_ why: String) {
+        changeNote = nil // a show taking over, or another bulb: not said for what follows
         // Done only if all of it was answered (a scene's speed too). Any change still unsettled
         // (a raw one isn't pending, but waits for its answer).
         if ticket > 0, results[ticket] == nil { settle(ticket, pilotAnswered && delayedSpeed == nil && !speedAwaited ? .done : .notKnown(why)) }
@@ -1288,7 +1289,7 @@ final class Model {
         let note = m == .scene ? useSendableScene(restarting: was != .scene) : nil
         sendPilot([.colour], retry: true)
         if let note { // said once it's answered, not replaced by "Bulb confirmed"
-            changeNote = note
+            changeNote = (ticket, note)
             status = note
         }
     }
@@ -1301,13 +1302,16 @@ final class Model {
     @discardableResult
     private func useSendableScene(restarting: Bool = false) -> String? {
         let custom = sceneId == Scenes.inlineCustom ? customSceneId.flatMap(library.customScene) : nil
-        let flashes = restarting && Flashing.asks && custom.map { self.flashes($0) } == true
+        // (One of the bulb's stored scenes can't be judged, so counts too.)
+        let flashes = restarting && Flashing.asks && (custom.map { self.flashes($0) } == true || Scenes.isStoredSlot(sceneId))
         guard flashes || (!Scenes.isKnown(sceneId) && custom == nil) else { return nil }
+        let stored = Scenes.name(sceneId)
         sceneId = Scenes.all[0].id
         customSceneId = nil
         if flashes, let custom {
-            return "“\(custom.name)” flashes quickly, so it wasn't started again: play it from Custom Scenes to be asked first"
+            return "“\(custom.name)” flashes quickly, so it wasn't started again (start it from its scene to be asked first)"
         }
+        if flashes { return "“\(stored)” is stored on the bulb and may flash quickly, so it wasn't started again (choose it to be asked first)" }
         return nil
     }
 
@@ -1623,6 +1627,7 @@ final class Model {
 
     /// Sets the brightness straight away, with retries (Shortcuts; sliders go through `changed`).
     func setDimming(_ level: Double) {
+        noteUndoPoint() // as any change from a script can be undone
         dimming = min(max(level.rounded(), minDimming), 100)
         sendPilot([.dimming], retry: true)
     }
@@ -1696,7 +1701,6 @@ final class Model {
     }
 
     /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.
-
     private func select(_ colour: LightColour, speed: inout Int?) -> Bool {
         switch colour {
         case let .rgbcw(r, g, b, c, w):
@@ -2216,8 +2220,10 @@ final class Model {
     @ObservationIgnored private var rawTicket = 0
     /// A raw setState's (the console's): its answer is reported as such.
     @ObservationIgnored private var rawStateTicket = 0
-    /// What to say about the change in hand once it's answered, instead of the usual.
-    @ObservationIgnored private var changeNote: String?
+    /// What to say about a change once it's answered, instead of the usual: only for that one
+    /// (a light show's cues and stray replies aren't it).
+    @ObservationIgnored private var changeNote: (ticket: Int, text: String)?
+    private var noteForThis: String? { changeNote?.ticket == ticket ? changeNote?.text : nil }
     /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
     @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).
@@ -2241,7 +2247,7 @@ final class Model {
         // Already settled (as not known: its speed cut off by a fresh connection): nothing to say.
         guard results[ticket] == nil else { return }
         mismatch = diffs.isEmpty ? nil : "Bulb didn't apply: " + diffs.joined(separator: ", ")
-        status = changeNote ?? (diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state")
+        status = diffs.isEmpty ? noteForThis ?? "Bulb confirmed" : "Showing the bulb's actual state"
         settle(ticket, mismatch.map { .notApplied($0) } ?? .done)
     }
 
@@ -2382,7 +2388,7 @@ final class Model {
             // this comes straight after the speed went: a late answer to one of the scene's tries.
             if pilotAnswered, let sent = speedSentAt, !sceneRetried || Date.now.timeIntervalSince(sent) > 0.03 { speedAwaited = false }
             pilotAnswered = true
-            status = changeNote ?? "setPilot ok" // as before; a read-back that follows says more
+            status = noteForThis ?? "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             status = ticket == rawStateTicket ? "setState ok" : isOn == false ? "Switched off" : "Switched on"
             if ticket == stateTicket { settle(ticket, .done) } // nothing to read back for setState
