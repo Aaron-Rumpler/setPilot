@@ -245,7 +245,7 @@ private struct LightShowScreen: View {
                 } else {
                     let opened = player.opened
                     confirmFlashing(player.show?.title ?? player.showName ?? "This light show",
-                                    flashes: player.show?.flashes(bulbSpeed: Int(model.speed)) ?? false) {
+                                    flashes: player.showFlashes) {
                         // The show asked about, not another opened meanwhile (a Handoff, say).
                         guard player.opened == opened else {
                             player.error = "Another show was opened while asking: press Play again."
@@ -309,7 +309,7 @@ private struct LightShowScreen: View {
             // Ahead of a show's warnings: nothing reaches the bulb until it's fixed. (Connected
             // with its state still to be read is fine: cues go anyway.)
             Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
-        } else if warnsFlashing, let show = player.show, show.flashes {
+        } else if warnsFlashing, let show = player.show, player.showFlashes {
             // With the summary and any other warning (on iPhone this is the only place the title shows).
             let text = ([summary(show), Flashing.warning] + show.warnings.prefix(1)).joined(separator: " · ")
             Label(text, systemImage: "exclamationmark.triangle.fill")

@@ -170,6 +170,9 @@ final class Model {
     @ObservationIgnored private var sendScheduled = false
     /// What has changed since the last setPilot (coalesced slider moves).
     @ObservationIgnored private var unsent: Set<PilotField> = []
+    /// The speed last sent (or a custom scene was started at): a slider taking a playing custom
+    /// scene from not flashing to flashing is held back (changed).
+    @ObservationIgnored private var lastSentSpeed: Double?
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     private var speedOwed = false // observed: Compose's preview shows it (owedSpeed)
@@ -249,6 +252,10 @@ final class Model {
 
     /// A change whose time ran out before it could go (or be answered), the bulb answering.
     static let tooLate = "That came too late to send (it waited too long before the bulb could take it); try again."
+    /// A change that waited its turn behind another until its time was up.
+    static let behindAnother = "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."
+    /// A change that took its time to reach setPilot.
+    static let arrivedLate = "That took too long to reach setPilot (it may have been starting up), so it wasn't sent; try again."
     /// A change sent with little of its time left, and not answered within it.
     static let timeRanOut = "Its time ran out before the bulb answered, so it isn't known whether it took the change."
 
@@ -778,11 +785,12 @@ final class Model {
         connectGeneration += 1
         recoveryTask?.cancel() // this connection gets its own, if it comes to that
         recoveryTask = nil
+        // (Settled first: a scene whose speed hadn't gone isn't done.)
+        dropPending("Another bulb was chosen (or reconnected) before it answered.")
         delayedSpeed?.cancel() // the last connection's (and bulb's)
         delayedSpeed = nil
         let generation = connectGeneration
         bulb.connect(to: ip)
-        dropPending("Another bulb was chosen (or reconnected) before it answered.")
         mismatch = nil
         wrongBulb = false
         unsent = [] // a slider move still waiting was for the previous bulb
@@ -847,8 +855,11 @@ final class Model {
         guard link != .none else { return }
         // A change that never got its answer didn't take as far as we know (Shortcuts say so).
         if pending, !pilotAnswered, refusal == nil { refusal = "Lost the connection to the bulb before it answered." }
+        // (Not known, as for a fresh connection: the network changed, not the bulb. Local Network
+        // access refused is the bulb not being reached at all.)
         if pending || verifyingSeq != nil {
-            settle(ticket, pilotAnswered ? unanswered : .notAnswered("Lost the connection to the bulb before it answered."))
+            let why = "Lost the connection to the bulb before it answered, so it isn't known whether it took the change."
+            settle(ticket, bulb.localNetworkDenied ? .notAnswered(why) : .notKnown(why))
         }
         pending = false
         verifyingSeq = nil
@@ -1298,7 +1309,10 @@ final class Model {
             if method == "setState" {
                 stateTicket = ticket
                 powerBefore = isOn // what a refusal puts back
+            } else {
+                rawTicket = ticket // settled by its reply
             }
+            settleUnanswered(ticket)
             // The last change's read-back and delayed speed aren't this one's.
             verifyTask?.cancel()
             delayedSpeed?.cancel()
@@ -1393,14 +1407,40 @@ final class Model {
             lastSent = JSONText.compact(p)
             bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
+            if !retry { settleUnanswered(ticket) } // (retried: its retries' giving up says so)
         default:
             bulb.send(method, sent(p), retry: retry)
             endConsoleWait(after: retry)
         }
     }
 
+    /// A console change sent once (or raw): not answered within the one timeout, settled so (a
+    /// switch put back); answered, its reply settles it.
+    private func settleUnanswered(_ t: Int) {
+        Task {
+            try? await Task.sleep(for: .seconds(Self.answerTimeout))
+            guard ticket == t, results[t] == nil else { return }
+            if t == stateTicket {
+                isOn = powerBefore
+                lastState = powerBefore
+            }
+            settle(t, .notAnswered("The bulb didn't answer."))
+        }
+    }
+
     /// Coalesces slider drags into at most one setPilot per ~40 ms.
     func changed(_ field: PilotField) {
+        // A faster speed for a custom scene that's playing that would make it flash: only as fast
+        // as it doesn't (it's asked about where it's started, not on a slider).
+        if field == .speed, Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom,
+           let scene = customSceneId.flatMap(library.customScene), scene.flashes(atSpeed: Int(speed)) {
+            let slowest = stride(from: Int(speed), through: 10, by: -5).first { !scene.flashes(atSpeed: $0) } ?? 10
+            if !scene.flashes(atSpeed: Int(lastSentSpeed ?? 100)) {
+                speed = Double(slowest)
+                status = "Faster, “\(scene.name)” flashes quickly: play it again at that speed to be asked first"
+            }
+        }
+        if field == .speed { lastSentSpeed = speed }
         unsent.insert(field)
         guard !sendScheduled else { return }
         sendScheduled = true
@@ -1533,6 +1573,7 @@ final class Model {
                         delayedSpeed = nil
                         return
                     }
+                    bulb.cancelRetries("setPilot") // the scene's done: none of its tries crosses the speed's
                     speedSentAt = .now
                     speedAwaited = true // the next setPilot reply is its
                     // Tried only within the change's time: none lands after it's been read back.
@@ -1554,7 +1595,8 @@ final class Model {
     /// `speed`, if given, follows in a setPilot of its own (the scene editor's preview plays at 100).
     @discardableResult
     func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) -> Bool {
-        send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
+        lastSentSpeed = Double(speed ?? Int(self.speed))
+        return send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
     /// Applies a preset, switching the bulb on if it's off.
@@ -1754,13 +1796,16 @@ final class Model {
             lastSent = String(decoding: data, as: UTF8.self)
         }
         lastMethod = "setPilot"
+        // A read-back still due from a change before the show would compare against that change
+        // (a false "didn't apply") and hold back the live updates the controls follow. (Settled
+        // before its speed's dropped: a scene whose speed hadn't gone isn't done.)
+        dropPending("A light show took over the bulb before it answered.")
         // A scene's speed still to follow a change from before the show is out of date now.
         delayedSpeed?.cancel()
         delayedSpeed = nil
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
-        // A read-back still due from a change before the show would compare against that change
-        // (a false "didn't apply") and hold back the live updates the controls follow.
-        dropPending("A light show took over the bulb before it answered.")
+        // A colour or scene of its own: not the custom scene played before.
+        if pilot.keys.contains(where: { ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"].contains($0) }) { customSceneId = nil }
         mismatch = nil
         pilotSwitches = false
         bulb.send("setPilot", pilot, retry: false)
@@ -2118,8 +2163,10 @@ final class Model {
     /// When the latest change started: all of it (a scene's speed, the read-back) within the one
     /// timeout from then.
     @ObservationIgnored private var changeStarted = Date.distantPast
-    /// The console setState's change (its reply is its only while it's still the latest).
+    /// The console setState's change (its reply is its only while it's still the latest), and a
+    /// raw setPilot's.
     @ObservationIgnored private var stateTicket = 0
+    @ObservationIgnored private var rawTicket = 0
     /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
     @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).
@@ -2278,8 +2325,11 @@ final class Model {
             if let m = result["moduleName"] as? String { module = m }
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
+            if ticket == rawTicket, results[ticket] == nil { settle(ticket, .done) } // a raw one's: answered
             pilotSwitches = false // answered
-            if pilotAnswered { speedAwaited = false } // the scene's was before: this is its speed's
+            // The scene's was before: this is its speed's (not a late copy of the scene's own,
+            // which would come straight after the speed went).
+            if pilotAnswered, let sent = speedSentAt, Date.now.timeIntervalSince(sent) > 0.03 { speedAwaited = false }
             pilotAnswered = true
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
@@ -2304,6 +2354,7 @@ final class Model {
               let from = params["mac"] as? String, let mac, from.lowercased() == mac.lowercased()
         else { return }
         lastHeard = .now
+        notAnsweringSince = nil // it's answering: waits needn't fail at once
         let time = Date().formatted(date: .omitted, time: .standard)
         liveStatus = "Live updates on — last push \(time)"
         live = true

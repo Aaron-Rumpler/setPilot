@@ -86,7 +86,12 @@ final class CloudSync {
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: store, queue: .main
         ) { note in
             let keys = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? []
-            MainActor.assumeIsolated { CloudSync.shared.takeRemote(keys) }
+            let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
+            MainActor.assumeIsolated {
+                // Another Apple ID: what was known of the last one's settings is nothing to it.
+                if reason == NSUbiquitousKeyValueStoreAccountChange { CloudSync.shared.known = [:] }
+                CloudSync.shared.takeRemote(keys)
+            }
         }
         #endif
     }
@@ -124,7 +129,12 @@ final class CloudSync {
                 mergeUsage(store.object(forKey: cloudKey))
                 continue
             }
-            guard Self.settingKeys.contains(key), let value = store.object(forKey: cloudKey) as? NSObject else { continue }
+            guard Self.settingKeys.contains(key) else { continue }
+            // Removed there: forgotten here as synced (this device's value stays, and goes up when it changes).
+            guard let value = store.object(forKey: cloudKey) as? NSObject else {
+                known[key] = nil
+                continue
+            }
             known[key] = value // before writing, so the write isn't sent back
             if !value.isEqual(defaults.object(forKey: key)) {
                 defaults.set(value, forKey: key)

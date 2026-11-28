@@ -71,20 +71,33 @@ private struct FlashingGuard: ViewModifier {
         let action: () -> Void
     }
 
+    /// One question at a time: another asked meanwhile waits its turn.
+    @State private var waiting: [Pending] = []
+
+    private func ask(_ p: Pending) {
+        if pending == nil { pending = p } else { waiting.append(p) }
+    }
+
+    private func next() {
+        guard !waiting.isEmpty else { return }
+        let p = waiting.removeFirst()
+        DispatchQueue.main.async { pending = p } // once this alert has gone
+    }
+
     func body(content: Content) -> some View {
         content
             .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, action in
                 guard asks && flashes else { return action() }
-                if elsewhere { FlashingRequests.shared.ask(name, action) } else { pending = Pending(name: name, action: action) }
+                if elsewhere { FlashingRequests.shared.ask(name, action) } else { ask(Pending(name: name, action: action)) }
             })
             .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
             .onChange(of: FlashingRequests.shared.request?.id, initial: true) {
                 guard outside, let r = FlashingRequests.shared.request else { return }
                 FlashingRequests.shared.request = nil
-                if asks { pending = Pending(name: r.name, action: r.action) } else { r.action() }
+                if asks { ask(Pending(name: r.name, action: r.action)) } else { r.action() }
             }
             .alert("“\(pending?.name ?? shownName)” flashes quickly",
-                   isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                   isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil; next() } }),
                    presenting: pending) { p in
                 Button("Play") { p.action() }
                 Button("Play, and Don't Ask Again") {
@@ -107,9 +120,12 @@ extension Model {
     /// Whether a custom scene flashes as it would play: at `speed`, or with none given, the
     /// speed the bulb's on (as fast as it may go: at least as timed).
     func flashes(_ scene: CustomScene, speed: Int? = nil) -> Bool {
-        // Not read yet (just launched, by a quick action say): it may be on any speed.
-        scene.flashes(atSpeed: speed ?? (isOn == nil ? 200 : max(100, Int(self.speed))))
+        scene.flashes(atSpeed: speed ?? flashingSpeed)
     }
+
+    /// The speed something with no speed of its own is judged at for flashing: the bulb's (at
+    /// least as timed); not read yet (just launched, by a quick action say), the fastest.
+    var flashingSpeed: Int { isOn == nil ? 200 : max(100, Int(speed)) }
 
     /// Plays a custom scene that was asked about: only as it was then (not edited or deleted
     /// meanwhile; the Mac's menu bar panel asks in the main window, others stay usable).

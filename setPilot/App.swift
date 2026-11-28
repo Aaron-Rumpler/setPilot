@@ -50,7 +50,7 @@ struct SetPilotApp: App {
         MenuBarExtra {
             MenuBarPanel(model: model).flashingGuard(elsewhere: true)
         } label: {
-            MenuBarIcon(isOn: model.isOn == true)
+            MenuBarIcon(isOn: model.link == .connected && model.isOn == true) // (lit only while it's answering)
                 // The label exists from launch, even when no window opens (launched at login).
                 .onAppear { model.startIfSaved() }
                 .modifier(HandoffWindowOpener())
@@ -63,7 +63,7 @@ struct SetPilotApp: App {
         Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 720, height: 680)
-        Window("Console", id: "console") { ConsoleWindow(model: model) }
+        Window("Console", id: "console") { ConsoleWindow(model: model).flashingGuard() }
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 760, height: 760)
             .keyboardShortcut("k", modifiers: [.command, .option])
@@ -232,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
             item.tag = i
             item.representedObject = preset.id.uuidString
-            item.isEnabled = model.link == .connected
+            item.isEnabled = model.canControl // (as power is)
             menu.addItem(item)
         }
         return menu

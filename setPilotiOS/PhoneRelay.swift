@@ -23,6 +23,8 @@ final class PhoneRelay: NSObject {
         /// When it was asked for: sent from the watch (as the watch's clock says, if that's
         /// sensible), else when it arrived. Waits are counted from then.
         let asked: Date
+        /// When it reached the iPhone (waiting here after that is waiting behind another).
+        var arrived = Date.now
     }
     private let incoming: AsyncStream<Incoming>
     nonisolated private let incomingQueue: AsyncStream<Incoming>.Continuation
@@ -109,9 +111,8 @@ final class PhoneRelay: NSObject {
         return await model.waitUntilControllable(timeout: max(left, 0))
     }
 
-    /// Runs a command as far as sending it. Waiting for the bulb to settle is left to the caller,
-    /// apart from the queue: only the sending needs to keep the order, and the next command
-    /// shouldn't wait out this one's read-back.
+    /// Runs a command as far as sending it (the runner's, as far as its result: the runner keeps
+    /// its own order). Waiting for the bulb to settle is otherwise left to the caller.
     private func run(_ command: WatchCommand, asked: Date) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
         // A scene that flashes quickly is asked about before it plays, which the watch can't do:
@@ -207,7 +208,7 @@ final class PhoneRelay: NSObject {
             model.useTemperatureScale(id)
         case .updatePreset(let id):
             guard model.library.presets.contains(where: { $0.id == id }) else {
-                return .failed(model.snapshot, "That preset no longer exists.")
+                return .failed(model.snapshot, BulbReasons.presetGone)
             }
             guard model.currentColour != nil else {
                 return .failed(model.snapshot, "This light can't be saved in a preset (a Rhythm scene, say).")
@@ -377,7 +378,9 @@ extension PhoneRelay: WCSessionDelegate {
         // A change asked for longer ago than anything waits for the bulb (it waited its turn
         // here behind others, or the message was slow): not sent, as it would land late.
         // (A script's is the runner's to refuse, with its own reasons.)
+        // (The runner's commands are its to refuse, with its reasons; the others, with the same.)
         let changes: Bool = {
+            if Self.scripted(message.command) != nil { return false }
             switch message.command {
             case .set: return true
             case .script: return false
@@ -385,7 +388,8 @@ extension PhoneRelay: WCSessionDelegate {
             }
         }()
         if changes, Date.now.timeIntervalSince(message.asked) > Model.answerTimeout {
-            finish(message, model?.snapshot ?? LightSnapshot(), error: Model.tooLate,
+            let behind = Date.now.timeIntervalSince(message.arrived) > 0.1
+            finish(message, model?.snapshot ?? LightSnapshot(), error: behind ? Model.behindAnother : Model.arrivedLate,
                    code: ScriptError.Code.notAnswering.rawValue)
             return
         }

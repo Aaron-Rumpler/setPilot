@@ -86,6 +86,8 @@ struct RootView: View {
             route = .cctScales
         }
         if sizeClass == .regular {
+            // The controls are already in view beside whatever's open: that stays.
+            if case .controls = route { return }
             var p = NavigationPath()
             switch route {
             case .controls: break

@@ -23,15 +23,15 @@ struct LightShowLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LightShowButtons(playing: context.state.playing)
+                    if !context.isStale { LightShowButtons(playing: context.state.playing) }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    LightShowProgress(state: context.state)
+                    if context.isStale { Text("Not playing").font(.caption).foregroundStyle(.secondary) } else { LightShowProgress(state: context.state) }
                 }
             } compactLeading: {
                 LightSwatch(rgb: context.state.swatch).frame(width: 18, height: 18)
             } compactTrailing: {
-                Image(systemName: context.state.playing ? "play.fill" : "pause.fill")
+                Image(systemName: context.isStale ? "stop.fill" : context.state.playing ? "play.fill" : "pause.fill")
             } minimal: {
                 LightSwatch(rgb: context.state.swatch).frame(width: 18, height: 18)
             }
@@ -52,7 +52,8 @@ private struct LightShowActivityView: View {
                 LightSwatch(rgb: context.state.swatch).frame(width: 24, height: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(context.attributes.title).font(.caption).lineLimit(1)
-                    LightShowProgress(state: context.state)
+                    // Stale (the app's gone, say): not shown as still playing.
+                    if context.isStale { Text("Not playing").font(.caption2).foregroundStyle(.secondary) } else { LightShowProgress(state: context.state) }
                 }
             }
             .padding(8)
@@ -61,11 +62,11 @@ private struct LightShowActivityView: View {
                 LightSwatch(rgb: context.state.swatch).frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(context.attributes.title).font(.headline).lineLimit(1)
-                    Text(context.state.cue ?? context.attributes.show ?? "Light Show")
+                    Text(context.isStale ? "Not playing" : context.state.cue ?? context.attributes.show ?? "Light Show")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    LightShowProgress(state: context.state)
+                    if !context.isStale { LightShowProgress(state: context.state) }
                 }
-                LightShowButtons(playing: context.state.playing)
+                if !context.isStale { LightShowButtons(playing: context.state.playing) }
             }
             .padding()
         }

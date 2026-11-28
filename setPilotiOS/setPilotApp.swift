@@ -23,7 +23,7 @@ struct SetPilotMobileApp: App {
         WidgetPerformer.handler = { command in
             // A preset deleted since the widget last updated: said as the widget would.
             if case .applyPreset(let id) = command, !Shared.model.library.presets.contains(where: { $0.id == id }) {
-                throw WidgetError(localizedStringResource: "That preset no longer exists.")
+                throw WidgetError(localizedStringResource: "\(BulbReasons.presetGone)")
             }
             let script: ScriptCommand = switch command {
             case .applyPreset(let id): .preset(id.uuidString)
@@ -32,8 +32,8 @@ struct SetPilotMobileApp: App {
             }
             // A tap by a person, which can't be asked about first: a scene that flashes is started
             // in the app instead.
-            if Flashing.asks, Scripting.flashingScene(script, Shared.model) != nil {
-                throw WidgetError(localizedStringResource: "This flashes quickly. Start it in setPilot, which asks first.")
+            if Flashing.asks, let name = Scripting.flashingScene(script, Shared.model) {
+                throw WidgetError(localizedStringResource: "\(BulbReasons.flashes(name))")
             }
             let result = await Scripting.run(script, on: Shared.model)
             if let error = result.error { throw WidgetError(localizedStringResource: "\(error.message)") }

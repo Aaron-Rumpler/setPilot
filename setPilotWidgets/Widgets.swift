@@ -176,11 +176,14 @@ struct PresetsWidgetView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Brighter")
             }
+            // Lit only while it's answering (as the status line says); the toggle goes by the last
+            // known state, dimmed while that's all it is.
             Toggle(isOn: entry.snapshot?.isOn ?? false, intent: powerIntent) {
-                Image(systemName: entry.snapshot?.isOn == true ? "lightbulb.fill" : "lightbulb")
+                Image(systemName: entry.snapshot?.link == .connected && entry.snapshot?.isOn == true ? "lightbulb.fill" : "lightbulb")
             }
             .toggleStyle(.button)
             .labelStyle(.iconOnly)
+            .opacity(entry.snapshot?.link == .connected ? 1 : 0.5)
             .accessibilityLabel("Power")
         }
     }
@@ -338,9 +341,11 @@ struct StatusWidgetView: View {
 
 struct PowerControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "power", provider: PowerValueProvider()) { isOn in
-            ControlWidgetToggle("Bulb", isOn: isOn, action: PowerToggleIntent()) { on in
-                Label(on ? "On" : "Off", systemImage: on ? "lightbulb.fill" : "lightbulb")
+        StaticControlConfiguration(kind: "power", provider: PowerValueProvider()) { state in
+            // (The last known state while it isn't answering, and said so.)
+            ControlWidgetToggle("Bulb", isOn: state.on, action: PowerToggleIntent()) { on in
+                Label(state.answering ? (on ? "On" : "Off") : "Not answering",
+                      systemImage: state.answering && on ? "lightbulb.fill" : "lightbulb")
             }
         }
         .displayName("Bulb Power")
@@ -348,10 +353,18 @@ struct PowerControl: ControlWidget {
     }
 }
 
-struct PowerValueProvider: ControlValueProvider {
-    var previewValue: Bool { true }
+struct PowerState: Sendable {
+    var on: Bool
+    var answering: Bool
+}
 
-    func currentValue() async throws -> Bool { SharedStore.snapshot?.isOn ?? false }
+struct PowerValueProvider: ControlValueProvider {
+    var previewValue: PowerState { PowerState(on: true, answering: true) }
+
+    func currentValue() async throws -> PowerState {
+        let s = SharedStore.snapshot
+        return PowerState(on: s?.isOn ?? false, answering: s?.link == .connected)
+    }
 }
 
 struct PresetControl: ControlWidget {

@@ -180,7 +180,16 @@ final class PhoneLink: NSObject {
         // Older than the one we have (a late context or message): keep ours. Unless ours is
         // stamped well ahead of now (the iPhone's clock was set back since): then it can't be
         // trusted to be newer, and would hold every update off.
-        if let new = s.sentAt, let old = snapshot?.sentAt, new < old, old < Date.now.addingTimeInterval(60) { return }
+        if let new = s.sentAt, let old = snapshot?.sentAt, new < old, old < Date.now.addingTimeInterval(60) {
+            // Its settings are as they are now, though (sent with the last good state while the
+            // bulb's away): taken, the state left as it is.
+            guard var kept = snapshot,
+                  (kept.fade, kept.controlsFade, kept.controlsFadeMs, kept.snapSliders) != (s.fade, s.controlsFade, s.controlsFadeMs, s.snapSliders) else { return }
+            (kept.fade, kept.controlsFade, kept.controlsFadeMs, kept.snapSliders) = (s.fade, s.controlsFade, s.controlsFadeMs, s.snapSliders)
+            snapshot = kept
+            if let data = try? JSONEncoder().encode(kept) { defaults.set(data, forKey: WatchKey.snapshot) }
+            return
+        }
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
         // For the complications: reloaded only when something they show changes.
@@ -362,7 +371,7 @@ extension PhoneLink: WCSessionDelegate {
         Task { @MainActor in
             self.reachable = reachable
             if reachable {
-                self.error = nil
+                // (A tap that wasn't sent stays said until the next tap.)
                 self.refresh()
                 self.openWaitingURL()
             }

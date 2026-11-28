@@ -91,7 +91,8 @@ struct LightShow {
         }
         var start = 0
         for end in cues.indices {
-            while cues[end].time - cues[start].time >= 1 { start += 1 }
+            // (Within a second and a little: cues go out on a 10 ms tick, and the delay can move.)
+            while cues[end].time - cues[start].time >= 1.02 { start += 1 }
             if end - start + 1 > 3 { return true }
         }
         return false
@@ -320,7 +321,7 @@ final class LightShowPlayer {
             show = s
             confirmed = false // this show's flashing hasn't been asked about
             // A flashing one opened while playing: paused, for Play to ask first.
-            if s.flashes, Flashing.asks, player.rate != 0 {
+            if s.flashes(bulbSpeed: model.flashingSpeed), Flashing.asks, player.rate != 0 {
                 player.pause()
                 restoreNote = Self.flashingNote
             }
@@ -344,11 +345,14 @@ final class LightShowPlayer {
 
     static let flashingNote = "This show flashes quickly: press Play to start it, so you're asked first."
 
+    /// Whether the open show flashes, at the speed the bulb may play its scenes at.
+    var showFlashes: Bool { show?.flashes(bulbSpeed: model.flashingSpeed) == true }
+
     /// Play or pause from outside the window (the Live Activity), where there's no asking: a
     /// flashing show not yet confirmed waits for Play in the window.
     func togglePlayFromOutside() {
         if isPlaying { pause(); return }
-        if show?.flashes(bulbSpeed: Int(model.speed)) == true, Flashing.asks, !confirmed {
+        if showFlashes, Flashing.asks, !confirmed {
             restoreNote = Self.flashingNote
             return
         }
@@ -508,7 +512,7 @@ final class LightShowPlayer {
             // Started some other way than Play (a media key, Control Center): still a run.
             // A flashing show started without Play (a media key, Control Center), which asks first:
             // paused until Play.
-            if playing, !confirmed, show?.flashes(bulbSpeed: Int(model.speed)) == true, Flashing.asks {
+            if playing, !confirmed, showFlashes, Flashing.asks {
                 player.pause()
                 restoreNote = Self.flashingNote
                 return
@@ -768,6 +772,13 @@ extension Model {
            !(v.sceneId == Scenes.inlineCustom && saved.customScene.flatMap(library.customScene) != nil) {
             apply(v, fields: [.dimming])
             return "The scene from before (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
+        }
+        // A custom scene that flashes as it is now (edited since, say): not started unasked; only
+        // the brightness and power go back.
+        if v.mode == .scene, v.sceneId == Scenes.inlineCustom, Flashing.asks,
+           let scene = saved.customScene.flatMap(library.customScene), scene.flashes(atSpeed: Int(v.speed)) {
+            apply(v, fields: [.dimming])
+            return "“\(scene.name)” flashes quickly now, so it wasn't started again: only the brightness and power were put back"
         }
         // Only now (it's being put back): not a deleted scene's ID above.
         if v.mode == .scene, v.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }

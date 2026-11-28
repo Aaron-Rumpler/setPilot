@@ -21,6 +21,7 @@ enum Pasteboard {
 /// Method, params, send, reply; or (raw mode) a whole message, sent exactly as typed.
 struct ConsoleComposer: View {
     let model: Model
+    @Environment(\.confirmFlashing) private var confirmFlashing
     @AppStorage("consoleMethod") private var method = "getPilot"
     @AppStorage("consoleParams") private var params = "{}"
     @AppStorage("consoleRawMode") private var rawMode = false
@@ -94,7 +95,7 @@ struct ConsoleComposer: View {
         .padding(14)
         .confirmationDialog(currentMethod.isEmpty ? "Send this message?" : "Send \(currentMethod)?",
                             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
-            Button("Send", role: .destructive) { send(confirmed: true) }
+            Button("Send", role: .destructive) { send(confirmed: true, flashOK: true) }
         } message: {
             Text(confirming ?? "")
         }
@@ -324,8 +325,17 @@ struct ConsoleComposer: View {
         }
     }
 
-    private func send(confirmed: Bool = false) {
+    private func send(confirmed: Bool = false, flashOK: Bool = false) {
         guard canSend else { return }
+        // A setPilot with an inline scene that flashes: asked about first, as anywhere in the app.
+        if !flashOK, currentMethod == "setPilot" {
+            let params = rawMode ? rawObject?["params"] as? [String: Any] : (sendParams ? try? parsed.get() : nil)
+            if let p = params, let elm = p["elm"] as? [String: Any],
+               Flashing.flashes(elm: elm, speed: (p["speed"] as? NSNumber)?.intValue ?? model.flashingSpeed) {
+                confirmFlashing("This scene", flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                return
+            }
+        }
         if !confirmed, let caution = known?.caution {
             confirming = caution
             return

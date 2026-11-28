@@ -117,14 +117,15 @@ extension AppDelegate {
 
     func application(_ sender: NSApplication, delegateHandlesKey key: String) -> Bool { Self.scriptKeys.contains(key) }
 
-    @objc var scriptPower: Bool {
-        get { readForScript("scriptPower") { NSNumber(value: $0.isOn == true) } as? Bool ?? false }
-        set { runForScript(.power(newValue)) }
+    // (Optional: read with the others while the light isn't known, missing value.)
+    @objc var scriptPower: NSNumber? {
+        get { readForScript("scriptPower") { NSNumber(value: $0.isOn == true) } as? NSNumber }
+        set { if let newValue { runForScript(.power(newValue.boolValue)) } }
     }
 
-    @objc var scriptBrightness: Int {
-        get { readForScript("scriptBrightness") { NSNumber(value: Int($0.dimming)) } as? Int ?? 0 }
-        set { runForScript(.brightness(newValue)) }
+    @objc var scriptBrightness: NSNumber? {
+        get { readForScript("scriptBrightness") { NSNumber(value: Int($0.dimming)) } as? NSNumber }
+        set { if let newValue { runForScript(.brightness(newValue.intValue)) } }
     }
 
     /// A property read by a script. Known (the bulb has answered lately): at once. Not yet (just
@@ -141,7 +142,8 @@ extension AppDelegate {
         if model.canControl, model.heardSince(.now.addingTimeInterval(-Model.staleAfter)) { return value(model) }
         let command = NSScriptCommand.current()
         guard (command?.receiversSpecifier as? NSPropertySpecifier)?.key == key else {
-            return model.canControl ? value(model) : unknown?(model) ?? value(model)
+            // Read with the others (`properties`): not known, missing value, not one made up.
+            return model.canControl ? value(model) : unknown?(model) ?? NSNull()
         }
         func fail(_ code: ScriptError.Code, _ message: String) {
             command?.scriptErrorNumber = 1000 + Int(ScriptError(code: code, message: message).exitCode)

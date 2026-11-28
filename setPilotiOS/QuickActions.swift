@@ -40,7 +40,7 @@ enum QuickActions {
         case preset:
             guard let id = (item.userInfo?["id"] as? String).flatMap(UUID.init(uuidString:)) else { return }
             guard let p = model.library.presets.first(where: { $0.id == id }) else {
-                model.status = "That preset no longer exists."
+                model.status = BulbReasons.presetGone
                 return
             }
             if model.asksFirst(p) { return model.applyAsking(p) }

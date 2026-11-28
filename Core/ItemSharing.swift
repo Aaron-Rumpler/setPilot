@@ -53,7 +53,15 @@ struct SharedItem: Transferable {
 @MainActor @Observable
 final class IncomingItems {
     static let shared = IncomingItems()
-    var pending: LibraryFile? { didSet { if pending != nil { showWindow() } } }
+    var pending: LibraryFile? {
+        didSet {
+            if pending != nil { showWindow() } else if !waiting.isEmpty {
+                let next = waiting.removeFirst()
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.pending = next } } // once this question's gone
+            }
+        }
+    }
+    private var waiting: [LibraryFile] = []
     /// Why something opened here couldn't be added.
     var problem: String? { didSet { if problem != nil { showWindow() } } }
 
@@ -96,7 +104,12 @@ final class IncomingItems {
             problem = "That's from a newer version of setPilot: update setPilot here to add it."
             return
         }
-        pending = file
+        guard !file.presets.isEmpty || !file.customScenes.isEmpty || file.cctScales.values.contains(where: { !$0.isEmpty }) else {
+            problem = "There's nothing in that to add."
+            return
+        }
+        // Another still being asked about: this one's asked about next.
+        if pending != nil { waiting.append(file) } else { pending = file }
     }
 
     var summary: String {

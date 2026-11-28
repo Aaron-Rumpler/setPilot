@@ -21,7 +21,7 @@ enum Scripting {
     static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, confirmed: Bool = false, on model: Model) async -> ScriptResult {
         if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
-                message: "“\(name)” flashes quickly, so it's only started in setPilot, which asks first (or turn off Ask Before Playing in Settings)."))
+                message: BulbReasons.flashes(name)))
         }
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
@@ -31,9 +31,7 @@ enum Scripting {
                 // Why it's late: waiting behind another, or before it got here (launching the app, say).
                 let behindAnother = Date.now.timeIntervalSince(queued) > 0.1
                 return ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .notAnswering,
-                    message: behindAnother
-                        ? "The bulb was still answering an earlier change, so this one wasn't sent (it would have been late)."
-                        : "That took too long to reach setPilot (it may have been starting up), so it wasn't sent; try again."))
+                    message: behindAnother ? Model.behindAnother : Model.arrivedLate))
             }
             // Waits from here are what's left of the one timeout, counted from when it was asked
             // for (switching bulbs, which lands elsewhere, gets the whole of it).
@@ -306,9 +304,9 @@ enum Scripting {
             return ScriptError(code: .notAnswering, message: Model.tooLate)
         }
         #if os(iOS)
-        return ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
+        return ScriptError(code: .notAnswering, message: BulbReasons.notAnswering)
         #else
-        return ScriptError(code: .notAnswering, message: "The bulb isn't answering. Check it's powered and on the same network as your Mac.")
+        return ScriptError(code: .notAnswering, message: BulbReasons.notAnswering)
         #endif
     }
 
@@ -338,11 +336,25 @@ enum Scripting {
             guard let s = scene(q) else { return nil }
             return model.flashes(s) ? s.name : nil
         case .set(let change):
-            guard let q = change.customScene, let s = scene(q) else { return nil }
-            return model.flashes(s, speed: change.speed) ? s.name : nil
+            if let q = change.customScene {
+                guard let s = scene(q) else { return nil }
+                return model.flashes(s, speed: change.speed) ? s.name : nil
+            }
+            // Only a speed (with brightness or power, say) for the custom scene playing.
+            guard let speed = change.speed, change.scene == nil, change.rgbcw == nil, change.temp == nil else { return nil }
+            return playingFlashes(at: speed, model)
+        case .speed(let speed):
+            return playingFlashes(at: speed, model)
         default:
             return nil
         }
+    }
+
+    /// The custom scene playing, by name, if it flashes at `speed` (and didn't as it is).
+    private static func playingFlashes(at speed: Int, _ model: Model) -> String? {
+        guard model.mode == .scene, model.sceneId == Scenes.inlineCustom,
+              let s = model.customSceneId.flatMap(model.library.customScene) else { return nil }
+        return s.flashes(atSpeed: speed) && !s.flashes(atSpeed: Int(model.speed)) ? s.name : nil
     }
 
     // MARK: Finding by name

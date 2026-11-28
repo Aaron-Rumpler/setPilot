@@ -212,7 +212,7 @@ struct WatchPowerIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let s = try await relay(.power(action.bool), fade: fade)
-        return .result(dialog: "\(s.isOn == false ? "Switched off." : "Switched on.")")
+        return .result(dialog: "\(s.isOn == false ? "Switched off." : s.isOn == true ? "Switched on." : "Done; the bulb's state isn't known yet.")")
     }
 }
 

@@ -30,7 +30,8 @@ enum QuickBulb {
         switch command {
         case .applyPreset(let id):
             if (SharedStore.defaults.stringArray(forKey: SharedStore.flashingPresetsKey) ?? []).contains(id.uuidString) {
-                throw WidgetError(localizedStringResource: "This flashes quickly. Start it in setPilot, which asks first.")
+                let name = SharedStore.presets.first { $0.id == id }?.name ?? "That preset"
+                throw WidgetError(localizedStringResource: "\(BulbReasons.flashes(name))")
             }
             let all = SharedStore.defaults.dictionary(forKey: SharedStore.presetParamsKey) as? [String: Data] ?? [:]
             guard let data = all[id.uuidString],
@@ -39,7 +40,7 @@ enum QuickBulb {
                 if SharedStore.presets.contains(where: { $0.id == id }) {
                     throw WidgetError(localizedStringResource: "That preset can't be sent: its scene or scale has been deleted.")
                 }
-                throw WidgetError(localizedStringResource: "Open setPilot once to update its presets.")
+                throw WidgetError(localizedStringResource: "\(BulbReasons.presetGone)")
             }
             _ = try await send(host, "setPilot", params, by: deadline) // no "state": switches the bulb on
             remember { s in
@@ -120,7 +121,7 @@ enum QuickBulb {
             try await Task.sleep(for: .milliseconds(50))
         }
         if let reply = try answered() { return reply }
-        throw WidgetError(localizedStringResource: "The bulb didn't answer.")
+        throw WidgetError(localizedStringResource: "\(BulbReasons.notAnswering)")
     }
 
     private static func receive(_ conn: NWConnection, into inbox: ReplyInbox) {
