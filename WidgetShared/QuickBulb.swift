@@ -38,7 +38,7 @@ enum QuickBulb {
                   let params = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 // Known, but with nothing to send: its custom scene or CCT scale has gone.
                 if SharedStore.presets.contains(where: { $0.id == id }) {
-                    throw WidgetError(localizedStringResource: "That preset can't be sent: its scene or scale has been deleted.")
+                    throw WidgetError(localizedStringResource: "\(BulbReasons.presetPartGone)")
                 }
                 throw WidgetError(localizedStringResource: "\(BulbReasons.presetGone)")
             }

@@ -170,9 +170,6 @@ final class Model {
     @ObservationIgnored private var sendScheduled = false
     /// What has changed since the last setPilot (coalesced slider moves).
     @ObservationIgnored private var unsent: Set<PilotField> = []
-    /// The speed last sent (or a custom scene was started at): a slider taking a playing custom
-    /// scene from not flashing to flashing is held back (changed).
-    @ObservationIgnored private var lastSentSpeed: Double?
     /// A scene speed changed while the bulb was off, so not sent (on its own it would switch it
     /// on): it goes once the bulb is on, with the next change or after switching on.
     private var speedOwed = false // observed: Compose's preview shows it (owedSpeed)
@@ -230,6 +227,7 @@ final class Model {
         changeDeadline = nil
         readBackEnd = .distantPast
         ticket += 1
+        rawTicket = 0 // set again if this one's raw
         refusal = nil
         pilotAnswered = false
         speedAwaited = false
@@ -287,8 +285,9 @@ final class Model {
     /// show taking over): done if it was answered, otherwise not known to be done. Not taken for
     /// the bulb not answering.
     private func dropPending(_ why: String) {
-        // Done only if all of it was answered (a scene's speed too).
-        if pending || verifyingSeq != nil { settle(ticket, pilotAnswered && delayedSpeed == nil && !speedAwaited ? .done : .notKnown(why)) }
+        // Done only if all of it was answered (a scene's speed too). Any change still unsettled
+        // (a raw one isn't pending, but waits for its answer).
+        if ticket > 0, results[ticket] == nil { settle(ticket, pilotAnswered && delayedSpeed == nil && !speedAwaited ? .done : .notKnown(why)) }
         verifyTask?.cancel()
         verifyingSeq = nil
         pending = false
@@ -412,7 +411,9 @@ final class Model {
                 verifyingSeq = nil
                 refusal = message
                 // Not answered (every retry, or it couldn't be sent); otherwise the reason.
-                settle(ticket, message.contains("no reply") || message.contains("couldn't send") ? .notAnswered(message) : .refused(message))
+                settle(ticket, message.contains("no reply") ? .notAnswered(message)
+                    : message.contains("couldn't send") ? (bulb.localNetworkDenied ? .notAnswered(message) : .notKnown(message))
+                    : .refused(message))
                 if pilotSwitches { // it was to switch the bulb: as far as we know, it didn't
                     isOn = powerBefore
                     lastState = powerBefore
@@ -1417,9 +1418,16 @@ final class Model {
     /// A console change sent once (or raw): not answered within the one timeout, settled so (a
     /// switch put back); answered, its reply settles it.
     private func settleUnanswered(_ t: Int) {
+        let generation = connectGeneration
+        let sent = Date.now
         Task {
             try? await Task.sleep(for: .seconds(Self.answerTimeout))
             guard ticket == t, results[t] == nil else { return }
+            // Another bulb chosen, or the bulb heard from meanwhile (it answered something, just
+            // not recognisably this): not known, and nothing put back.
+            if connectGeneration != generation || heardSince(sent) {
+                return settle(t, .notKnown("The bulb's answer to this wasn't recognised, so it isn't known to be done."))
+            }
             if t == stateTicket {
                 isOn = powerBefore
                 lastState = powerBefore
@@ -1429,18 +1437,19 @@ final class Model {
     }
 
     /// Coalesces slider drags into at most one setPilot per ~40 ms.
+    /// A speed for the custom scene playing that would make it flash (and it doesn't as it is):
+    /// only as fast as it doesn't (it's asked about where it's started, not on a slider or the
+    /// watch's Crown), saying so.
+    func allowedSpeed(_ new: Double) -> Double {
+        guard Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom,
+              let scene = customSceneId.flatMap(library.customScene),
+              scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }
+        let fastest = stride(from: Int(new), through: Int(speed), by: -1).first { !scene.flashes(atSpeed: $0) } ?? Int(speed)
+        status = "Faster, “\(scene.name)” flashes quickly: play it again at that speed to be asked first"
+        return Double(fastest)
+    }
+
     func changed(_ field: PilotField) {
-        // A faster speed for a custom scene that's playing that would make it flash: only as fast
-        // as it doesn't (it's asked about where it's started, not on a slider).
-        if field == .speed, Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom,
-           let scene = customSceneId.flatMap(library.customScene), scene.flashes(atSpeed: Int(speed)) {
-            let slowest = stride(from: Int(speed), through: 10, by: -5).first { !scene.flashes(atSpeed: $0) } ?? 10
-            if !scene.flashes(atSpeed: Int(lastSentSpeed ?? 100)) {
-                speed = Double(slowest)
-                status = "Faster, “\(scene.name)” flashes quickly: play it again at that speed to be asked first"
-            }
-        }
-        if field == .speed { lastSentSpeed = speed }
         unsent.insert(field)
         guard !sendScheduled else { return }
         sendScheduled = true
@@ -1574,6 +1583,7 @@ final class Model {
                         return
                     }
                     bulb.cancelRetries("setPilot") // the scene's done: none of its tries crosses the speed's
+                    sceneRetried = bulb.triesSent["setPilot", default: 0] > 1
                     speedSentAt = .now
                     speedAwaited = true // the next setPilot reply is its
                     // Tried only within the change's time: none lands after it's been read back.
@@ -1595,7 +1605,6 @@ final class Model {
     /// `speed`, if given, follows in a setPilot of its own (the scene editor's preview plays at 100).
     @discardableResult
     func playCustom(_ scene: CustomScene, switchOn: Bool = false, speed: Int? = nil) -> Bool {
-        lastSentSpeed = Double(speed ?? Int(self.speed))
         return send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
@@ -1822,7 +1831,7 @@ final class Model {
             customKelvin = v.customKelvin
             sceneId = v.sceneId
         }
-        if fields.contains(.speed) { speed = v.speed }
+        if fields.contains(.speed) { speed = allowedSpeed(v.speed) }
         if fields.contains(.dimming) { dimming = v.dimming }
         // The watch switching to Scene mode sends the last scene, which may be one that can't be set.
         if mode == .scene, fields.contains(.colour) { useSendableScene() }
@@ -2160,6 +2169,8 @@ final class Model {
     /// and whether its answer is still awaited.
     @ObservationIgnored private var speedSentAt: Date?
     @ObservationIgnored private var speedAwaited = false
+    /// The scene the speed follows was sent more than once (so a late answer to it can come).
+    @ObservationIgnored private var sceneRetried = false
     /// When the latest change started: all of it (a scene's speed, the read-back) within the one
     /// timeout from then.
     @ObservationIgnored private var changeStarted = Date.distantPast
@@ -2327,9 +2338,9 @@ final class Model {
         case "setPilot":
             if ticket == rawTicket, results[ticket] == nil { settle(ticket, .done) } // a raw one's: answered
             pilotSwitches = false // answered
-            // The scene's was before: this is its speed's (not a late copy of the scene's own,
-            // which would come straight after the speed went).
-            if pilotAnswered, let sent = speedSentAt, Date.now.timeIntervalSince(sent) > 0.03 { speedAwaited = false }
+            // The scene's was before: this is its speed's. Not if the scene went more than once and
+            // this comes straight after the speed went: a late answer to one of the scene's tries.
+            if pilotAnswered, let sent = speedSentAt, !sceneRetried || Date.now.timeIntervalSince(sent) > 0.03 { speedAwaited = false }
             pilotAnswered = true
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":

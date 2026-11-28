@@ -327,12 +327,21 @@ struct ConsoleComposer: View {
 
     private func send(confirmed: Bool = false, flashOK: Bool = false) {
         guard canSend else { return }
-        // A setPilot with an inline scene that flashes: asked about first, as anywhere in the app.
+        // A setPilot with an inline scene that flashes, or a speed that makes the custom scene
+        // playing flash: asked about first, as anywhere in the app.
         if !flashOK, currentMethod == "setPilot" {
             let params = rawMode ? rawObject?["params"] as? [String: Any] : (sendParams ? try? parsed.get() : nil)
-            if let p = params, let elm = p["elm"] as? [String: Any],
-               Flashing.flashes(elm: elm, speed: (p["speed"] as? NSNumber)?.intValue ?? model.flashingSpeed) {
-                confirmFlashing("This scene", flashes: true) { send(confirmed: confirmed, flashOK: true) }
+            let speed = (params?["speed"] as? NSNumber)?.intValue
+            // At the speed given (never slower than as timed), or the bulb's.
+            let judged = speed.map { max(100, $0) } ?? model.flashingSpeed
+            if let p = params, let elm = p["elm"] as? [String: Any], Flashing.flashes(elm: elm, speed: judged) {
+                confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                return
+            }
+            let light = ["sceneId", "elm", "r", "g", "b", "c", "w", "temp"]
+            if let p = params, let speed, !light.contains(where: { p[$0] != nil }),
+               let name = Scripting.playingFlashes(at: speed, model) {
+                confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
                 return
             }
         }

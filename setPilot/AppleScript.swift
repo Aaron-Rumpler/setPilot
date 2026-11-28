@@ -120,12 +120,12 @@ extension AppDelegate {
     // (Optional: read with the others while the light isn't known, missing value.)
     @objc var scriptPower: NSNumber? {
         get { readForScript("scriptPower") { NSNumber(value: $0.isOn == true) } as? NSNumber }
-        set { if let newValue { runForScript(.power(newValue.boolValue)) } }
+        set { if let newValue { runForScript(.power(newValue.boolValue)) } else { refuseForScript("Set power to true or false.") } }
     }
 
     @objc var scriptBrightness: NSNumber? {
         get { readForScript("scriptBrightness") { NSNumber(value: Int($0.dimming)) } as? NSNumber }
-        set { if let newValue { runForScript(.brightness(newValue.intValue)) } }
+        set { if let newValue { runForScript(.brightness(newValue.intValue)) } else { refuseForScript("Set brightness to a number, for example 60.") } }
     }
 
     /// A property read by a script. Known (the bulb has answered lately): at once. Not yet (just
@@ -189,6 +189,12 @@ extension AppDelegate {
             }
             scriptCommand?.resumeExecution(withResult: nil)
         }
+    }
+
+    /// A property set to missing value: bad arguments (1002), as for the commands.
+    private func refuseForScript(_ message: String) {
+        NSScriptCommand.current()?.scriptErrorNumber = 1002
+        NSScriptCommand.current()?.scriptErrorString = message
     }
 
     @objc var scriptLightState: NSDictionary {

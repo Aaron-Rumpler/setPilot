@@ -21,6 +21,9 @@ final class Bulb {
     /// Stops the retries of `method` still under way, without an error: what they were for has
     /// been replaced.
     func cancelRetries(_ method: String) { retryGenerations[method, default: 0] += 1 }
+    /// How many times the latest request of each method has gone out (more than once: a late
+    /// reply to an earlier try can still come).
+    private(set) var triesSent: [String: Int] = [:]
     /// The connection is ready again after waiting (Local Network access allowed, the network
     /// back): what was sent meanwhile may not have gone.
     var onReady: (() -> Void)?
@@ -139,6 +142,7 @@ final class Bulb {
 
         let before = replyCount[method, default: 0]
         let generation = retryGenerations[method, default: 0]
+        triesSent[method] = 0
         Task { [weak self] in
             for (attempt, wait) in Bulb.tryWaits.enumerated() {
                 guard let self, self.conn === conn, self.replyCount[method, default: 0] == before,
@@ -151,6 +155,7 @@ final class Bulb {
                 if let until, Date.now >= until { return } // its time's up: no more tries (and no error: it was cut off, not unanswered)
                 guard let bytes = attempt == 0 ? data : message() else { return }
                 conn.send(content: bytes, completion: .idempotent)
+                self.triesSent[method, default: 0] += 1
                 try? await Task.sleep(for: .seconds(wait))
             }
             guard let self, self.conn === conn, self.replyCount[method, default: 0] == before,

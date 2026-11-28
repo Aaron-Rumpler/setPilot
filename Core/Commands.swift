@@ -16,17 +16,23 @@ enum Scripting {
     /// before it is still waiting for the bulb).
     /// `asked`: when it was asked for, if before now (a watch tap that's waited its turn on the
     /// iPhone): the wait is counted from then.
+    /// `arrived`: when it got here, if it waited its turn before this (the watch's, in the
+    /// relay's own queue): time since then is time spent behind another.
     /// `confirmed`: a flashing scene that's been asked about (in the app); otherwise one is refused
     /// while "Ask before playing" is on (Shortcuts, links, the CLI and AppleScript can't ask).
-    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, confirmed: Bool = false, on model: Model) async -> ScriptResult {
+    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, arrived: Date? = nil, confirmed: Bool = false, on model: Model) async -> ScriptResult {
         if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
                 message: BulbReasons.flashes(name)))
         }
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
-            let queued = Date.now
+            let queued = min(arrived ?? .now, .now)
             _ = await previous?.value
+            // Again after waiting its turn: the one before may have changed what it would play.
+            if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
+                return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: BulbReasons.flashes(name)))
+            }
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
                 // Why it's late: waiting behind another, or before it got here (launching the app, say).
                 let behindAnother = Date.now.timeIntervalSince(queued) > 0.1
@@ -303,11 +309,7 @@ enum Scripting {
         if left < Model.answerTimeout - 0.01, model.heardSince(started), model.link == .connected {
             return ScriptError(code: .notAnswering, message: Model.tooLate)
         }
-        #if os(iOS)
         return ScriptError(code: .notAnswering, message: BulbReasons.notAnswering)
-        #else
-        return ScriptError(code: .notAnswering, message: BulbReasons.notAnswering)
-        #endif
     }
 
     /// Taken, read back and as asked: or the bulb's refusal, no answer, what it didn't apply, or
@@ -351,7 +353,7 @@ enum Scripting {
     }
 
     /// The custom scene playing, by name, if it flashes at `speed` (and didn't as it is).
-    private static func playingFlashes(at speed: Int, _ model: Model) -> String? {
+    static func playingFlashes(at speed: Int, _ model: Model) -> String? {
         guard model.mode == .scene, model.sceneId == Scenes.inlineCustom,
               let s = model.customSceneId.flatMap(model.library.customScene) else { return nil }
         return s.flashes(atSpeed: speed) && !s.flashes(atSpeed: Int(model.speed)) ? s.name : nil

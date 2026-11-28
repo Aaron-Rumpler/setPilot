@@ -23,7 +23,8 @@ struct LightShowLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if !context.isStale { LightShowButtons(playing: context.state.playing) }
+                    // Stale: Stop only (to dismiss it).
+                    LightShowButtons(playing: context.state.playing, stale: context.isStale)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     if context.isStale { Text("Not playing").font(.caption).foregroundStyle(.secondary) } else { LightShowProgress(state: context.state) }
@@ -66,7 +67,7 @@ private struct LightShowActivityView: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     if !context.isStale { LightShowProgress(state: context.state) }
                 }
-                if !context.isStale { LightShowButtons(playing: context.state.playing) }
+                LightShowButtons(playing: context.state.playing, stale: context.isStale)
             }
             .padding()
         }
@@ -94,13 +95,17 @@ private struct LightShowProgress: View {
 
 private struct LightShowButtons: View {
     let playing: Bool
+    /// Not playing as far as is known (the app's gone, say): only Stop, which ends it.
+    var stale = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(intent: LightShowControlIntent(.toggle)) {
-                Image(systemName: playing ? "pause.fill" : "play.fill")
+            if !stale {
+                Button(intent: LightShowControlIntent(.toggle)) {
+                    Image(systemName: playing ? "pause.fill" : "play.fill")
+                }
+                .accessibilityLabel(playing ? "Pause" : "Play")
             }
-            .accessibilityLabel(playing ? "Pause" : "Play")
             Button(intent: LightShowControlIntent(.stop)) {
                 Image(systemName: "stop.fill")
             }

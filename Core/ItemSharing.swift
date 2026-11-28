@@ -55,9 +55,14 @@ final class IncomingItems {
     static let shared = IncomingItems()
     var pending: LibraryFile? {
         didSet {
-            if pending != nil { showWindow() } else if !waiting.isEmpty {
+            if pending != nil { showWindow() } else if oldValue != nil, !waiting.isEmpty { // closed: the next
                 let next = waiting.removeFirst()
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.pending = next } } // once this question's gone
+                DispatchQueue.main.async { // once this question's gone
+                    MainActor.assumeIsolated {
+                        // Another opened in the moment between: this one's still first.
+                        if self.pending == nil { self.pending = next } else { self.waiting.insert(next, at: 0) }
+                    }
+                }
             }
         }
     }

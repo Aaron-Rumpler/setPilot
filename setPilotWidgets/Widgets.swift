@@ -344,7 +344,7 @@ struct PowerControl: ControlWidget {
         StaticControlConfiguration(kind: "power", provider: PowerValueProvider()) { state in
             // (The last known state while it isn't answering, and said so.)
             ControlWidgetToggle("Bulb", isOn: state.on, action: PowerToggleIntent()) { on in
-                Label(state.answering ? (on ? "On" : "Off") : "Not answering",
+                Label(state.answering ? (on ? "On" : "Off") : state.status,
                       systemImage: state.answering && on ? "lightbulb.fill" : "lightbulb")
             }
         }
@@ -355,7 +355,10 @@ struct PowerControl: ControlWidget {
 
 struct PowerState: Sendable {
     var on: Bool
+    /// Its state is known (connected, and read).
     var answering: Bool
+    /// Why not, as the widgets say it (connecting, not answering, no bulb chosen).
+    var status = ""
 }
 
 struct PowerValueProvider: ControlValueProvider {
@@ -363,7 +366,7 @@ struct PowerValueProvider: ControlValueProvider {
 
     func currentValue() async throws -> PowerState {
         let s = SharedStore.snapshot
-        return PowerState(on: s?.isOn ?? false, answering: s?.link == .connected)
+        return PowerState(on: s?.isOn ?? false, answering: s?.link == .connected && s?.isOn != nil, status: statusText(s))
     }
 }
 

@@ -7,7 +7,8 @@ extension Model {
         return Binding(
             get: { self[keyPath: kp] },
             set: {
-                let v = $0.rounded()
+                var v = $0.rounded()
+                if kp == \.speed { v = self.allowedSpeed(v) } // (not to a speed that makes a playing scene flash)
                 guard v != self[keyPath: kp] else { return } // continuous sliders move in fractions
                 self.noteUndoPoint() // before the change: how it was
                 self[keyPath: kp] = v

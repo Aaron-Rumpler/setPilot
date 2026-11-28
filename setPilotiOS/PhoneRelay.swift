@@ -82,18 +82,19 @@ final class PhoneRelay: NSObject {
         }
     }
 
-    /// Whether a command plays a custom scene that flashes quickly (at the speed it would play):
-    /// from the app, its Siri and Shortcuts actions, and Compose alike.
-    private static func flashes(_ command: WatchCommand, _ model: Model) -> Bool {
+    /// The custom scene a command plays that flashes quickly (at the speed it would play), by
+    /// name: from the app, its Siri and Shortcuts actions, and Compose alike.
+    private static func flashingScene(_ command: WatchCommand, _ model: Model) -> String? {
         switch command {
         case .compose(let change):
-            return model.flashes(change.colour)
+            guard model.flashes(change.colour) else { return nil }
+            return change.colour.flatMap(model.library.customSceneOf)?.name ?? "That scene"
         case .script(let data, _):
-            guard let scripted = try? JSONDecoder().decode(ScriptCommand.self, from: data) else { return false }
-            return Scripting.flashingScene(scripted, model) != nil
+            guard let scripted = try? JSONDecoder().decode(ScriptCommand.self, from: data) else { return nil }
+            return Scripting.flashingScene(scripted, model)
         default:
-            guard let (runnerCommand, _) = Self.scripted(command) else { return false }
-            return Scripting.flashingScene(runnerCommand, model) != nil
+            guard let (runnerCommand, _) = Self.scripted(command) else { return nil }
+            return Scripting.flashingScene(runnerCommand, model)
         }
     }
 
@@ -113,18 +114,18 @@ final class PhoneRelay: NSObject {
 
     /// Runs a command as far as sending it (the runner's, as far as its result: the runner keeps
     /// its own order). Waiting for the bulb to settle is otherwise left to the caller.
-    private func run(_ command: WatchCommand, asked: Date) async -> Outcome {
+    private func run(_ command: WatchCommand, asked: Date, arrived: Date) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
         // A scene that flashes quickly is asked about before it plays, which the watch can't do:
         // started on the iPhone instead (not queued there to start later, unasked-for).
-        if Flashing.asks, Self.flashes(command, model) {
+        if Flashing.asks, let name = Self.flashingScene(command, model) {
             return .scripted(ScriptResult(state: Scripting.state(of: model),
-                                          error: ScriptError(code: .refused, message: "This flashes quickly. Start it on your iPhone, which asks first.")))
+                                          error: ScriptError(code: .refused, message: BulbReasons.flashes(name))))
         }
         if let (scripted, fade) = Self.scripted(command) {
             // The runner waits for the bulb as everything does (failing at once just after it's
             // been found not answering; not for switching bulbs or listing, which don't need it).
-            return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, on: model))
+            return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, arrived: arrived, on: model))
         }
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
@@ -396,7 +397,7 @@ extension PhoneRelay: WCSessionDelegate {
         // Not the runner's (it keeps its own): a reason from before isn't this one's.
         if sends, Self.scripted(message.command) == nil { model?.forgetRefusal() }
         sentFrom = nil
-        let outcome = await run(message.command, asked: message.asked)
+        let outcome = await run(message.command, asked: message.asked, arrived: message.arrived)
         // The change this sent, if it sent one (its result is its own, whatever follows).
         let ticket = model.flatMap { m in sentFrom.flatMap { m.ticket != $0 ? m.ticket : nil } }
         switch outcome {

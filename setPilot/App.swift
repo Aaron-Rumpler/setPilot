@@ -30,6 +30,16 @@ struct SetPilotApp: App {
         #endif
     }
 
+    /// The bulb's state as VoiceOver says it on the menu bar icon.
+    private static func spokenState(_ model: Model) -> String {
+        switch model.link {
+        case .none: "no bulb chosen"
+        case .connecting: "connecting to the bulb"
+        case .unreachable: "the bulb isn't answering"
+        case .connected: model.isOn == true ? "bulb on" : model.isOn == false ? "bulb off" : "reading the bulb"
+        }
+    }
+
     var body: some Scene {
         Window("setPilot", id: "main") { ContentView(model: model).handoff(.controls).providesUndo(to: model).flashingGuard(outside: true).accountSwitchPrompt().incomingItemsPrompt(model).householdInvitationPrompt() }
             .windowResizability(.contentSize)
@@ -50,7 +60,8 @@ struct SetPilotApp: App {
         MenuBarExtra {
             MenuBarPanel(model: model).flashingGuard(elsewhere: true)
         } label: {
-            MenuBarIcon(isOn: model.link == .connected && model.isOn == true) // (lit only while it's answering)
+            MenuBarIcon(isOn: model.link == .connected && model.isOn == true, // (lit only while it's answering)
+                        spoken: Self.spokenState(model))
                 // The label exists from launch, even when no window opens (launched at login).
                 .onAppear { model.startIfSaved() }
                 .modifier(HandoffWindowOpener())
@@ -116,11 +127,13 @@ private struct HandoffWindowOpener: ViewModifier {
 /// drawn in the menu bar's foreground colour, so which symbol that takes depends on the appearance.
 private struct MenuBarIcon: View {
     let isOn: Bool
+    /// The bulb's state for VoiceOver (connecting and not answering too, not just on or off).
+    let spoken: String
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Image(systemName: isOn == (colorScheme == .dark) ? "lightbulb.fill" : "lightbulb")
-            .accessibilityLabel(isOn ? "setPilot, bulb on" : "setPilot, bulb off")
+            .accessibilityLabel("setPilot, \(spoken)")
     }
 }
 

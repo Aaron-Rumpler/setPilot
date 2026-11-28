@@ -54,10 +54,12 @@ final class LightShowLiveActivity {
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }
 
-    /// Out of date once the media would have ended (or a while after pausing), so one the app
-    /// couldn't end (it was killed) doesn't claim to be playing for hours.
+    /// Out of date once the media would have ended, so one the app couldn't end (it was killed)
+    /// doesn't claim to be playing for hours. Paused, or playing before its length is known:
+    /// a while (a pause can be long; the app ends it when the show's stopped or closed).
     private static func stale(_ s: LightShowAttributes.ContentState) -> Date {
-        s.playing && s.duration > 0 ? s.start.addingTimeInterval(s.duration + 60) : .now.addingTimeInterval(15 * 60)
+        if s.playing, s.duration > 0 { return s.start.addingTimeInterval(s.duration + 60) }
+        return .now.addingTimeInterval(s.playing ? 15 * 60 : 4 * 3600)
     }
 
     private func state(_ player: LightShowPlayer) -> LightShowAttributes.ContentState {

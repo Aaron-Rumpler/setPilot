@@ -37,7 +37,7 @@ struct MenuBarPanel: View {
                 LightControls(model: model, compact: true)
             } else {
                 Text(ip.isEmpty ? "Choose a bulb above."
-                     : model.link == .unreachable ? (model.status.isEmpty ? "The bulb isn't answering." : model.status)
+                     : model.link == .unreachable ? (model.status.isEmpty ? BulbReasons.notAnswering : model.status)
                      : "Waiting for the bulb to answer.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

@@ -124,7 +124,7 @@ final class PhoneLink: NSObject {
         // (Each failure's reason set just before `done`, which may read it.)
         guard session.activationState == .activated, session.isReachable else {
             Task { @MainActor in
-                if !quiet { self.error = "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
+                if !quiet { self.error = "Couldn't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on." }
                 done?(false)
             }
             return
@@ -176,14 +176,16 @@ final class PhoneLink: NSObject {
         send(.state, quiet: true)
     }
 
-    private func apply(_ s: LightSnapshot) {
+    /// `context`: it came as the application context, which is always the iPhone's latest
+    /// (a late reply or message isn't, settings and all).
+    private func apply(_ s: LightSnapshot, context: Bool = false) {
         // Older than the one we have (a late context or message): keep ours. Unless ours is
         // stamped well ahead of now (the iPhone's clock was set back since): then it can't be
         // trusted to be newer, and would hold every update off.
         if let new = s.sentAt, let old = snapshot?.sentAt, new < old, old < Date.now.addingTimeInterval(60) {
-            // Its settings are as they are now, though (sent with the last good state while the
-            // bulb's away): taken, the state left as it is.
-            guard var kept = snapshot,
+            // Its settings are as they are now, though, if it's the context (sent with the last
+            // good state while the bulb's away): taken, the state left as it is.
+            guard context, var kept = snapshot,
                   (kept.fade, kept.controlsFade, kept.controlsFadeMs, kept.snapSliders) != (s.fade, s.controlsFade, s.controlsFadeMs, s.snapSliders) else { return }
             (kept.fade, kept.controlsFade, kept.controlsFadeMs, kept.snapSliders) = (s.fade, s.controlsFade, s.controlsFadeMs, s.snapSliders)
             snapshot = kept
@@ -345,7 +347,7 @@ final class PhoneLink: NSObject {
             reloadWidgets() // the preset complications' relevance in the Smart Stack
         }
         if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
-            apply(s)
+            apply(s, context: true)
         }
     }
 }

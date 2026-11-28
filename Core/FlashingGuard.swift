@@ -33,10 +33,11 @@ final class FlashingRequests {
         let name: String
         let action: () -> Void
     }
-    var request: Request?
+    /// Waiting to be asked about, in turn (a second may come before the first is taken).
+    var requests: [Request] = []
 
     func ask(_ name: String, _ action: @escaping () -> Void) {
-        request = Request(name: name, action: action)
+        requests.append(Request(name: name, action: action))
         #if os(macOS)
         HandoffRouter.shared.open(.controls) // the main window, where it's asked
         #endif
@@ -71,6 +72,11 @@ private struct FlashingGuard: ViewModifier {
         let action: () -> Void
     }
 
+    /// The question's title: the scene by name, or with none (the console's inline scene) just this.
+    private func title(_ name: String) -> String {
+        name.isEmpty ? "This scene flashes quickly" : "“\(name)” flashes quickly"
+    }
+
     /// One question at a time: another asked meanwhile waits its turn.
     @State private var waiting: [Pending] = []
 
@@ -79,9 +85,18 @@ private struct FlashingGuard: ViewModifier {
     }
 
     private func next() {
+        // Not asking any more ("Don't Ask Again"): the others asked meanwhile just go.
+        guard asks else {
+            let all = waiting
+            waiting = []
+            return all.forEach { $0.action() }
+        }
         guard !waiting.isEmpty else { return }
         let p = waiting.removeFirst()
-        DispatchQueue.main.async { pending = p } // once this alert has gone
+        DispatchQueue.main.async { // once this alert has gone
+            // Another asked in the moment between: this one's still first.
+            if pending == nil { pending = p } else { waiting.insert(p, at: 0) }
+        }
     }
 
     func body(content: Content) -> some View {
@@ -91,12 +106,15 @@ private struct FlashingGuard: ViewModifier {
                 if elsewhere { FlashingRequests.shared.ask(name, action) } else { ask(Pending(name: name, action: action)) }
             })
             .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
-            .onChange(of: FlashingRequests.shared.request?.id, initial: true) {
-                guard outside, let r = FlashingRequests.shared.request else { return }
-                FlashingRequests.shared.request = nil
-                if asks { ask(Pending(name: r.name, action: r.action)) } else { r.action() }
+            .onChange(of: FlashingRequests.shared.requests.map(\.id), initial: true) {
+                guard outside, !FlashingRequests.shared.requests.isEmpty else { return }
+                let all = FlashingRequests.shared.requests
+                FlashingRequests.shared.requests = []
+                for r in all {
+                    if asks { ask(Pending(name: r.name, action: r.action)) } else { r.action() }
+                }
             }
-            .alert("“\(pending?.name ?? shownName)” flashes quickly",
+            .alert(title(pending?.name ?? shownName),
                    isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil; next() } }),
                    presenting: pending) { p in
                 Button("Play") { p.action() }
@@ -120,7 +138,8 @@ extension Model {
     /// Whether a custom scene flashes as it would play: at `speed`, or with none given, the
     /// speed the bulb's on (as fast as it may go: at least as timed).
     func flashes(_ scene: CustomScene, speed: Int? = nil) -> Bool {
-        scene.flashes(atSpeed: speed ?? flashingSpeed)
+        // Never slower than as timed (as the bulb's own speed is judged).
+        scene.flashes(atSpeed: speed.map { max(100, $0) } ?? flashingSpeed)
     }
 
     /// The speed something with no speed of its own is judged at for flashing: the bulb's (at

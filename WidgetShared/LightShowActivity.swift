@@ -36,7 +36,13 @@ struct LightShowControlIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        if let a = LightShowControl.Action(rawValue: action) { LightShowControl.handler?(a) }
+        guard let a = LightShowControl.Action(rawValue: action) else { return .result() }
+        if let handler = LightShowControl.handler {
+            handler(a)
+        } else if a == .stop {
+            // No show open (the app was quit or killed with one playing): the activity's left over.
+            for activity in Activity<LightShowAttributes>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
         return .result()
     }
 }

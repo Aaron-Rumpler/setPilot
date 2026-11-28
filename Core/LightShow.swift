@@ -297,6 +297,9 @@ final class LightShowPlayer {
                 hasVideo = !video.isEmpty
                 let seconds = CMTimeGetSeconds(length)
                 duration = seconds.isFinite ? seconds : 0
+                #if os(iOS)
+                LightShowLiveActivity.shared.changed(self) // its progress, now the length's known
+                #endif
             } catch {
                 guard player.currentItem === item else { return }
                 self.error = "Couldn't open \(name): \(error.localizedDescription)"
@@ -778,7 +781,7 @@ extension Model {
         if v.mode == .scene, v.sceneId == Scenes.inlineCustom, Flashing.asks,
            let scene = saved.customScene.flatMap(library.customScene), scene.flashes(atSpeed: Int(v.speed)) {
             apply(v, fields: [.dimming])
-            return "“\(scene.name)” flashes quickly now, so it wasn't started again: only the brightness and power were put back"
+            return "“\(scene.name)” flashes quickly, so it wasn't started again: only the brightness and power were put back"
         }
         // Only now (it's being put back): not a deleted scene's ID above.
         if v.mode == .scene, v.sceneId == Scenes.inlineCustom { customSceneId = saved.customScene }

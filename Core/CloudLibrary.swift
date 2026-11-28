@@ -669,6 +669,7 @@ final class CloudLibrary {
         }
         let household = SharedZone(zoneName: zone.zoneName, ownerName: zone.ownerName)
         let olds = others.map { SharedZone(zoneName: $0.zoneName, ownerName: $0.ownerName) }
+        saved.toLeave = saved.toLeave?.filter { $0 != household } // joined again: not to leave
         // In it now: kept until it's through (a quit part way is finished at launch).
         let intent = JoinIntent(household: household, addMine: addMine, leaving: olds, fromOwn: saved.shared == nil && saved.leftQuestion == nil)
         saved.joiningTo = intent
@@ -691,7 +692,7 @@ final class CloudLibrary {
             let synced = await syncOwn()
             guard accountChanges == changes else { return nil }
             if !synced, !intent.addMine {
-                status = "Couldn't send this device's changes before joining: it'll be finished once they've gone (Sync Now, or next time)"
+                progress.notice = "This device's latest changes haven't reached iCloud yet, so joining the household (replacing them) is waiting for them. It's finished once they've gone: check you're online, then use Sync Now."
                 return nil
             }
         }
@@ -767,7 +768,8 @@ final class CloudLibrary {
     /// The rest of a join (and again at launch, if it didn't get through): the old households
     /// left (or kept to try again), then in.
     private func completeJoin(_ household: SharedZone, addMine: Bool, leaving olds: [SharedZone], record: HouseholdJoin?) async {
-        saved.toLeave = Array(Set((saved.toLeave ?? []) + olds).sorted { $0.zoneName + $0.ownerName < $1.zoneName + $1.ownerName })
+        // (Not the one joined: it may have been left before, and joined again now.)
+        saved.toLeave = Array(Set((saved.toLeave ?? []) + olds).subtracting([household]).sorted { $0.zoneName + $0.ownerName < $1.zoneName + $1.ownerName })
         persist()
         var stillIn: [SharedZone] = []
         for old in saved.toLeave ?? [] {
@@ -1170,8 +1172,9 @@ final class CloudLibrary {
         }
         // Only if nothing changed meanwhile: an account change (signing in or out) empties the
         // queue without sending it, which would look the same as all of it having gone.
+        // (This device's own changes gone: a conflict re-sent, or another's, doesn't hold it up.)
         guard accountChanges == changes, engine === self.engine, saved.seeded || settling,
-              engine.state.pendingRecordZoneChanges.isEmpty else { return false }
+              !saved.meta.values.contains(where: \.unsent), saved.deleting.isEmpty else { return false }
         return true
     }
 
@@ -1917,7 +1920,7 @@ final class CloudLibrary {
                 // Part way through leaving or joining (off the household, signed back in): what's
                 // here is the household's, not mixed with the own library (fetched again after).
                 if saved.newHere?[name] != nil || saved.returning != nil
-                    || (saved.shared == nil && (saved.leaving != nil || saved.joiningTo != nil)) { continue }
+                    || (saved.shared == nil && (saved.leaving != nil || (saved.joiningTo != nil && saved.joiningTo?.fromOwn != true))) { continue }
                 // Back from a household, the own library becomes what's here: anything else goes.
                 if let plan = saved.replacing, Self.kind(of: name) != nil, !plan.keep.contains(name),
                    (m.record.modificationDate ?? .distantPast) < (plan.before ?? .distantFuture)
@@ -1934,7 +1937,7 @@ final class CloudLibrary {
             for d in e.deletions where d.recordID.zoneID == zoneID {
                 let name = d.recordID.recordName
                 if saved.newHere?[name] != nil || saved.returning != nil
-                    || (saved.shared == nil && (saved.leaving != nil || saved.joiningTo != nil)) { continue } // held here, or still being worked out
+                    || (saved.shared == nil && (saved.leaving != nil || (saved.joiningTo != nil && saved.joiningTo?.fromOwn != true))) { continue } // held here, or still being worked out
                 saved.deleting.remove(name)
                 saved.unreadable?.removeValue(forKey: name)
                 guard let kind = Self.kind(of: name), let id = itemID(name, kind) else { continue }
@@ -1951,10 +1954,12 @@ final class CloudLibrary {
             for record in e.savedRecords where record.recordID.zoneID == zoneID {
                 let name = record.recordID.recordName
                 saved.meta[name]?.systemFields = Self.systemFields(of: record)
-                // Changed again while that went (its save was already on its way): sent again.
-                if let meta = saved.meta[name], let data: Data = record.encryptedValues["data"],
-                   Self.hash(Item(data: data, order: record["order"] as? Double ?? 0, mac: record.encryptedValues["mac"])) != meta.hash
-                    || (record["order"] as? Double) != meta.order {
+                // Changed again while that went (its save was already on its way): sent again. (Against
+                // what would be sent now, as record(for:) builds it: not the bookkeeping.)
+                if let meta = saved.meta[name], let kind = Self.kind(of: name), let now = current(kind)[meta.id],
+                   let data: Data = record.encryptedValues["data"],
+                   Self.hash(Item(data: data, order: 0, mac: record.encryptedValues["mac"])) != Self.hash(Item(data: now.data, order: 0, mac: now.mac))
+                    || (record["order"] as? Double) != now.order {
                     engine?.state.add(pendingRecordZoneChanges: [.saveRecord(record.recordID)])
                     continue
                 }
@@ -2292,12 +2297,20 @@ extension CloudLibrary: CKSyncEngineDelegate {
                                                syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {
         guard await MainActor.run(body: { syncEngine === self.engine }) else { return nil }
         let scope = context.options.scope
-        let changes = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
+        // (Leaving a household: no deletions to it either.)
+        let leaving = await MainActor.run { self.saved.leaving != nil }
+        let changes = syncEngine.state.pendingRecordZoneChanges.filter { change in
+            guard scope.contains(change) else { return false }
+            if leaving, case .deleteRecord = change { return false }
+            return true
+        }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { id in
             await MainActor.run {
                 // A library switched from meanwhile: nothing of the new one goes to the old one's zone.
                 // Leaving: nothing more to the household (edits here are for the copy).
-                guard syncEngine === self.engine, id.zoneID == self.zoneID, self.saved.leaving == nil else { return nil }
+                // Held here (where it goes isn't decided): not sent.
+                guard syncEngine === self.engine, id.zoneID == self.zoneID, self.saved.leaving == nil,
+                      self.saved.newHere?[id.recordName] == nil else { return nil }
                 let record = self.record(for: id)
                 // Gone since it was queued (deleted here or elsewhere): drop it rather than offer it again.
                 if record == nil { syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(id)]) }

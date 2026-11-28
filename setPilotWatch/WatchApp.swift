@@ -402,7 +402,7 @@ struct PresetEditView: View {
                     .disabled(i >= link.presets.count - 1)
                 Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
             } else {
-                Text("This preset has been deleted.").foregroundStyle(.secondary)
+                Text(BulbReasons.presetGone).foregroundStyle(.secondary)
             }
         }
         .navigationTitle(preset?.name ?? "Preset")

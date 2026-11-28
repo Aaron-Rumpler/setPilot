@@ -89,7 +89,8 @@ final class CloudSync {
             let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
             MainActor.assumeIsolated {
                 // Another Apple ID: what was known of the last one's settings is nothing to it.
-                if reason == NSUbiquitousKeyValueStoreAccountChange { CloudSync.shared.known = [:] }
+                // (This device's settings stay, and don't go up to it until changed here.)
+                if reason == NSUbiquitousKeyValueStoreAccountChange { CloudSync.shared.markLocalKnown() }
                 CloudSync.shared.takeRemote(keys)
             }
         }
@@ -97,6 +98,13 @@ final class CloudSync {
     }
 
     #if WIZ_ICLOUD
+    /// What's here taken as what's synced (another Apple ID): only later changes here go up.
+    fileprivate func markLocalKnown() {
+        let defaults = UserDefaults.standard
+        known = [:]
+        for key in Self.settingKeys { known[key] = defaults.object(forKey: key) as? NSObject }
+    }
+
     private func sendLocalChanges() {
         let defaults = UserDefaults.standard
         let store = NSUbiquitousKeyValueStore.default
@@ -130,9 +138,10 @@ final class CloudSync {
                 continue
             }
             guard Self.settingKeys.contains(key) else { continue }
-            // Removed there: forgotten here as synced (this device's value stays, and goes up when it changes).
+            // Removed there: this device's value stays, taken as what's synced (so it isn't sent
+            // straight back; it goes up when it next changes here).
             guard let value = store.object(forKey: cloudKey) as? NSObject else {
-                known[key] = nil
+                known[key] = defaults.object(forKey: key) as? NSObject
                 continue
             }
             known[key] = value // before writing, so the write isn't sent back
