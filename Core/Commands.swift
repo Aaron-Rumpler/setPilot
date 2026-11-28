@@ -400,7 +400,7 @@ enum Scripting {
         case .presets: model.library.presets.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .scenes: Scenes.all.filter { !(256...265).contains($0.id) }.map { ScriptItem(name: $0.name, id: String($0.id)) }
         case .customScenes: model.library.customScenes.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
-        case .scales: model.library.scales(for: model.chosenMAC).filter { $0.range != nil }.map { // only those it can use ScriptItem(name: $0.name, id: $0.id.uuidString) }
+        case .scales: model.library.scales(for: model.chosenMAC).filter { $0.range != nil }.map { ScriptItem(name: $0.name, id: $0.id.uuidString) } // only those it can use
         case .bulbs: model.namedBulbs.map { ScriptItem(name: $0.name ?? "Unnamed bulb", id: $0.mac ?? $0.address) }
         }
     }
