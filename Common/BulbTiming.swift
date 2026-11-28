@@ -3,7 +3,8 @@ import Foundation
 /// How long anything waits for the bulb, shared by the apps, the widgets and the watch, so every
 /// path gives up at the same point (and nothing waits so long that a change lands late).
 enum BulbTiming {
-    /// When each try of a retried request goes, after the one before (the first at once).
+    /// How long each of a retried request's tries waits for an answer before the next goes (the
+    /// first goes at once; after the last, it's given up on).
     static let tryWaits: [Double] = [0.4, 0.8, 1.5, 1.5, 1.5]
     /// How long a retried request has to be answered before it's given up on.
     static let replyWindow = tryWaits.reduce(0, +)
@@ -48,14 +49,15 @@ enum BulbReasons {
     private static let askSetting = "“Ask Before Playing It”"
     #endif
 
-    #if os(watchOS)
-    private static let whereAsked = "in setPilot on your iPhone"
-    #else
-    private static let whereAsked = "in setPilot"
-    #endif
-
-    /// A scene that flashes, where it can't be asked about.
-    static func flashes(_ name: String) -> String {
-        "“\(name)” flashes quickly, so it's only started \(whereAsked), which asks first (or turn off \(askSetting) in setPilot's Settings)."
+    /// A scene that flashes, where it can't be asked about. `fromWatch`: asked for on the watch
+    /// (judged on the iPhone, which words it for the watch).
+    static func flashes(_ name: String, fromWatch: Bool = false) -> String {
+        #if os(watchOS)
+        let watch = true
+        #else
+        let watch = fromWatch
+        #endif
+        let whereAsked = watch ? "in setPilot on your iPhone" : "in setPilot"
+        return "“\(name)” flashes quickly, so it's only started \(whereAsked), which asks first (or turn off \(askSetting) in setPilot's Settings)."
     }
 }

@@ -17,6 +17,10 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
         throw WatchIntentError(localizedStringResource: "Couldn't send that.")
     }
     let link = PhoneLink.shared
+    // Waiting, then on its way: the app's own quiet reads of the state hold off meanwhile, so
+    // they don't go to the iPhone first and use up this one's time (its answer brings the state).
+    link.intentsWaiting += 1
+    defer { link.intentsWaiting -= 1 }
     // Launched just for this (Siri, the Action button): the session is still coming up, and the
     // iPhone may read as out of reach for a moment. Waited for as anything waits (BulbTiming),
     // counted from now, which goes with it: the iPhone counts its own waits from then too.
@@ -24,7 +28,7 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
     let until = asked.addingTimeInterval(BulbTiming.answerTimeout)
     while !link.ready, Date.now < until { try await Task.sleep(for: .milliseconds(100)) } // throws once the action's cancelled
     guard link.ready else {
-        throw WatchIntentError(localizedStringResource: "Can't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on.")
+        throw WatchIntentError(localizedStringResource: "Couldn't reach your iPhone. Keep it nearby, with Bluetooth or Wi-Fi on.")
     }
     try Task.checkCancellation() // dismissed meanwhile: nothing goes
     // The reason taken with the answer (the shared error may be cleared by another send before
@@ -38,22 +42,19 @@ private func relay(_ command: ScriptCommand, fade: Int? = nil) async throws -> L
     return snapshot
 }
 
+/// As the iPhone's Get Light State says it (Common/LightSummary.swift).
 @MainActor
 private func summary(_ s: LightSnapshot) -> String {
-    let name = s.bulbName ?? "The bulb"
-    guard s.link == .connected else { return "\(name) isn't answering." }
-    switch s.isOn {
-    case false?: return "\(name) is off."
-    case nil: return "\(name): its state isn't known yet."
-    case true?:
-        let colour = switch s.mode {
-        case .temp: "\(Int(s.temp)) K"
-        case .custom: "\(Int(s.customKelvin)) K"
-        case .scene: s.customScene.flatMap { id in PhoneLink.shared.scenes.first { $0.id == id }?.name } ?? Scenes.name(s.sceneId)
-        case .rgbcw: "a colour"
-        }
-        return "\(name) is on, \(colour), at \(Int(s.dimming))%."
+    let name = s.bulbName ?? s.address ?? "Bulb"
+    guard s.link == .connected else { return "\(name): not answering" }
+    guard let on = s.isOn else { return "\(name): state not known yet" }
+    let colour: String? = switch s.mode {
+    case .temp: LightSummary.temperature(Int(s.temp), scale: nil)
+    case .custom: LightSummary.temperature(Int(s.customKelvin), scale: s.scales?.first(where: { $0.id == s.activeScale })?.name)
+    case .scene: s.customScene.flatMap { id in PhoneLink.shared.scenes.first { $0.id == id }?.name } ?? Scenes.name(s.sceneId)
+    case .rgbcw: nil
     }
+    return LightSummary.text(bulb: name, on: on, colour: colour, brightness: Int(s.dimming))
 }
 
 // MARK: Entities (from what the iPhone has sent)
@@ -90,7 +91,7 @@ struct WatchSceneEntity: AppEntity {
 struct WatchSceneQuery: EntityQuery {
     /// The bulb's built-in scenes (not its stored slots, 256–265), as on the iPhone.
     private static var all: [WatchSceneEntity] {
-        Scenes.all.filter { !(256...265).contains($0.id) }.map { WatchSceneEntity(id: $0.id, name: $0.name) }
+        Scenes.all.filter { !Scenes.isStoredSlot($0.id) }.map { WatchSceneEntity(id: $0.id, name: $0.name) }
     }
 
     func entities(for identifiers: [Int]) async throws -> [WatchSceneEntity] {
@@ -290,8 +291,10 @@ struct WatchSetColourIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        _ = try await relay(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)
-        return .result(dialog: "Colour set.")
+        let s = try await relay(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: s.isOn == false
+                       ? "Colour set, for when the bulb's switched on (it's off)."
+                       : "Colour set.")
     }
 }
 
@@ -317,7 +320,10 @@ struct WatchSetTemperatureIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let scaleQuery = bulbOwn ? "bulb" : scale?.id.uuidString
         let s = try await relay(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil), fade: fade)
-        return .result(dialog: "\(Int(s.mode == .custom ? s.customKelvin : s.temp)) K.")
+        let k = Int(s.mode == .custom ? s.customKelvin : s.temp)
+        return .result(dialog: s.isOn == false
+                       ? "\(k) K, for when the bulb's switched on (it's off)."
+                       : "\(k) K.")
     }
 }
 
@@ -337,8 +343,10 @@ struct WatchSetSceneIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        _ = try await relay(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)
-        return .result(dialog: "Playing \(scene.name).")
+        let s = try await relay(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: s.isOn == false
+                       ? "\(scene.name), for when the bulb's switched on (it's off)."
+                       : "Playing \(scene.name).")
     }
 }
 
@@ -347,7 +355,9 @@ struct WatchPlayCustomSceneIntent: AppIntent {
     static let description = IntentDescription("Plays one of your setPilot custom scenes.")
 
     @Parameter(title: "Custom Scene") var scene: WatchCustomSceneEntity
-    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    // On unless asked otherwise, as the Custom Scenes list and presets: Siri's "Play … in
+    // setPilot" goes by the default.
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: true)
     var switchOn: Bool
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
@@ -357,8 +367,10 @@ struct WatchPlayCustomSceneIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        _ = try await relay(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade)
-        return .result(dialog: "Playing \(scene.name).")
+        let s = try await relay(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade)
+        return .result(dialog: s.isOn == false
+                       ? "\(scene.name), for when the bulb's switched on (it's off)."
+                       : "Playing \(scene.name).")
     }
 }
 
@@ -465,7 +477,7 @@ struct WatchSwitchBulbIntent: AppIntent {
 
 struct WatchGetLightStateIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Light State"
-    static let description = IntentDescription("The bulb's power, colour or scene and brightness, read from the bulb.")
+    static let description = IntentDescription("The bulb's power, mode, colour or scene and brightness, read from the bulb.")
 
     init() {}
 
@@ -498,7 +510,7 @@ struct WatchShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: WatchPlayCustomSceneIntent(),
-            phrases: ["Play \(\.$scene) in \(.applicationName)"],
+            phrases: ["Play \(\.$scene) in \(.applicationName)", "Play a custom scene in \(.applicationName)"],
             shortTitle: "Play Custom Scene",
             systemImageName: "sparkles"
         )

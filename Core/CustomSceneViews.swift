@@ -438,6 +438,14 @@ struct StepChip: View {
         let s = (Double(ms) / 100).rounded() / 10 // tenths first: 1999 is "2s", 9960 "10s"
         return s >= 10 || s == s.rounded() ? "\(Int(s.rounded()))s" : String(format: "%.1fs", s)
     }
+
+    /// The same in words, for VoiceOver (which reads "1.5s" as letters): "1.5 seconds", "40 milliseconds".
+    static func spokenSeconds(_ ms: Int) -> String {
+        if ms > 0, ms < 100 { return ms == 1 ? "1 millisecond" : "\(ms) milliseconds" }
+        let s = (Double(ms) / 100).rounded() / 10
+        let number = s >= 10 || s == s.rounded() ? "\(Int(s.rounded()))" : String(format: "%.1f", s)
+        return number == "1" ? "1 second" : "\(number) seconds"
+    }
 }
 
 /// A name field that doesn't leave a name empty: emptied and left, it's given `untitled`
@@ -545,10 +553,10 @@ extension CustomScene.Step {
         return level < 100 ? "\(colourText), level \(level)%" : colourText
     }
 
-    /// The colour, then the times when the scene uses them: "pale blue, hold 1s, fade 0.5s".
+    /// The colour, then the times when the scene uses them: "pale blue, hold 1 second, fade 0.5 seconds".
     func spokenSummary(ownTiming: Bool) -> String {
         guard ownTiming else { return spokenColour }
-        return "\(spokenColour), hold \(StepChip.seconds(hold)), fade \(StepChip.seconds(fade))"
+        return "\(spokenColour), hold \(StepChip.spokenSeconds(hold)), fade \(StepChip.spokenSeconds(fade))"
     }
 }
 

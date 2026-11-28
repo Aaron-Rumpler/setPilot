@@ -38,9 +38,9 @@ struct PresetGrid: View {
                 LazyVGrid(columns: gridColumns, spacing: 8) {
                     ForEach(featuredOnly ? lib.presets.favourites : lib.presets) { preset in
                         Button {
-                            let flashes = model.flashes(preset.colour)
+                            // One of the bulb's stored scenes can't be judged: always asked about.
                             let scene = model.library.customSceneOf(preset.colour)
-                            confirmFlashing(preset.name, flashes: flashes) {
+                            confirmFlashing(preset.name, flashes: model.flashes(preset.colour), unknown: preset.colour.isStoredScene) {
                                 // As asked about: not if it's been edited or deleted meanwhile (the Mac's
                                 // menu bar panel asks in the main window).
                                 guard let now = model.library.presets.first(where: { $0.id == preset.id }),
@@ -261,13 +261,15 @@ extension Model {
     }
 
     /// The Scene picker's selection: a flashing custom scene is asked about first (`confirm`, the
-    /// window's), as everywhere a person starts one.
+    /// window's), as everywhere a person starts one; so is one of the bulb's stored scenes, which
+    /// can't be judged.
     func sceneChoice(_ confirm: ConfirmFlashing) -> Binding<SceneChoice> {
         Binding(
             get: { self.currentSceneChoice },
             set: { choice in
                 switch choice {
-                case .builtin(let id): self.setScene(id)
+                case .builtin(let id):
+                    confirm(Scenes.name(id), flashes: Scenes.isStoredSlot(id), unknown: true) { self.setScene(id) }
                 case .custom(let id):
                     guard let s = self.library.customScene(id) else { return }
                     confirm(s.name, flashes: self.flashes(s)) { self.playAsked(s) }

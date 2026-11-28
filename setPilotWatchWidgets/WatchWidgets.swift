@@ -203,6 +203,7 @@ struct StatusView: View {
         case .accessoryCorner:
             Image(systemName: symbol)
                 .font(.title2)
+                .accessibilityLabel("Bulb") // not its symbol's name; the label says how it is
                 .widgetLabel { Text(status) }
         case .accessoryInline:
             Label(status, systemImage: symbol)
@@ -317,6 +318,7 @@ struct PresetView: View {
         case .accessoryCorner:
             Image(systemName: "square.grid.2x2.fill")
                 .foregroundStyle(colour)
+                .accessibilityLabel("Preset") // not its symbol's name
                 .widgetLabel { Text(name) }
         case .accessoryInline:
             Label(name, systemImage: "square.grid.2x2")

@@ -172,12 +172,15 @@ final class PhoneLink: NSObject {
 
     /// A quiet read of the state is on its way.
     @ObservationIgnored private var refreshing = false
+    /// Siri or Shortcuts actions waiting for the session, or for their answer (WatchIntents.swift).
+    @ObservationIgnored var intentsWaiting = 0
 
     /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach. Not while one
-    /// is still on its way: the iPhone answers one at a time, and each can wait for the bulb, so
-    /// they'd pile up ahead of a tap.
+    /// is still on its way, or an action is waiting to go: the iPhone answers one at a time, and
+    /// each can wait for the bulb, so they'd pile up ahead of a tap (whose answer brings the state).
     func refresh() {
-        guard WCSession.default.activationState == .activated, WCSession.default.isReachable, !refreshing else { return }
+        guard WCSession.default.activationState == .activated, WCSession.default.isReachable, !refreshing,
+              intentsWaiting == 0 else { return }
         refreshing = true
         send(.state, quiet: true) { [weak self] _ in self?.refreshing = false }
     }
@@ -287,7 +290,7 @@ final class PhoneLink: NSObject {
             guard let self, let i = self.waitingURLs.firstIndex(where: { $0.url == url && $0.at == at }) else { return }
             self.waitingURLs.remove(at: i)
             self.stopWaiting(url)
-            self.error = "Can't reach your iPhone, so that wasn't sent. Keep it nearby, with Bluetooth or Wi-Fi on."
+            self.error = "Couldn't reach your iPhone, so that wasn't sent. Keep it nearby, with Bluetooth or Wi-Fi on."
         }
     }
 

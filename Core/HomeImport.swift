@@ -8,12 +8,19 @@ extension Model {
     func apply(_ plan: HomeImportPlan, setKeys: Bool) -> String {
         let chosen = plan.items.filter(\.include)
         var named = 0
+        var keys = 0
         for item in chosen {
-            if let n = item.newName, n != item.currentName {
+            // A name of only spaces isn't one.
+            let n = item.newName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let n, !n.isEmpty, n != item.currentName {
                 rename(mac: item.mac, to: n)
                 named += 1
             }
-            if setKeys, let key = plan.key { setSigningKey(key, for: item.mac) }
+            // Counted only where the key changes.
+            if setKeys, let key = plan.key, signingKey(for: item.mac) != key {
+                setSigningKey(key, for: item.mac)
+                keys += 1
+            }
         }
         // Bulbs not used here yet join Your Bulbs, without an address until one's found (on the
         // Mac by searching for the MAC; on iPhone, entered).
@@ -22,7 +29,6 @@ extension Model {
             knownBulbs.append(KnownBulb(address: "", mac: item.mac))
             added += 1
         }
-        let keys = setKeys && plan.key != nil ? chosen.count : 0
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         // Only what happened (a zero count left out).
         var parts: [String] = []

@@ -11,6 +11,19 @@ struct LibraryFile: Codable, Sendable {
     var customScenes: [CustomScene]
     /// Per bulb, keyed by lower-case MAC.
     var cctScales: [String: [CCTScale]]
+
+    /// The format a file says it's in, read on its own: a newer file may not decode as this one.
+    static func format(of data: Data) -> Int? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["setPilotLibrary"] as? Int
+    }
+
+    /// "2 presets and 1 CCT scale": zero counts left out.
+    static func counted(presets: Int, scenes: Int, scales: Int) -> String {
+        func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
+        let parts = [(presets, "preset"), (scenes, "custom scene"), (scales, "CCT scale")].filter { $0.0 > 0 }.map { count($0.0, $0.1) }
+        guard let last = parts.last else { return "" }
+        return parts.count == 1 ? last : parts.dropLast().joined(separator: ", ") + " and " + last
+    }
 }
 
 extension Library {
@@ -129,8 +142,8 @@ extension Library {
 
     /// Adds what's in `file`, keeping everything else; an item that's already here is replaced, or
     /// added again as a copy (a new ID, and a name of its own), or left as it is. Returns what
-    /// changed, as a sentence.
-    func merge(_ file: LibraryFile, clash: Clash = .replace) -> String {
+    /// changed, as a sentence starting with `verb`.
+    func merge(_ file: LibraryFile, clash: Clash = .replace, verb: String = "Imported") -> String {
         var file = scalesOfOtherBulbsRenumbered(file)
         if clash == .keepBoth { file = copiesOfClashes(file) }
         // A shared preset carries no favourite (it's the sender's): one replacing yours keeps yours.
@@ -163,8 +176,7 @@ extension Library {
         }
         cctScales = scales
         guard presetCount + sceneCount + scaleCount > 0 else { return "Nothing new to add: you already have all of these." }
-        func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
-        return "Imported \(count(presetCount, "preset")), \(count(sceneCount, "custom scene")) and \(count(scaleCount, "CCT scale"))."
+        return "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))."
     }
 }
 
@@ -231,21 +243,28 @@ struct LibraryTransferSection: View {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
-            let file = try JSONDecoder().decode(LibraryFile.self, from: Data(contentsOf: url))
-            // A later format may mean something else by the same keys: don't guess.
-            guard file.setPilotLibrary <= 1 else {
+            let data = try Data(contentsOf: url)
+            // A later format may mean something else by the same keys: don't guess. Read first,
+            // since a newer file may not decode here at all.
+            let format = LibraryFile.format(of: data)
+            if let format, format > 1 {
                 result = "That library file is from a newer version of setPilot. Update setPilot here to import it."
+                return
+            }
+            guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
+                // setPilot's, but not readable here: likely newer (a colour this version lacks, say).
+                result = format != nil
+                    ? "That library file couldn't be read: it may be from a newer version of setPilot. Update setPilot here to import it."
+                    : "That isn't a setPilot library file."
                 return
             }
             // Items already here: asked about first (IncomingItems).
             // (After any other still being asked about; the main window asks, opened for it on the Mac.)
             if model.library.clashes(file) > 0 {
-                IncomingItems.shared.offer(file)
+                IncomingItems.shared.offer(file, imported: true)
             } else {
                 result = model.library.merge(file)
             }
-        } catch is DecodingError {
-            result = "That isn't a setPilot library file."
         } catch {
             result = "Couldn't import: \(error.localizedDescription)"
         }

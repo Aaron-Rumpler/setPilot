@@ -19,10 +19,15 @@ final class HandoffRouter {
         case .cctScale(let id): scaleToSelect = id
         case .lightShow: if let info, info["media"] != nil || info["show"] != nil { lightShowResume = info }
         case .controls:
-            // A Compose draft from the other device: carried on here, in Compose.
-            if let draft = info?["draft"] as? [String: Any] {
-                Shared.model.takeDraft(draft)
-                Shared.model.composing = true
+            // A Compose draft from the other device: carried on here, in Compose (only with a bulb
+            // set up: without one, Compose isn't shown).
+            let hasBulb = !(UserDefaults.standard.string(forKey: Model.addressKey) ?? "").isEmpty
+            if let draft = info?["draft"] as? [String: Any], hasBulb {
+                let model = Shared.model
+                // Said first: takeDraft's own note (a scene missing here) matters more.
+                if model.composing, model.draft.loaded { model.status = "The draft here was replaced by the one from your other device." }
+                model.takeDraft(draft)
+                model.composing = true
             }
         default: break
         }
@@ -47,13 +52,33 @@ private struct HandoffAdvertiser: ViewModifier {
     let route: HandoffRoute?
     /// Only while it's on screen: a view under a pushed one stays alive, but isn't where you are.
     @State private var showing = false
+    /// The activity as last filled, marked to be filled again when what it carries changes.
+    @State private var filled = Filled()
+
+    private final class Filled {
+        weak var activity: NSUserActivity?
+    }
+
+    /// What the activity carries besides the route (the light show's files and roughly where it
+    /// is, Compose's draft), read here so that a change re-runs this. Nothing else tells SwiftUI.
+    private var carried: String {
+        if route == .lightShow, let p = LightShowPlayer.current {
+            return "\(p.mediaName ?? "")|\(p.showName ?? "")|\(p.isPlaying)|\(p.currentCue ?? -1)"
+        }
+        if route == .controls, Shared.model.composing {
+            return Shared.model.draft.handoffInfo.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        }
+        return ""
+    }
 
     func body(content: Content) -> some View {
         #if WIZ_ICLOUD
         content
             .onAppear { showing = true }
             .onDisappear { showing = false }
+            .onChange(of: carried) { filled.activity?.needsSave = true }
             .userActivity(route?.activityType ?? HandoffRoute.types[0], isActive: showing && route != nil) { activity in
+                filled.activity = activity
                 route?.fill(activity)
                 if route == .lightShow { activity.addUserInfoEntries(from: LastShow.handoffInfo(LightShowPlayer.current)) }
                 if route == .controls, Shared.model.composing { activity.addUserInfoEntries(from: ["draft": Shared.model.draft.handoffInfo]) }

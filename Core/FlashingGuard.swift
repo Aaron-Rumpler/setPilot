@@ -5,10 +5,12 @@ import SwiftUI
 /// question comes up in the window it was asked from; "Don't Ask Again" turns the question off
 /// (Settings turns it back on), leaving the note on the scene or show.
 struct ConfirmFlashing {
-    fileprivate var run: (_ name: String, _ flashes: Bool, _ action: @escaping () -> Void) -> Void = { _, _, action in action() }
+    fileprivate var run: (_ name: String, _ flashes: Bool, _ unknown: Bool, _ action: @escaping () -> Void) -> Void = { _, _, _, action in action() }
 
-    func callAsFunction(_ name: String, flashes: Bool, _ action: @escaping () -> Void) {
-        run(name, flashes, action)
+    /// `unknown`: it can't be judged (one of the bulb's stored scenes), so it's asked about as one
+    /// that may flash.
+    func callAsFunction(_ name: String, flashes: Bool, unknown: Bool = false, _ action: @escaping () -> Void) {
+        run(name, flashes, unknown, action)
     }
 }
 
@@ -31,13 +33,14 @@ final class FlashingRequests {
     struct Request {
         let id = UUID()
         let name: String
+        var unknown = false
         let action: () -> Void
     }
     /// Waiting to be asked about, in turn (a second may come before the first is taken).
     var requests: [Request] = []
 
-    func ask(_ name: String, _ action: @escaping () -> Void) {
-        requests.append(Request(name: name, action: action))
+    func ask(_ name: String, unknown: Bool = false, _ action: @escaping () -> Void) {
+        requests.append(Request(name: name, unknown: unknown, action: action))
         #if os(macOS)
         HandoffRouter.shared.open(.controls) // the main window, where it's asked
         #endif
@@ -64,17 +67,19 @@ private struct FlashingGuard: ViewModifier {
     let elsewhere: Bool
     @AppStorage(Flashing.askKey) private var asks = true
     @State private var pending: Pending?
-    /// The name in the question, kept while it closes (pending is cleared first).
-    @State private var shownName = ""
+    /// The question, kept while it closes (pending is cleared first).
+    @State private var shown = Pending(name: "", action: {})
 
     struct Pending {
         let name: String
+        var unknown = false
         let action: () -> Void
     }
 
     /// The question's title: the scene by name, or with none (the console's inline scene) just this.
-    private func title(_ name: String) -> String {
-        name.isEmpty ? "This scene flashes quickly" : "“\(name)” flashes quickly"
+    private func title(_ p: Pending) -> String {
+        let verb = p.unknown ? "may flash quickly" : "flashes quickly"
+        return p.name.isEmpty ? "This scene \(verb)" : "“\(p.name)” \(verb)"
     }
 
     /// One question at a time: another asked meanwhile waits its turn.
@@ -101,20 +106,20 @@ private struct FlashingGuard: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, action in
+            .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, unknown, action in
                 guard asks && flashes else { return action() }
-                if elsewhere { FlashingRequests.shared.ask(name, action) } else { ask(Pending(name: name, action: action)) }
+                if elsewhere { FlashingRequests.shared.ask(name, unknown: unknown, action) } else { ask(Pending(name: name, unknown: unknown, action: action)) }
             })
-            .onChange(of: pending?.name) { _, name in if let name { shownName = name } }
+            .onChange(of: pending?.name) { if let p = pending { shown = p } }
             .onChange(of: FlashingRequests.shared.requests.map(\.id), initial: true) {
                 guard outside, !FlashingRequests.shared.requests.isEmpty else { return }
                 let all = FlashingRequests.shared.requests
                 FlashingRequests.shared.requests = []
                 for r in all {
-                    if asks { ask(Pending(name: r.name, action: r.action)) } else { r.action() }
+                    if asks { ask(Pending(name: r.name, unknown: r.unknown, action: r.action)) } else { r.action() }
                 }
             }
-            .alert(title(pending?.name ?? shownName),
+            .alert(title(pending ?? shown),
                    isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil; next() } }),
                    presenting: pending) { p in
                 Button("Play") { p.action() }
@@ -123,8 +128,10 @@ private struct FlashingGuard: ViewModifier {
                     p.action()
                 }
                 Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text("It changes the light more than 3 times a second. Take care if you, or anyone who'll see it, is sensitive to flashing light.")
+            } message: { p in
+                Text(p.unknown
+                     ? "It's stored on the bulb, so setPilot can't tell how fast it changes the light. Take care if you, or anyone who'll see it, is sensitive to flashing light."
+                     : "It changes the light more than 3 times a second. Take care if you, or anyone who'll see it, is sensitive to flashing light.")
             }
     }
 }
@@ -151,7 +158,7 @@ extension Model {
     /// meanwhile; the Mac's menu bar panel asks in the main window, others stay usable).
     func playAsked(_ scene: CustomScene) {
         guard library.customScene(scene.id) == scene else {
-            status = "“\(scene.name)” was changed or deleted while being asked about; start it again."
+            status = "“\(scene.name)” was changed or deleted while being asked about; start it again"
             return
         }
         _ = playCustom(scene)
@@ -163,8 +170,10 @@ extension Model {
         return library.customSceneOf(now.colour) == scene
     }
 
-    /// Whether a colour plays a custom scene that flashes (at its own speed, if it has one).
+    /// Whether a colour plays a custom scene that flashes (at its own speed, if it has one), or
+    /// one of the bulb's stored scenes (which can't be judged, so counts).
     func flashes(_ colour: LightColour?) -> Bool {
+        if colour?.isStoredScene == true { return true }
         guard case let .custom(id, speed)? = colour, let scene = library.customScene(id) else { return false }
         return flashes(scene, speed: speed)
     }
@@ -181,10 +190,10 @@ extension Model {
             let scene = library.customSceneOf(preset.colour)
             // Once confirmed, through the shared runner: it waits for the bulb if need be (a quick
             // action that launched the app), and the status says why if it doesn't go.
-            FlashingRequests.shared.ask(preset.name) { [self] in
+            FlashingRequests.shared.ask(preset.name, unknown: preset.colour.isStoredScene) { [self] in
                 // What was asked about: not a preset edited or deleted meanwhile.
                 guard unchanged(library.presets.first(where: { $0.id == preset.id }), asked: preset, scene: scene) else {
-                    status = "“\(preset.name)” was changed or deleted while being asked about; start it again."
+                    status = "“\(preset.name)” was changed or deleted while being asked about; start it again"
                     return
                 }
                 Task { if let error = await Scripting.run(.preset(preset.id.uuidString), confirmed: true, on: self).error { status = error.message } }

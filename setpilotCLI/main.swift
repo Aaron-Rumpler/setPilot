@@ -51,22 +51,8 @@ func takeFlag(_ name: String) -> Bool {
 func takeOption(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name) else { return nil }
     // Given twice: which was meant isn't clear.
-    if args[(i + 1)...].contains(name) {
-        if CommandLine.arguments.contains("--json") {
-            print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) is given more than once.\"}}")
-        } else {
-            FileHandle.standardError.write(Data("setpilot: \(name) is given more than once\n".utf8))
-        }
-        exit(2)
-    }
-    guard i + 1 < args.count else {
-        if CommandLine.arguments.contains("--json") { // taken out of args already
-            print("{\"error\":{\"code\":\"bad-arguments\",\"message\":\"\(name) needs a value.\"}}")
-        } else {
-            FileHandle.standardError.write(Data("setpilot: \(name) needs a value\n".utf8))
-        }
-        exit(2)
-    }
+    if args[(i + 1)...].contains(name) { badArguments("\(name) is given more than once.") }
+    guard i + 1 < args.count else { badArguments("\(name) needs a value.") }
     let value = args[i + 1]
     args.removeSubrange(i...(i + 1))
     return value
@@ -348,7 +334,10 @@ lines { data in
 }
 guard let result = answer else {
     if timedOut {
-        fail(ScriptError(code: .notAnswering, message: command.changes
+        // (Switching bulbs may still happen too.)
+        var switching = false
+        if case .switchBulb = command { switching = true }
+        fail(ScriptError(code: .notAnswering, message: command.changes || switching
             ? "The setPilot app didn't answer in time (the change may still go through)."
             : "The setPilot app didn't answer in time."))
     }

@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import Foundation
 import Observation
 import WidgetKit
@@ -18,6 +21,21 @@ final class WidgetPublisher {
         publishLibrary()
         observe()
         keepHeardCurrent()
+        #if os(macOS)
+        // Asleep, nothing keeps the state current (and a Mac can sleep for days): shown as not
+        // known meanwhile, and as it is again once awake. So it needn't be re-stamped often while
+        // the Mac's awake (LightSnapshot.trustedFor is longer here), which saves reloads.
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                WidgetPublisher.shared.asleep = true
+                WidgetPublisher.shared.publishUnknown()
+            }
+        }
+        workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { WidgetPublisher.shared.awoke() }
+        }
+        #endif
         // "Ask before playing" turned on or off: which presets a widget refuses.
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -31,6 +49,9 @@ final class WidgetPublisher {
 
     private var scheduled = false
     private var lastSnapshot: LightSnapshot?
+    /// The Mac's going to sleep: the not-known state stays until it's awake (a change as the
+    /// network goes mustn't write over it).
+    private var asleep = false
 
     private func observe() {
         guard let model else { return }
@@ -52,7 +73,7 @@ final class WidgetPublisher {
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             scheduled = false
-            guard let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
+            guard !asleep, let snapshot = model?.snapshot, snapshot != lastSnapshot else { return }
             lastSnapshot = snapshot
             publishState(snapshot)
         }
@@ -127,7 +148,7 @@ final class WidgetPublisher {
             while true {
                 try? await Task.sleep(for: .seconds(60))
                 guard let self else { return }
-                guard let s = self.lastSnapshot, let heard = self.model?.heardAt, heard != self.publishedHeard else { continue }
+                guard !self.asleep, let s = self.lastSnapshot, let heard = self.model?.heardAt, heard != self.publishedHeard else { continue }
                 let due = self.shownStale(within: 5 * 60)
                 self.saveState(s)
                 if due { self.reload() }
@@ -135,9 +156,33 @@ final class WidgetPublisher {
         }
     }
 
+    /// The app's going to the background (iPhone): what the widgets hold may be up to minutes
+    /// older than the state (they're reloaded only as it's about to show as the last known), and
+    /// nothing rewrites it once the app's suspended. Reloaded once, with when the bulb was last
+    /// heard, so they show it as the bulb's own for the whole of `trustedFor` from now.
+    func enteringBackground() {
+        guard !asleep, let s = lastSnapshot, let heard = model?.heardAt, heard > (reloadedHeard ?? .distantPast) else { return }
+        saveState(s)
+        reload()
+    }
+
     /// The Mac app is quitting: nothing keeps the state current once it's gone, so the widgets and
     /// controls show it as not known (until one of them hears from the bulb itself).
     func appTerminating() {
+        publishUnknown()
+    }
+
+    /// Back from sleep: the state as it is now (read again as the connection's made afresh),
+    /// reloaded whether or not it differs from the one before sleep.
+    private func awoke() {
+        asleep = false
+        lastSnapshot = nil
+        widgetKey = nil
+        schedule()
+    }
+
+    /// Shown as not known, until the app (or a widget, hearing from the bulb itself) says again.
+    private func publishUnknown() {
         guard let model else { return }
         var s = lastSnapshot ?? model.snapshot
         s.isOn = nil

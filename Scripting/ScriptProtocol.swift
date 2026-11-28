@@ -189,7 +189,8 @@ enum ScriptSocket {
 }
 
 extension ScriptCommand {
-    /// Whether it changes the light (or which bulb), rather than only reading.
+    /// Whether it changes the light, rather than only reading. (Switching bulbs counts as
+    /// reading: it's the way out of one that isn't answering.)
     var changes: Bool {
         switch self {
         // Switching bulbs is the way out of one that isn't answering, and lands on another.

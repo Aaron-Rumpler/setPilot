@@ -138,8 +138,18 @@ extension Model {
     func takeDraft(_ info: [String: Any]) {
         let d = draft
         d.take(info)
-        if case .builtin(let id) = d.scene, !Scenes.isKnown(id) { d.scene = .builtin(1) }
-        if case .custom(let id) = d.scene, library.customScene(id) == nil { d.scene = .builtin(1) }
+        // A scene this device hasn't (not synced yet, say): the picker needs a choice, but Colour
+        // goes off, as `loadDraft` has it, so Send doesn't play the stand-in.
+        var missing = false
+        if case .builtin(let id) = d.scene, !Scenes.isKnown(id) { missing = true }
+        if case .custom(let id) = d.scene, library.customScene(id) == nil { missing = true }
+        if missing {
+            if d.includeColour, d.kind == .scenes {
+                status = "The draft's scene isn't on this device yet, so Change Colour was turned off."
+            }
+            d.scene = .builtin(1)
+            if d.kind == .scenes { d.includeColour = false }
+        }
         d.scaleID = draftScale?.id
         clampDraftKelvin()
         (d.r, d.g, d.b, d.c, d.w) = (min(max(d.r, 0), 255), min(max(d.g, 0), 255), min(max(d.b, 0), 255),
@@ -168,6 +178,11 @@ extension Model {
                 }
                 sendDraftNow(change)
             }
+            return
+        }
+        // One of the bulb's stored scenes can't be judged: always asked about.
+        if case .scene(let id, _)? = change.colour, Scenes.isStoredSlot(id) {
+            confirm(Scenes.name(id), flashes: true, unknown: true) { [weak self] in self?.sendDraftNow(change) }
             return
         }
         sendDraftNow(change)

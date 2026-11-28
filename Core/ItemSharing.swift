@@ -53,7 +53,17 @@ struct SharedItem: Transferable {
 @MainActor @Observable
 final class IncomingItems {
     static let shared = IncomingItems()
-    var pending: LibraryFile? {
+
+    /// A file being asked about, with a token of its own, so a question closing clears only the
+    /// file it asked about (not the next one, or one another window has just shown).
+    struct Offer: Identifiable {
+        let id = UUID()
+        let file: LibraryFile
+        /// From Import… in Settings, rather than shared with this device.
+        var imported = false
+    }
+
+    var pending: Offer? {
         didSet {
             if pending != nil { showWindow() } else if oldValue != nil, !waiting.isEmpty { // closed: the next
                 let next = waiting.removeFirst()
@@ -66,7 +76,7 @@ final class IncomingItems {
             }
         }
     }
-    private var waiting: [LibraryFile] = []
+    private var waiting: [Offer] = []
     /// Why something opened here couldn't be added.
     var problem: String? { didSet { if problem != nil { showWindow() } } }
 
@@ -100,13 +110,17 @@ final class IncomingItems {
     }
 
     private func take(data: Data) {
-        guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
-            problem = "That isn't a setPilot preset, scene or library."
+        // A later format may mean something else by the same keys: don't guess. Read first, since
+        // a newer file may not decode here at all; one that's setPilot's but doesn't decode is
+        // likely newer too (a colour this version lacks, say).
+        let format = LibraryFile.format(of: data)
+        let newer = "That's from a newer version of setPilot. Update setPilot here to add it."
+        if let format, format > 1 {
+            problem = newer
             return
         }
-        // A later format may mean something else by the same keys: don't guess.
-        guard file.setPilotLibrary <= 1 else {
-            problem = "That's from a newer version of setPilot. Update setPilot here to add it."
+        guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
+            problem = format != nil ? newer : "That isn't a setPilot preset, scene or library."
             return
         }
         guard !file.presets.isEmpty || !file.customScenes.isEmpty || file.cctScales.values.contains(where: { !$0.isEmpty }) else {
@@ -117,13 +131,22 @@ final class IncomingItems {
     }
 
     /// Asks about a file to add: now, or after the one still being asked about.
-    func offer(_ file: LibraryFile) {
-        if pending != nil { waiting.append(file) } else { pending = file }
+    func offer(_ file: LibraryFile, imported: Bool = false) {
+        let offer = Offer(file: file, imported: imported)
+        if pending != nil { waiting.append(offer) } else { pending = offer }
     }
 
+    /// Done asking about `offer`: cleared only if it's still the one being asked about.
+    func finish(_ offer: Offer) {
+        if pending?.id == offer.id { pending = nil }
+    }
+
+    /// The items by name, or for more than a few (a whole library), how many of each.
     static func summary(of f: LibraryFile) -> String {
         let names = f.presets.map(\.name) + f.customScenes.map(\.name) + f.cctScales.values.flatMap { $0.map(\.name) }
-        return names.map { "“\($0)”" }.joined(separator: ", ")
+        guard names.count > 4 else { return names.map { "“\($0)”" }.joined(separator: ", ") }
+        return LibraryFile.counted(presets: f.presets.count, scenes: f.customScenes.count,
+                                   scales: f.cctScales.values.reduce(0) { $0 + $1.count })
     }
 }
 
@@ -136,38 +159,49 @@ private struct IncomingItemsPrompt: ViewModifier {
     let model: Model
     /// The text kept while the alert closes (problem is cleared first).
     @State private var shownProblem = ""
-    /// The question as it was, kept while the alert closes (pending is cleared first, and once
-    /// added, every item would count as already here).
-    @State private var shown = Question(clashes: 0, summary: "")
+    /// The question as it was asked, kept while the alert closes (once added, every item would
+    /// count as already here).
+    @State private var shown: Kept?
 
     private struct Question {
         var clashes: Int
         var summary: String
     }
 
-    private var asked: Question? {
-        IncomingItems.shared.pending.map { Question(clashes: model.library.clashes($0), summary: IncomingItems.summary(of: $0)) }
+    private struct Kept {
+        var id: UUID
+        var question: Question
+    }
+
+    private func question(for offer: IncomingItems.Offer) -> Question {
+        if let shown, shown.id == offer.id { return shown.question }
+        return Question(clashes: model.library.clashes(offer.file), summary: IncomingItems.summary(of: offer.file))
     }
 
     func body(content: Content) -> some View {
         let incoming = IncomingItems.shared
-        let question = asked ?? shown
-        let clashes = question.clashes
+        // presenting: the file is handed to the buttons, so it doesn't matter whether dismissing
+        // clears the binding before or after their actions run; the setter clears only this file.
+        let presented = incoming.pending
+        let clashes = (presented.map { question(for: $0) } ?? shown?.question)?.clashes ?? 0
         content.alert(clashes > 0 ? "You already have some of these" : "Add to setPilot?",
-                      isPresented: Binding(get: { incoming.pending != nil }, set: { if !$0 { close() } })) {
-            if clashes > 0 {
-                Button("Replace Mine") { add(.replace) }
-                Button("Keep Both") { add(.keepBoth) }
-                Button("Add Only the New Ones") { add(.skip) }
+                      isPresented: Binding(get: { incoming.pending != nil },
+                                           set: { if !$0, let presented { close(presented) } }),
+                      presenting: presented) { offer in
+            if question(for: offer).clashes > 0 {
+                Button("Replace Mine") { add(offer, .replace) }
+                Button("Keep Both") { add(offer, .keepBoth) }
+                Button("Add Only the New Ones") { add(offer, .skip) }
             } else {
-                Button("Add") { add(.replace) }
+                Button("Add") { add(offer, .replace) }
             }
-            Button("Cancel", role: .cancel) { close() }
-        } message: {
-            if clashes > 0 {
-                Text("\(question.summary): \(clashes == 1 ? "one is" : "\(clashes) are") already here. Replace yours with these, keep both (the new ones as copies), or add only the ones you don't have?")
+            Button("Cancel", role: .cancel) { close(offer) }
+        } message: { offer in
+            let q = question(for: offer)
+            if q.clashes > 0 {
+                Text("\(q.summary): \(q.clashes == 1 ? "one is" : "\(q.clashes) are") already here. Replace yours with these, keep both (the new ones as copies), or add only the ones you don't have?")
             } else {
-                Text("\(question.summary).")
+                Text("\(q.summary).")
             }
         }
         .onChange(of: incoming.problem) { _, text in if let text { shownProblem = text } }
@@ -178,15 +212,19 @@ private struct IncomingItemsPrompt: ViewModifier {
         }
     }
 
-    private func add(_ clash: Library.Clash) {
-        if let question = asked { shown = question }
+    private func add(_ offer: IncomingItems.Offer, _ clash: Library.Clash) {
+        keep(offer)
         // What was added, as an import without clashes says it.
-        if let file = IncomingItems.shared.pending { model.status = model.library.merge(file, clash: clash) }
-        IncomingItems.shared.pending = nil
+        model.status = model.library.merge(offer.file, clash: clash, verb: offer.imported ? "Imported" : "Added")
+        IncomingItems.shared.finish(offer)
     }
 
-    private func close() {
-        if let question = asked { shown = question }
-        IncomingItems.shared.pending = nil
+    private func close(_ offer: IncomingItems.Offer) {
+        keep(offer)
+        IncomingItems.shared.finish(offer)
+    }
+
+    private func keep(_ offer: IncomingItems.Offer) {
+        if shown?.id != offer.id { shown = Kept(id: offer.id, question: question(for: offer)) }
     }
 }

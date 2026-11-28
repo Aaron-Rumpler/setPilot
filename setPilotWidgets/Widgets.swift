@@ -217,6 +217,7 @@ struct PresetsWidgetView: View {
                 .overlay {
                     if preset.colour.isScene {
                         Image(systemName: "sparkles").font(.caption2.weight(.bold)).foregroundStyle(.white)
+                            .accessibilityLabel("Scene") // not its symbol's name
                     }
                 }
             Text(preset.name)
@@ -308,6 +309,7 @@ struct StatusWidgetView: View {
                     .font(.title2)
                     .foregroundStyle(on ? Color.yellow : Color.secondary)
                     .widgetAccentable()
+                    .accessibilityHidden(true) // the status line below says it
                 Text(s?.bulbName ?? "setPilot").font(.headline).lineLimit(1)
                 Text(statusText(s, at: entry.date)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 0)
@@ -395,6 +397,8 @@ struct PowerValueProvider: ControlValueProvider {
     func currentValue() async throws -> PowerState {
         let s = SharedStore.snapshot
         // Not heard from lately: not taken as answering (the app may have been suspended or quit).
+        // Judged only when the system asks: a control has no timeline, so unlike the widgets it
+        // doesn't turn to the last known by itself (the app's reloads, as it quits say, do).
         let answering = s?.link == .connected && s?.isOn != nil && s?.isStale(at: .now) != true
         return PowerState(on: s?.isOn ?? false, answering: answering, status: statusText(s))
     }

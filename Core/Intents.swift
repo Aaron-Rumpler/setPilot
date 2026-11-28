@@ -66,7 +66,8 @@ struct PowerIntent: AppIntent {
         case .toggle: nil
         }
         let state = try await script(.power(on), fade: fade)
-        return .result(dialog: state.on == false ? "Switched off." : "Switched on.", snippetIntent: LightSnippetIntent())
+        return .result(dialog: state.on == false ? "Switched off." : state.on == true ? "Switched on." : "Done; the bulb's state isn't known yet.",
+                       snippetIntent: LightSnippetIntent())
     }
 }
 
@@ -167,6 +168,7 @@ struct SetPilotShortcuts: AppShortcutsProvider {
             intent: PlayCustomSceneIntent(),
             phrases: [
                 "Play \(\.$scene) in \(.applicationName)",
+                "Play a custom scene in \(.applicationName)",
             ],
             shortTitle: "Play Custom Scene",
             systemImageName: "sparkles"

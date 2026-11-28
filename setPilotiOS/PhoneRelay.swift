@@ -83,22 +83,6 @@ final class PhoneRelay: NSObject {
         }
     }
 
-    /// The custom scene a command plays that flashes quickly (at the speed it would play), by
-    /// name: from the app, its Siri and Shortcuts actions, and Compose alike.
-    private static func flashingScene(_ command: WatchCommand, _ model: Model) -> String? {
-        switch command {
-        case .compose(let change):
-            guard model.flashes(change.colour) else { return nil }
-            return change.colour.flatMap(model.library.customSceneOf)?.name ?? "That scene"
-        case .script(let data, _):
-            guard let scripted = try? JSONDecoder().decode(ScriptCommand.self, from: data) else { return nil }
-            return Scripting.flashingScene(scripted, model)
-        default:
-            guard let (runnerCommand, _) = Self.scripted(command) else { return nil }
-            return Scripting.flashingScene(runnerCommand, model)
-        }
-    }
-
     /// The change number before the command in hand sent its change (set once the bulb's ready).
     private var sentFrom: Int?
 
@@ -117,16 +101,11 @@ final class PhoneRelay: NSObject {
     /// its own order). Waiting for the bulb to settle is otherwise left to the caller.
     private func run(_ command: WatchCommand, asked: Date, arrived: Date) async -> Outcome {
         guard let model else { return .now(LightSnapshot()) }
-        // A scene that flashes quickly is asked about before it plays, which the watch can't do:
-        // started on the iPhone instead (not queued there to start later, unasked-for).
-        if Flashing.asks, let name = Self.flashingScene(command, model) {
-            return .scripted(ScriptResult(state: Scripting.state(of: model),
-                                          error: ScriptError(code: .refused, message: BulbReasons.flashes(name))))
-        }
         if let (scripted, fade) = Self.scripted(command) {
             // The runner waits for the bulb as everything does (failing at once just after it's
             // been found not answering; not for switching bulbs or listing, which don't need it).
-            return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, arrived: arrived, on: model))
+            // It also refuses a scene that flashes quickly, once it knows the bulb's speed.
+            return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, arrived: arrived, fromWatch: true, on: model))
         }
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps.")
@@ -200,6 +179,14 @@ final class PhoneRelay: NSObject {
             // when this answers. Later state reaches it as the iPhone's usual updates.
             return .now(model.snapshot)
         case .compose(let change):
+            // A scene that flashes quickly is asked about before it plays, which the watch can't
+            // do: started on the iPhone instead (not queued there to start later, unasked-for).
+            // Judged once the light's been read: until then its speed isn't known.
+            if Flashing.asks, model.flashes(change.colour) {
+                let name = change.colour.flatMap(model.library.customSceneOf)?.name ?? "That scene"
+                return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                              error: ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: true))))
+            }
             guard model.send(change) else {
                 return .scripted(ScriptResult(state: Scripting.state(of: model),
                                               error: ScriptError(code: .refused, message: model.refusal ?? model.status)))
@@ -254,7 +241,7 @@ final class PhoneRelay: NSObject {
             let session = WCSession.default
             guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
             if session.isReachable {
-                if let data = try? JSONEncoder().encode(Self.stamped(snapshot)) {
+                if let data = try? JSONEncoder().encode(stamped(snapshot)) {
                     session.sendMessage([WatchKey.snapshot: data], replyHandler: nil, errorHandler: nil)
                 }
             } else if snapshot.link == .connected {
@@ -269,28 +256,33 @@ final class PhoneRelay: NSObject {
 
     /// The state as it goes to the watch, marked with when, and when the bulb was last heard
     /// (its complications show it as only the last known once that's long ago).
-    private static func stamped(_ snapshot: LightSnapshot) -> LightSnapshot {
+    private func stamped(_ snapshot: LightSnapshot) -> LightSnapshot {
         var s = snapshot
         s.sentAt = .now
         s.heardAt = snapshot.link == .connected ? Shared.model.heardAt : nil
+        sentHeard = s.heardAt
         return s
     }
 
-    /// When the bulb was last heard, in the state last put in the application context.
-    private var contextHeard: Date?
+    /// When the bulb was last heard, in the state last sent to the watch (a message, a reply or
+    /// the context): what its complications go by.
+    private var sentHeard: Date?
 
     /// The bulb is heard from all the time without the state changing, so the context (which the
-    /// complications go by while the watch app isn't open) is written again once its state is
-    /// about to show there as only the last known. Not more often: each one can reload them.
+    /// complications go by while the watch app isn't open) is written again once the state last
+    /// sent is about to show there as only the last known, or none sent says when it was heard.
+    /// Not more often: each one can reload them.
     private func keepContextHeardCurrent() {
         Task { [weak self] in
             while true {
                 try? await Task.sleep(for: .seconds(60))
                 guard let self else { return }
                 // (While it's reachable, the watch app's own reads bring it.)
-                guard let heard = self.contextHeard, let now = self.model?.heardAt, now > heard,
-                      Date.now.addingTimeInterval(5 * 60) >= heard.addingTimeInterval(LightSnapshot.trustedFor),
+                guard let model = self.model, model.snapshot.link == .connected, let now = model.heardAt,
                       WCSession.isSupported(), !WCSession.default.isReachable else { continue }
+                if let sent = self.sentHeard {
+                    guard now > sent, Date.now.addingTimeInterval(5 * 60) >= sent.addingTimeInterval(LightSnapshot.trustedFor) else { continue }
+                }
                 self.updateContext()
             }
         }
@@ -342,12 +334,8 @@ final class PhoneRelay: NSObject {
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
         if let data = UserDefaults.standard.data(forKey: PresetUsage.key) { context[WatchKey.presetUsage] = data }
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
-        if model.snapshot.link == .connected {
-            let s = Self.stamped(model.snapshot)
-            if let data = try? encoder.encode(s) {
-                context[WatchKey.snapshot] = data
-                contextHeard = s.heardAt
-            }
+        if model.snapshot.link == .connected, let data = try? encoder.encode(stamped(model.snapshot)) {
+            context[WatchKey.snapshot] = data
         } else if let kept = session.applicationContext[WatchKey.snapshot] as? Data,
                   var s = try? JSONDecoder().decode(LightSnapshot.self, from: kept) {
             // The last good state, with the settings it carries as they are now (snapping, the
@@ -373,6 +361,13 @@ extension PhoneRelay: WCSessionDelegate {
     }
 
     nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in self.updateContext() }
+    }
+
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        guard !session.isReachable else { return }
+        // Gone out of reach (the wrist went down): the state went by message while it was here,
+        // and the context, which the complications go by now, may hold one from long before.
         Task { @MainActor in self.updateContext() }
     }
 
@@ -464,7 +459,7 @@ extension PhoneRelay: WCSessionDelegate {
         default: break
         }
         var response: [String: Any] = [:]
-        if let data = try? JSONEncoder().encode(Self.stamped(snapshot)) { response[WatchKey.snapshot] = data }
+        if let data = try? JSONEncoder().encode(stamped(snapshot)) { response[WatchKey.snapshot] = data }
         if case .deviceInfo = command, let model,
            let data = try? JSONEncoder().encode(model.deviceInfoEntries) {
             response[WatchKey.deviceInfo] = data

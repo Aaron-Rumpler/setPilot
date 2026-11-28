@@ -30,11 +30,9 @@ struct SetPilotMobileApp: App {
             case .power(let on): .power(on)
             case .dimDelta(let delta): .adjustBrightness(delta)
             }
-            // A tap by a person, which can't be asked about first: a scene that flashes is started
-            // in the app instead.
-            if Flashing.asks, let name = Scripting.flashingScene(script, Shared.model) {
-                throw WidgetError(localizedStringResource: "\(BulbReasons.flashes(name))")
-            }
+            // A tap by a person, which can't be asked about first: the runner refuses a scene that
+            // flashes (started in the app instead), judged once it knows the bulb's speed (an app
+            // the tap woke hasn't read the light yet).
             let result = await Scripting.run(script, on: Shared.model)
             if let error = result.error { throw WidgetError(localizedStringResource: "\(error.message)") }
         }
@@ -54,6 +52,8 @@ struct SetPilotMobileApp: App {
         .commands { LightCommands(model: model) } // an iPad's keyboard: ⇧⌘P, ⌘1–⌘9
         .onChange(of: phase) { _, new in
             if new == .active { model.resume() }
+            // The widgets with when the bulb was last heard, once, before the app's suspended.
+            if new == .background { WidgetPublisher.shared.enteringBackground() }
         }
     }
 }

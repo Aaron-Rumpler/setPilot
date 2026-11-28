@@ -10,7 +10,8 @@ import Foundation
 // reason there are no raw bulb methods here.
 //
 // With x-callback-url, x-success gets `state` (the light as JSON, as `setpilot get --json`
-// prints it); x-error gets `errorCode` and `errorMessage`.
+// prints it), or for list links `items` (bulbs without their addresses); x-error gets
+// `errorCode` and `errorMessage`.
 
 enum URLCommands {
     /// The command a URL asks for, or why it isn't one.
@@ -37,8 +38,11 @@ enum URLCommands {
             default: nil
             }
         }
-        // "switch on" for colour, temperature and scenes: only true means anything.
+        // "switch on" for colour, temperature and scenes: only true means anything (false leaves
+        // it as it is); anything else is an error, not ignored without a word. (Power's own `on`
+        // takes "toggle" too.)
         let switchOn: Bool? = flag("on") == true ? true : nil
+        if action != "power", value("on") != nil, flag("on") == nil { return .failure(bad("on is true or false.")) }
 
         let parsed: Result<ScriptCommand, ScriptError> = {
         switch action {

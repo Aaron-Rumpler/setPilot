@@ -45,7 +45,7 @@ struct SceneEntity: AppEntity {
 
     /// The bulb's built-in scenes (not its stored slots, 256–265).
     static var all: [SceneEntity] {
-        Scenes.all.filter { !(256...265).contains($0.id) }.map { SceneEntity(id: $0.id, name: $0.name) }
+        Scenes.all.filter { !Scenes.isStoredSlot($0.id) }.map { SceneEntity(id: $0.id, name: $0.name) }
     }
 }
 
@@ -118,14 +118,14 @@ struct LightStateEntity: AppEntity {
 
     var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(summary)") }
 
+    /// As the watch says it too (Common/LightSummary.swift).
     var summary: String {
-        guard on else { return "\(bulb): off" }
-        let colour = switch mode {
-        case "temperature": "\(kelvin ?? 0) K" + (scale.map { " (\($0))" } ?? "")
+        let colour: String? = switch mode {
+        case "temperature": LightSummary.temperature(kelvin ?? 0, scale: scale)
         case "scene": scene ?? "a scene"
-        default: "a colour"
+        default: nil
         }
-        return "\(bulb): on, \(colour), \(brightness)%"
+        return LightSummary.text(bulb: bulb, on: on, colour: colour, brightness: brightness)
     }
 
     init(_ s: LightState) {
@@ -183,8 +183,12 @@ struct SetColourIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        .result(value: LightStateEntity(try await script(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)))
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
+        // Said, for Siri, as the watch says it (and kept for later while the bulb's off).
+        let s = try await script(.colour(r: r, g: g, b: b, c: c, w: w, power: switchOn ? true : nil), fade: fade)
+        return .result(value: LightStateEntity(s), dialog: s.on == false
+                       ? "Colour set, for when the bulb's switched on (it's off)."
+                       : "Colour set.")
     }
 }
 
@@ -208,9 +212,13 @@ struct SetTemperatureIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
         let scaleQuery = bulbOwn ? "bulb" : scale?.id.uuidString
-        return .result(value: LightStateEntity(try await script(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil), fade: fade)))
+        let s = try await script(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil), fade: fade)
+        let k = s.temp ?? kelvin
+        return .result(value: LightStateEntity(s), dialog: s.on == false
+                       ? "\(k) K, for when the bulb's switched on (it's off)."
+                       : "\(k) K.")
     }
 }
 
@@ -232,8 +240,11 @@ struct SetSceneIntent: AppIntent {
     init() {}
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> {
-        .result(value: LightStateEntity(try await script(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)))
+    func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
+        let s = try await script(.scene(String(scene.id), speed: speed, power: switchOn ? true : nil), fade: fade)
+        return .result(value: LightStateEntity(s), dialog: s.on == false
+                       ? "\(scene.name), for when the bulb's switched on (it's off)."
+                       : "Playing \(scene.name).")
     }
 }
 
@@ -242,7 +253,9 @@ struct PlayCustomSceneIntent: AppIntent {
     static let description = IntentDescription("Plays one of your setPilot custom scenes.")
 
     @Parameter(title: "Custom Scene") var scene: CustomSceneEntity
-    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
+    // On unless asked otherwise, as a preset: Siri's "Play … in setPilot" goes by the default,
+    // and a scene asked for by name is meant to be seen.
+    @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: true)
     var switchOn: Bool
 
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
@@ -254,8 +267,10 @@ struct PlayCustomSceneIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<LightStateEntity> & ProvidesDialog {
         // Said, for Siri (an App Shortcut), as the watch says it.
-        let state = LightStateEntity(try await script(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade))
-        return .result(value: state, dialog: "Playing \(scene.name).")
+        let s = try await script(.customScene(scene.id.uuidString, power: switchOn ? true : nil), fade: fade)
+        return .result(value: LightStateEntity(s), dialog: s.on == false
+                       ? "\(scene.name), for when the bulb's switched on (it's off)."
+                       : "Playing \(scene.name).")
     }
 }
 

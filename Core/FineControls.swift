@@ -15,7 +15,8 @@ struct FineValueEditor: View {
     @ScaledMetric(relativeTo: .title2) private var fieldWidth: CGFloat = 110
 
     private var typedValue: Double? {
-        Double(typed.trimmingCharacters(in: .whitespaces)).flatMap { range.contains($0) ? $0.rounded() : nil }
+        // Rounded first: 100.4 is 100, in a 0–100 range.
+        Double(typed.trimmingCharacters(in: .whitespaces)).map { $0.rounded() }.flatMap { range.contains($0) ? $0 : nil }
     }
 
     var body: some View {
@@ -58,14 +59,14 @@ struct FineValueEditor: View {
         }
         .padding()
         .frame(minWidth: 240)
-        .onAppear { typed = String(Int(value)) }
+        .onAppear { typed = String(Int(value.rounded())) }
     }
 
     private func adjust(_ delta: Double) { set(min(max((typedValue ?? value) + delta, range.lowerBound), range.upperBound)) }
 
     private func set(_ v: Double) {
         value = v
-        typed = String(Int(v))
+        typed = String(Int(v.rounded()))
     }
 }
 

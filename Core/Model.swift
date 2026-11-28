@@ -229,6 +229,7 @@ final class Model {
         ticket += 1
         rawTicket = 0 // set again if this one's raw
         rawStateTicket = 0
+        changeNote = nil
         refusal = nil
         pilotAnswered = false
         speedAwaited = false
@@ -1284,20 +1285,30 @@ final class Model {
         if m == .custom, let range = activeScale?.range {
             customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
         }
-        if m == .scene { useSendableScene(restarting: was != .scene) }
+        let note = m == .scene ? useSendableScene(restarting: was != .scene) : nil
         sendPilot([.colour], retry: true)
+        if let note { // said once it's answered, not replaced by "Bulb confirmed"
+            changeNote = note
+            status = note
+        }
     }
 
     /// A scene that can't be sent (Rhythm, a newer ID, or a deleted custom scene): start with the
     /// first one instead, so switching to Scene mode always sends something.
     /// `restarting`: coming back to Scene mode, the custom scene from before would start again
     /// unasked: not one that flashes (it's asked about where it's started).
-    private func useSendableScene(restarting: Bool = false) {
+    /// Returns why, if it was a scene that flashes.
+    @discardableResult
+    private func useSendableScene(restarting: Bool = false) -> String? {
         let custom = sceneId == Scenes.inlineCustom ? customSceneId.flatMap(library.customScene) : nil
         let flashes = restarting && Flashing.asks && custom.map { self.flashes($0) } == true
-        guard flashes || (!Scenes.isKnown(sceneId) && custom == nil) else { return }
+        guard flashes || (!Scenes.isKnown(sceneId) && custom == nil) else { return nil }
         sceneId = Scenes.all[0].id
         customSceneId = nil
+        if flashes, let custom {
+            return "“\(custom.name)” flashes quickly, so it wasn't started again: play it from Custom Scenes to be asked first"
+        }
+        return nil
     }
 
     func setScene(_ id: Int) {
@@ -1327,10 +1338,8 @@ final class Model {
                 rawTicket = ticket // settled by its reply
             }
             settleUnanswered(ticket)
-            // The last change's read-back and delayed speed aren't this one's.
+            // The last change's read-back isn't this one's (its delayed speed went with startChange).
             verifyTask?.cancel()
-            delayedSpeed?.cancel()
-            delayedSpeed = nil
             verifyingSeq = nil
             pending = false
         }
@@ -1391,10 +1400,8 @@ final class Model {
             lastPilot = p.filter { reported.contains($0.key) && !($0.key == "dimming" && p["dimDelta"] != nil) }
                 .compactMapValues { ($0 as? NSNumber)?.intValue }
             // A change like the controls' own: an earlier one's reason and delayed speed no longer
-            // apply, and a switch that goes unanswered puts the power back.
+            // apply (startChange), and a switch that goes unanswered puts the power back.
             startChange()
-            delayedSpeed?.cancel()
-            delayedSpeed = nil
             let before = isOn
             if let s = p["state"] as? Bool { isOn = s } else if changesLight { isOn = true }
             if before != isOn { powerBefore = before }
@@ -1418,6 +1425,7 @@ final class Model {
             }
             lastMethod = "setState"
             stateTicket = ticket
+            pilotSwitches = false // an earlier switch's: this one's answer settles how it is
             lastSent = JSONText.compact(p)
             bulb.send(method, sent(p), retry: retry, tag: ticket)
             endConsoleWait(after: retry)
@@ -1626,10 +1634,10 @@ final class Model {
         return send(LightChange(colour: .custom(scene.id, speed: speed), power: switchOn ? true : nil, fade: fadeForControls))
     }
 
-    /// Applies a preset, switching the bulb on if it's off.
+    /// Applies a preset, switching the bulb on if it's off (with `fade`, or the controls' fade).
     @discardableResult
-    func apply(_ preset: Preset) -> Bool {
-        let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fadeForControls))
+    func apply(_ preset: Preset, fade: Int? = nil) -> Bool {
+        let sent = send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true, fade: fade ?? fadeForControls))
         if sent {
             PresetUsage.record(preset.id.uuidString, in: .standard) // habits: the Smart Stack, quick actions
             SiriDonation.applied(preset) // and Siri Suggestions
@@ -1678,7 +1686,6 @@ final class Model {
         return true
     }
 
-    /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.
     /// A preset whose custom scene or CCT scale has been deleted (so it can't be sent).
     func presetPartGone(_ preset: Preset) -> Bool {
         switch preset.colour {
@@ -1687,6 +1694,8 @@ final class Model {
         default: false
         }
     }
+
+    /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.
 
     private func select(_ colour: LightColour, speed: inout Int?) -> Bool {
         switch colour {
@@ -1974,8 +1983,8 @@ final class Model {
             return started && !was
         }
         // Not connected: connect, unless one is still under way (its reads retry for as long as
-        // anything waits, answerTimeout, so starting another on every watch poll only restarts them). One left stuck connecting
-        // (the app suspended part way) is redone.
+        // anything waits, answerTimeout, so starting another on every watch poll only restarts
+        // them). One left stuck connecting (the app suspended part way) is redone.
         if link != .connected {
             // Not answering: tried again now on a fresh connection, keeping what's known of it.
             if link == .unreachable, Date.now.timeIntervalSince(lastConnect) > 3 {
@@ -2207,6 +2216,8 @@ final class Model {
     @ObservationIgnored private var rawTicket = 0
     /// A raw setState's (the console's): its answer is reported as such.
     @ObservationIgnored private var rawStateTicket = 0
+    /// What to say about the change in hand once it's answered, instead of the usual.
+    @ObservationIgnored private var changeNote: String?
     /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
     @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).
@@ -2230,7 +2241,7 @@ final class Model {
         // Already settled (as not known: its speed cut off by a fresh connection): nothing to say.
         guard results[ticket] == nil else { return }
         mismatch = diffs.isEmpty ? nil : "Bulb didn't apply: " + diffs.joined(separator: ", ")
-        status = diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state"
+        status = changeNote ?? (diffs.isEmpty ? "Bulb confirmed" : "Showing the bulb's actual state")
         settle(ticket, mismatch.map { .notApplied($0) } ?? .done)
     }
 
@@ -2371,7 +2382,7 @@ final class Model {
             // this comes straight after the speed went: a late answer to one of the scene's tries.
             if pilotAnswered, let sent = speedSentAt, !sceneRetried || Date.now.timeIntervalSince(sent) > 0.03 { speedAwaited = false }
             pilotAnswered = true
-            status = "setPilot ok" // as before; a read-back that follows says more
+            status = changeNote ?? "setPilot ok" // as before; a read-back that follows says more
         case "setState":
             status = ticket == rawStateTicket ? "setState ok" : isOn == false ? "Switched off" : "Switched on"
             if ticket == stateTicket { settle(ticket, .done) } // nothing to read back for setState

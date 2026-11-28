@@ -65,9 +65,10 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var canControl: Bool { link == .connected && isOn != nil }
 
     /// How long a state is shown as the bulb's own after it was last heard. The Mac app keeps
-    /// running, so its widgets are refreshed less often (they have a reload budget).
+    /// running, and marks the state not known as it quits or the Mac sleeps, so its widgets need
+    /// re-stamping only rarely (they have a reload budget).
     #if os(macOS)
-    static let trustedFor: TimeInterval = 60 * 60
+    static let trustedFor: TimeInterval = 6 * 60 * 60
     #else
     static let trustedFor: TimeInterval = 15 * 60
     #endif

@@ -90,7 +90,8 @@ private struct LightShowScreen: View {
             guard !Task.isCancelled else { return }
             if let media { player.openMedia(media) }
             if let show { player.openShow(show) }
-            guard let position, position > 0 else { opening = nil; return }
+            // Only in the media that came with it: not in what happened to be open here already.
+            guard let position, position > 0, let media, player.mediaURL == media else { opening = nil; return }
             // Once the media's length is known (seeking before then is clamped to the start).
             for _ in 0..<50 where player.duration == 0 { try? await Task.sleep(for: .milliseconds(100)) }
             guard !Task.isCancelled else { return }

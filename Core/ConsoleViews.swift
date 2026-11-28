@@ -42,6 +42,12 @@ struct ConsoleComposer: View {
     /// The method being sent: the one typed, or the one in the raw message (if any).
     private var currentMethod: String { rawMode ? (rawObject?["method"] as? String ?? "") : trimmedMethod }
     private var known: BulbAPI.Method? { BulbAPI.method(currentMethod) }
+    /// What to say before sending: the method's caution, or for raw text that won't parse here
+    /// (the bulb's own parser may still take it), that of any cautioned method named in it.
+    private var caution: String? {
+        guard rawMode, rawObject == nil else { return known?.caution }
+        return BulbAPI.all.first { $0.caution != nil && raw.contains($0.name) }?.caution
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -333,7 +339,7 @@ struct ConsoleComposer: View {
         // playing flash: asked about first, as anywhere in the app.
         // Raw text that won't parse here but has a scene in it: the bulb's own parser may still
         // take it, and what it would play can't be judged, so asked about anyway.
-        if !flashOK, rawMode, rawObject == nil, raw.contains("elm") {
+        if !flashOK, rawMode, rawObject == nil, raw.contains("elm") || raw.contains("sceneId") {
             confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
             return
         }
@@ -343,7 +349,13 @@ struct ConsoleComposer: View {
             // At least the bulb's (and as timed): it plays at that until a speed of its own lands,
             // if one does (with the scene in the same setPilot, the bulb may drop it).
             let judged = max(speed ?? 0, model.flashingSpeed)
-            if let p = params, let elm = p["elm"] as? [String: Any], Flashing.flashes(elm: elm, speed: judged) {
+            // One of the bulb's stored scenes plays instead of any inline elm, and can't be judged.
+            if let id = (params?["sceneId"] as? NSNumber)?.intValue, Scenes.isStoredSlot(id) {
+                confirmFlashing(Scenes.name(id), flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                return
+            }
+            // An elm that isn't an object can't be judged either.
+            if let p = params, let elm = p["elm"], (elm as? [String: Any]).map({ Flashing.flashes(elm: $0, speed: judged) }) ?? true {
                 confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
                 return
             }
@@ -354,7 +366,7 @@ struct ConsoleComposer: View {
                 return
             }
         }
-        if !confirmed, let caution = known?.caution {
+        if !confirmed, let caution {
             confirming = caution
             return
         }

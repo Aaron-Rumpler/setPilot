@@ -77,7 +77,8 @@ struct LightShow {
     }
 
     /// More than 3 changes of the light in some second (Flashing), or a cue that starts an
-    /// inline scene that flashes itself, at the fastest speed it may play at.
+    /// inline scene that flashes itself, at the fastest speed it may play at, or one that can't
+    /// be judged (one of the bulb's stored scenes, or an elm that can't be read).
     var flashes: Bool { flashes(bulbSpeed: 100) }
 
     /// The same, with the bulb on `bulbSpeed` before the show: the bulb keeps a speed it's given,
@@ -86,7 +87,11 @@ struct LightShow {
     func flashes(bulbSpeed: Int) -> Bool {
         let speeds = cues.compactMap { ($0.pilot["speed"] as? NSNumber)?.intValue }
         let fastest = max(100, bulbSpeed, speeds.max() ?? 100)
-        if cues.contains(where: { ($0.pilot["elm"] as? [String: Any]).map { Flashing.flashes(elm: $0, speed: fastest) } ?? false }) {
+        if cues.contains(where: { cue in
+            if let id = (cue.pilot["sceneId"] as? NSNumber)?.intValue, Scenes.isStoredSlot(id) { return true }
+            guard let elm = cue.pilot["elm"] else { return false }
+            return (elm as? [String: Any]).map { Flashing.flashes(elm: $0, speed: fastest) } ?? true
+        }) {
             return true
         }
         var start = 0
@@ -738,6 +743,10 @@ final class LightShowPlayer {
         seeking = false
         plainSeek = nil
         mediaName = nil
+        mediaURL = nil // nor what Handoff offers
+        show = nil
+        showName = nil
+        showURL = nil
         hasVideo = false
         duration = 0
         mediaAccess?.stopAccessingSecurityScopedResource()

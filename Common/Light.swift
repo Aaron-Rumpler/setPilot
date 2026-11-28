@@ -49,6 +49,10 @@ enum Scenes {
 
     static func isKnown(_ id: Int) -> Bool { all.contains { $0.id == id } }
 
+    /// The bulb's stored scenes (Custom Mode 1–10): whatever the WiZ app saved in them, which
+    /// nothing here can judge for flashing, so they're always asked about (FlashingGuard).
+    static func isStoredSlot(_ id: Int) -> Bool { (256...265).contains(id) }
+
     /// What the bulb may report that isn't a scene you can set: pywizlight's 1000 for Rhythm
     /// (schdPsetId), or an ID newer than this list.
     static func name(_ id: Int) -> String {
@@ -100,6 +104,12 @@ enum LightColour: Codable, Hashable, Sendable {
         case .scene, .custom: true
         default: false
         }
+    }
+
+    /// One of the bulb's stored scenes, which can't be judged for flashing.
+    var isStoredScene: Bool {
+        if case .scene(let id, _) = self { return Scenes.isStoredSlot(id) }
+        return false
     }
 
     /// A rough idea of the colour, for swatches: the LEDs as sRGB primaries plus the whites'
@@ -162,8 +172,10 @@ enum Flashing {
     }
 
     /// An inline scene as sent to the bulb (setPilot's `elm`, a light show cue's say), at `speed`.
+    /// One whose steps can't be read is taken to flash: it can't be judged, and the bulb may
+    /// still play it.
     static func flashes(elm: [String: Any], speed: Int = 100) -> Bool {
-        guard let steps = elm["steps"] as? [[NSNumber]] else { return false }
+        guard let steps = elm["steps"] as? [[NSNumber]] else { return true }
         let timing = (elm["modifier"] as? NSNumber).flatMap { CustomScene.Timing(rawValue: $0.intValue) } ?? .steps
         // Mode, the channels, kelvin and level are the look; hold and fade the time, and the
         // jitter byte (bits 2–4 the hold's, 5–7 the fade's) how much shorter each can be.
