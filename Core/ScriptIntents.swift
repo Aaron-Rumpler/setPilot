@@ -3,9 +3,10 @@ import AppIntents
 // Shortcuts actions beyond the basic ones in Intents.swift, all run through Scripting (the same as
 // the URL scheme and the command-line tool), with the bulb's answer reported as an error.
 
+/// `asked`: when it was asked for, if it waited before this (its time counts from then).
 @MainActor
-func script(_ command: ScriptCommand, fade: Int? = nil) async throws -> LightState {
-    let result = await Scripting.run(command, fade: fade, on: Shared.model)
+func script(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now) async throws -> LightState {
+    let result = await Scripting.run(command, fade: fade, asked: asked, on: Shared.model)
     if let error = result.error { throw WizIntentError(localizedStringResource: "\(error.message)") }
     return result.state ?? Scripting.state(of: Shared.model)
 }

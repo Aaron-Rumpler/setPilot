@@ -183,6 +183,9 @@ final class PhoneRelay: NSObject {
             // Why, as Shortcuts say it (a refusal, too late, or not answering), with its kind.
             return .scripted(ScriptResult(state: Scripting.state(of: model), error: Scripting.notReady(model, left: left, waitStarted: waitStarted)))
         }
+        // Already on the mode asked for (the watch's copy was behind): nothing goes, so not too
+        // late either. Compared with the state just read.
+        if case .modeChoice(let choice) = command, choice == model.mode.choice { return .now(model.snapshot) }
         // Ready, but with too little of its time left for a try and its answer: not sent.
         let deadline = asked.addingTimeInterval(Model.answerTimeout)
         let reads = switch command { case .sync, .deviceInfo, .updatePreset: true; default: false } // nothing sent

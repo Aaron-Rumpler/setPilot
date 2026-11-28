@@ -31,7 +31,7 @@ enum Scripting {
         if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, onlyByName: true, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
         }
-        if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, onlyByName: true, model) {
+        if !confirmed, Flashing.asks, let name = flashingScene(command, onlyByName: true, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
                 message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
         }
@@ -45,7 +45,7 @@ enum Scripting {
             if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, onlyByName: true, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
             }
-            if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, onlyByName: true, model) {
+            if !confirmed, Flashing.asks, let name = flashingScene(command, onlyByName: true, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
             }
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
@@ -120,7 +120,7 @@ enum Scripting {
         case .scene:
             s.mode = "scene"
             s.speed = Int(model.speed)
-            if model.sceneId == Scenes.inlineCustom, let id = model.customSceneId, let scene = model.library.customScene(id) {
+            if model.sceneId == Scenes.inlineCustom, let scene = model.knownCustomScene {
                 s.scene = scene.name
             } else {
                 s.scene = Scenes.name(model.sceneId)
@@ -216,7 +216,7 @@ enum Scripting {
             guard fade == nil else { throw bad("A speed change can't have a fade.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
             // As for `set --speed`: a scene that can't be sent can't have a speed either.
-            let live = model.sceneId == Scenes.inlineCustom && model.customSceneId.flatMap(model.library.customScene) != nil
+            let live = model.sceneId == Scenes.inlineCustom && model.knownCustomScene != nil
             guard live || Scenes.isKnown(model.sceneId) else { throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.") }
             var v = model.values
             v.speed = Double(speed)
@@ -313,7 +313,7 @@ enum Scripting {
             // The scene it's on, at that speed (as `speed` checks it).
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
-            let live = model.sceneId == Scenes.inlineCustom && model.customSceneId.flatMap(model.library.customScene) != nil
+            let live = model.sceneId == Scenes.inlineCustom && model.knownCustomScene != nil
             guard live || Scenes.isKnown(model.sceneId) else { throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.") }
             speedOnly = speed
         }
@@ -373,7 +373,7 @@ enum Scripting {
     static func readyToJudge(_ model: Model) async -> ScriptError? {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { return noBulb }
         let started = Date.now
-        guard await model.waitUntilControllable() else {
+        guard await model.waitUntilControllable(fresh: true) else {
             return notReady(model, left: Model.answerTimeout, waitStarted: started)
         }
         return nil
@@ -493,7 +493,7 @@ enum Scripting {
     /// The custom scene playing, by name, if it flashes at `speed` (and didn't as it is).
     static func playingFlashes(at speed: Int, _ model: Model) -> String? {
         guard model.mode == .scene, model.sceneId == Scenes.inlineCustom,
-              let s = model.customSceneId.flatMap(model.library.customScene) else { return nil }
+              let s = model.knownCustomScene else { return nil }
         return s.flashes(atSpeed: speed) && !s.flashes(atSpeed: Int(model.speed)) ? s.name : nil
     }
 

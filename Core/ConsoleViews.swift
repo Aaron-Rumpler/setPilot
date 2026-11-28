@@ -349,7 +349,7 @@ struct ConsoleComposer: View {
     private var playingUnjudged: String? {
         guard model.mode == .scene, !Scenes.isBuiltIn(model.sceneId) else { return nil }
         if model.sceneId == Scenes.inlineCustom {
-            return model.customSceneId.flatMap(model.library.customScene) == nil ? "" : nil
+            return model.knownCustomScene == nil ? "" : nil
         }
         return Scenes.name(model.sceneId)
     }

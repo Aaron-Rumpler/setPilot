@@ -42,10 +42,18 @@ enum QuickActions {
                 model.status = BulbReasons.presetGone
                 return
             }
+            // Its time counts from the tap, not from the end of the wait below.
+            let tapped = Date.now
+            // The wait can take seconds: something to show it's on its way.
+            let name = model.library.presets.first(where: { $0.id == id })?.name ?? ""
+            let waiting = "Applying “\(name)”…"
+            model.status = waiting
             Task {
                 // Whether to ask is judged once the light's been read (the app may have been in the
                 // background while the speed was changed elsewhere): otherwise one that flashes at
                 // the real speed would go unasked, and be refused.
+                // (Outside the runner's queue: a Shortcut or widget started during the wait goes
+                // first, and this lands after it. Rare, so accepted.)
                 if let error = await Scripting.readyToJudge(model) {
                     model.status = error.message
                     return
@@ -55,9 +63,10 @@ enum QuickActions {
                     return
                 }
                 if model.asksFirst(p) {
+                    if model.status == waiting { model.status = "" } // asked about instead
                     model.applyAsking(p)
                 } else {
-                    run(.preset(id.uuidString), model)
+                    run(.preset(id.uuidString), model, asked: tapped)
                 }
             }
         default:
@@ -67,10 +76,11 @@ enum QuickActions {
 
     /// A person's tap, with nothing to ask (or not asking): as if started in setPilot, so a preset
     /// of a scene stored on the bulb plays with "Ask before playing" off, as from the app's menus.
-    private static func run(_ command: ScriptCommand, _ model: Model) {
+    /// `asked`: when it was tapped (its time counts from then).
+    private static func run(_ command: ScriptCommand, _ model: Model, asked: Date = .now) {
         let started = !Flashing.asks
         Task {
-            if let error = await Scripting.run(command, confirmed: started, on: model).error { model.status = error.message }
+            if let error = await Scripting.run(command, asked: asked, confirmed: started, on: model).error { model.status = error.message }
         }
     }
 }

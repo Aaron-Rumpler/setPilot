@@ -25,6 +25,7 @@ struct OpenCustomSceneIntent: OpenIntent {
     func perform() async throws -> some IntentResult {
         // Started by a person, so asked about first if it flashes (in the app, which this opens).
         let model = Shared.model
+        let tapped = Date.now // its time counts from the tap, not from the end of this wait
         // Judged once the light's been read: by a stale speed, one that flashes at the real one
         // would go unasked, and be refused.
         if let error = await Scripting.readyToJudge(model) { throw WizIntentError(localizedStringResource: "\(error.message)") }
@@ -42,7 +43,7 @@ struct OpenCustomSceneIntent: OpenIntent {
             }
             return .result()
         }
-        _ = try await script(.customScene(target.id.uuidString, power: true))
+        _ = try await script(.customScene(target.id.uuidString, power: true), asked: tapped)
         return .result()
     }
 }
@@ -60,6 +61,7 @@ struct OpenPresetIntent: OpenIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let model = Shared.model
+        let tapped = Date.now // its time counts from the tap, not from the end of this wait
         // Started by a person in the app (which this opens): asked about if it flashes, and one
         // of a scene stored on the bulb plays as from the app's menus (scripting unconfirmed
         // never starts one). Judged once the light's been read, as for a custom scene.
@@ -73,13 +75,13 @@ struct OpenPresetIntent: OpenIntent {
             // connecting to. Confirmed, as from the menus, so a stored scene isn't refused; and
             // checked again before it goes, as it was here (not edited meanwhile, by a sync say).
             if preset.colour.isStoredScene {
-                let result = await Scripting.run(.preset(preset.id.uuidString), confirmed: true,
+                let result = await Scripting.run(.preset(preset.id.uuidString), asked: tapped, confirmed: true,
                                                  askedAbout: .preset(preset, scene: model.library.customSceneOf(preset.colour)), on: model)
                 if let error = result.error { throw WizIntentError(localizedStringResource: "\(error.message)") }
                 return .result()
             }
         }
-        _ = try await script(.preset(target.id.uuidString))
+        _ = try await script(.preset(target.id.uuidString), asked: tapped)
         return .result()
     }
 }
