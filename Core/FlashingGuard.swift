@@ -7,14 +7,15 @@ import SwiftUI
 struct ConfirmFlashing {
     /// With no guard to ask (a view outside every `flashingGuard`): one that flashes doesn't go
     /// unasked.
-    fileprivate var run: (_ name: String, _ flashes: Bool, _ unknown: Bool, _ action: @escaping () -> Void) -> Void = { _, flashes, _, action in
+    fileprivate var run: (_ name: String, _ flashes: Bool, _ unknown: Bool, _ unparsed: Bool, _ action: @escaping () -> Void) -> Void = { _, flashes, _, _, action in
         if !flashes || !Flashing.asks { action() }
     }
 
     /// `unknown`: it can't be judged (one of the bulb's stored scenes), so it's asked about as one
-    /// that may flash.
-    func callAsFunction(_ name: String, flashes: Bool, unknown: Bool = false, _ action: @escaping () -> Void) {
-        run(name, flashes, unknown, action)
+    /// that may flash. `unparsed`: with `unknown`, the console's text that setPilot can't read
+    /// (there may be no scene in it at all).
+    func callAsFunction(_ name: String, flashes: Bool, unknown: Bool = false, unparsed: Bool = false, _ action: @escaping () -> Void) {
+        run(name, flashes, unknown, unparsed, action)
     }
 }
 
@@ -38,13 +39,14 @@ final class FlashingRequests {
         let id = UUID()
         let name: String
         var unknown = false
+        var unparsed = false
         let action: () -> Void
     }
     /// Waiting to be asked about, in turn (a second may come before the first is taken).
     var requests: [Request] = []
 
-    func ask(_ name: String, unknown: Bool = false, _ action: @escaping () -> Void) {
-        requests.append(Request(name: name, unknown: unknown, action: action))
+    func ask(_ name: String, unknown: Bool = false, unparsed: Bool = false, _ action: @escaping () -> Void) {
+        requests.append(Request(name: name, unknown: unknown, unparsed: unparsed, action: action))
         #if os(macOS)
         HandoffRouter.shared.open(.controls) // the main window, where it's asked
         #endif
@@ -77,11 +79,13 @@ private struct FlashingGuard: ViewModifier {
     struct Pending {
         let name: String
         var unknown = false
+        var unparsed = false
         let action: () -> Void
     }
 
     /// The question's title: the scene by name, or with none (the console's inline scene) just this.
     private func title(_ p: Pending) -> String {
+        if p.unparsed { return "This message may make the light flash quickly" }
         let verb = p.unknown ? "may flash quickly" : "flashes quickly"
         return p.name.isEmpty ? "This scene \(verb)" : "“\(p.name)” \(verb)"
     }
@@ -110,9 +114,13 @@ private struct FlashingGuard: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, unknown, action in
+            .environment(\.confirmFlashing, ConfirmFlashing { name, flashes, unknown, unparsed, action in
                 guard asks && flashes else { return action() }
-                if elsewhere { FlashingRequests.shared.ask(name, unknown: unknown, action) } else { ask(Pending(name: name, unknown: unknown, action: action)) }
+                if elsewhere {
+                    FlashingRequests.shared.ask(name, unknown: unknown, unparsed: unparsed, action)
+                } else {
+                    ask(Pending(name: name, unknown: unknown, unparsed: unparsed, action: action))
+                }
             })
             .onChange(of: pending?.name) { if let p = pending { shown = p } }
             .onChange(of: FlashingRequests.shared.requests.map(\.id), initial: true) {
@@ -120,7 +128,7 @@ private struct FlashingGuard: ViewModifier {
                 let all = FlashingRequests.shared.requests
                 FlashingRequests.shared.requests = []
                 for r in all {
-                    if asks { ask(Pending(name: r.name, unknown: r.unknown, action: r.action)) } else { r.action() }
+                    if asks { ask(Pending(name: r.name, unknown: r.unknown, unparsed: r.unparsed, action: r.action)) } else { r.action() }
                 }
             }
             .alert(title(pending ?? shown),
@@ -133,7 +141,9 @@ private struct FlashingGuard: ViewModifier {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { p in
-                Text(p.unknown
+                Text(p.unparsed
+                     ? "setPilot can't read this message, so it can't tell whether it makes the light flash. Take care if you, or anyone who'll see it, is sensitive to flashing light."
+                     : p.unknown
                      ? "setPilot can't tell how fast it changes the light (a scene stored on the bulb, say). Take care if you, or anyone who'll see it, is sensitive to flashing light."
                      : "It changes the light more than 3 times a second. Take care if you, or anyone who'll see it, is sensitive to flashing light.")
             }

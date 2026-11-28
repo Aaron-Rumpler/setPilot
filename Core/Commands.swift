@@ -352,9 +352,7 @@ enum Scripting {
     /// `sends`: false for a command that sends nothing (it needs no time left for an answer),
     /// asked once the light's been read.
     private static func ready(_ model: Model, sends: () -> Bool = { true }) async throws {
-        guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else {
-            throw ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
-        }
+        guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { throw noBulb }
         let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
         let started = Date.now
         guard await model.waitUntilControllable(timeout: max(left, 0)) else {
@@ -364,6 +362,21 @@ enum Scripting {
         if let deadline, deadline.timeIntervalSinceNow < BulbTiming.tryWaits[0], sends() {
             throw ScriptError(code: .notAnswering, message: Model.tooLate)
         }
+    }
+
+    private static let noBulb = ScriptError(code: .noBulb, message: "Choose a bulb in setPilot first.")
+
+    /// Waits for the light to be read, before a person's tap outside the app's windows (a quick
+    /// action, Spotlight) decides whether to ask first: judged by a stale speed, one that flashes
+    /// at the real one would go unasked and then be refused. Nil once it's ready; otherwise why
+    /// not, as the runner would say (it wouldn't go either way).
+    static func readyToJudge(_ model: Model) async -> ScriptError? {
+        guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { return noBulb }
+        let started = Date.now
+        guard await model.waitUntilControllable() else {
+            return notReady(model, left: Model.answerTimeout, waitStarted: started)
+        }
+        return nil
     }
 
     /// Why a wait for the bulb (of `left` seconds, from `waitStarted`) came to nothing, the same
@@ -397,21 +410,29 @@ enum Scripting {
 
     /// The flashing custom scene a command would play (at its speed), by name: refused where it
     /// can't be asked about first (widgets, the watch, Shortcuts, links, the CLI, AppleScript).
-    /// `onlyByName`: not a speed for the one playing (judged once the light's been read).
+    /// `onlyByName`: not a speed for the one playing, and a custom scene judged at the slowest it
+    /// could play (its own speed, or as timed), not the bulb's speed (judged once the light's been
+    /// read: the state here may be out of date).
     static func flashingScene(_ command: ScriptCommand, onlyByName: Bool = false, _ model: Model) -> String? {
         let lib = model.library
         func scene(_ q: String) -> CustomScene? { find(q, in: lib.customScenes, name: { $0.name }, id: { $0.id.uuidString }) }
+        // The bulb's speed is at least 100 as judged, so flashing at that is flashing at any.
+        func flashes(_ s: CustomScene, speed: Int?) -> Bool {
+            onlyByName ? s.flashes(atSpeed: max(speed ?? 0, 100)) : model.flashes(s, speed: speed)
+        }
         switch command {
         case .preset(let q):
             guard let p = find(q, in: lib.presets, name: { $0.name }, id: { $0.id.uuidString }) else { return nil }
-            return model.flashes(p.colour) ? p.name : nil
+            guard onlyByName, case let .custom(id, speed) = p.colour else { return model.flashes(p.colour) ? p.name : nil }
+            guard let s = lib.customScene(id) else { return nil }
+            return flashes(s, speed: speed) ? p.name : nil
         case .customScene(let q, _):
             guard let s = scene(q) else { return nil }
-            return model.flashes(s) ? s.name : nil
+            return flashes(s, speed: nil) ? s.name : nil
         case .set(let change):
             if let q = change.customScene {
                 guard let s = scene(q) else { return nil }
-                return model.flashes(s, speed: change.speed) ? s.name : nil
+                return flashes(s, speed: change.speed) ? s.name : nil
             }
             // Only a speed (with brightness or power, say) for the custom scene playing.
             guard !onlyByName, let speed = change.speed, change.scene == nil, change.rgbcw == nil, change.temp == nil else { return nil }

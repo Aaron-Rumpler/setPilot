@@ -343,6 +343,17 @@ struct ConsoleComposer: View {
         }
     }
 
+    /// The scene playing, by name ("" for an inline one), if a speed for it can't be judged: not
+    /// built in, and not a custom scene setPilot knows (an inline one the console sent, say, or
+    /// one stored on the bulb).
+    private var playingUnjudged: String? {
+        guard model.mode == .scene, !Scenes.isBuiltIn(model.sceneId) else { return nil }
+        if model.sceneId == Scenes.inlineCustom {
+            return model.customSceneId.flatMap(model.library.customScene) == nil ? "" : nil
+        }
+        return Scenes.name(model.sceneId)
+    }
+
     private func send(confirmed: Bool = false, flashOK: Bool = false) {
         guard canSend else { return }
         // A setPilot with an inline scene that flashes, or a speed that makes the custom scene
@@ -354,15 +365,12 @@ struct ConsoleComposer: View {
         if !flashOK, rawMode, rawObject == nil,
            rawEscapesKey || raw.contains("\\u") || raw.contains("elm") || raw.contains("sceneId")
             || ["setPilot", "setEffect", "syncBroadcastPilot"].contains(where: { raw.contains($0) }) {
-            confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+            confirmFlashing("", flashes: true, unknown: true, unparsed: true) { send(confirmed: confirmed, flashOK: true) }
             return
         }
         if !flashOK, currentMethod == "setPilot" {
             let params = rawMode ? rawObject?["params"] as? [String: Any] : (sendParams ? try? parsed.get() : nil)
             let speed = (params?["speed"] as? NSNumber)?.intValue
-            // At least the bulb's (and as timed): it plays at that until a speed of its own lands,
-            // if one does (with the scene in the same setPilot, the bulb may drop it).
-            let judged = max(speed ?? 0, model.flashingSpeed)
             // One of the bulb's stored scenes plays instead of any inline elm, and can't be judged.
             // Nor can any other ID that isn't built in, sent without an elm object: the bulb plays
             // whatever it keeps under it (a stored scene, or the inline one last sent).
@@ -372,19 +380,26 @@ struct ConsoleComposer: View {
                 return
             }
             // An elm that isn't an object, or whose steps can't be read, can't be judged either.
+            // One that can is judged at the fastest speed (as a light show's are): once sent it's
+            // no custom scene setPilot knows, so a speed sent later can't be judged against it.
             if let p = params, let elm = p["elm"] {
                 let object = elm as? [String: Any]
                 let unknown = object?["steps"] as? [[NSNumber]] == nil
-                if unknown || object.map({ Flashing.flashes(elm: $0, speed: judged) }) == true {
+                if unknown || object.map({ Flashing.flashes(elm: $0, speed: 200) }) == true {
                     confirmFlashing("", flashes: true, unknown: unknown) { send(confirmed: confirmed, flashOK: true) }
                     return
                 }
             }
             let light = ["sceneId", "elm", "r", "g", "b", "c", "w", "temp"]
-            if let p = params, let speed, !light.contains(where: { p[$0] != nil }),
-               let name = Scripting.playingFlashes(at: speed, model) {
-                confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
-                return
+            if let p = params, let speed, !light.contains(where: { p[$0] != nil }) {
+                if let name = Scripting.playingFlashes(at: speed, model) {
+                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                    return
+                }
+                if let name = playingUnjudged {
+                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                    return
+                }
             }
         }
         // setEffect's pulse effect, and a broadcast pilot with a scene in it, may flash or start a
@@ -421,6 +436,10 @@ struct ConsoleComposer: View {
                 }
                 if !lit, let name = speeds.lazy.compactMap({ Scripting.playingFlashes(at: $0, model) }).first {
                     confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                    return
+                }
+                if !lit, !speeds.isEmpty, let name = playingUnjudged {
+                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
                     return
                 }
             }

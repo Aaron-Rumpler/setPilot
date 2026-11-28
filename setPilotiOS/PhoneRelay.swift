@@ -222,17 +222,29 @@ final class PhoneRelay: NSObject {
                                               error: ScriptError(code: .refused, message: model.refusal ?? model.status)))
             }
         case .modeChoice(let choice):
+            // Already on it (the watch's copy was behind): nothing sent, so a scene playing (one
+            // stored on the bulb, say, which the watch never starts) isn't started again.
+            guard choice != model.mode.choice else { return .now(model.snapshot) }
             // Back to Scenes from a stored scene (Custom Mode 1–10): not started again from here,
             // Ask before playing on or off (the watch never starts one), so the first built-in
-            // scene instead, saying why.
-            if choice == .scenes, model.mode != .scene, Scenes.isStoredSlot(model.sceneId) {
-                let stored = Scenes.name(model.sceneId)
+            // scene instead, saying why. So too a custom scene that flashes, while asking: the
+            // watch can't ask (the iPhone's own note would say to start it from Custom Scenes,
+            // which the watch refuses).
+            let custom = model.sceneId == Scenes.inlineCustom ? model.customSceneId.flatMap(model.library.customScene) : nil
+            let skipped: String? = if Scenes.isStoredSlot(model.sceneId) {
+                "“\(Scenes.name(model.sceneId))” is stored on the bulb, so it isn't started from your watch (start it in setPilot on your iPhone)"
+            } else if let custom, Flashing.asks, model.flashes(custom) {
+                "“\(custom.name)” flashes quickly, so it isn't started again from your watch (start it in setPilot on your iPhone, which asks first)"
+            } else {
+                nil
+            }
+            if choice == .scenes, let skipped {
                 model.noteUndoPoint() // how it was, before the scene's replaced
                 model.sceneId = Scenes.all[0].id
                 model.customSceneId = nil
                 let before = model.ticket
                 model.setModeChoice(choice)
-                model.keepNote("“\(stored)” is stored on the bulb, so it isn't started from your watch (start it in setPilot on your iPhone)", since: before)
+                model.keepNote(skipped, since: before)
             } else {
                 model.setModeChoice(choice)
             }

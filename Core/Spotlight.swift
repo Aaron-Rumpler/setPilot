@@ -25,6 +25,9 @@ struct OpenCustomSceneIntent: OpenIntent {
     func perform() async throws -> some IntentResult {
         // Started by a person, so asked about first if it flashes (in the app, which this opens).
         let model = Shared.model
+        // Judged once the light's been read: by a stale speed, one that flashes at the real one
+        // would go unasked, and be refused.
+        if let error = await Scripting.readyToJudge(model) { throw WizIntentError(localizedStringResource: "\(error.message)") }
         if let scene = model.library.customScene(target.id), model.flashes(scene), Flashing.asks {
             // Once confirmed, through the shared runner (it waits for a bulb the launch is still
             // connecting to, and the status says why if it doesn't go).
@@ -59,16 +62,19 @@ struct OpenPresetIntent: OpenIntent {
         let model = Shared.model
         // Started by a person in the app (which this opens): asked about if it flashes, and one
         // of a scene stored on the bulb plays as from the app's menus (scripting unconfirmed
-        // never starts one).
+        // never starts one). Judged once the light's been read, as for a custom scene.
+        if let error = await Scripting.readyToJudge(model) { throw WizIntentError(localizedStringResource: "\(error.message)") }
         if let preset = model.library.presets.first(where: { $0.id == target.id }) {
             if model.asksFirst(preset) {
                 model.applyAsking(preset)
                 return .result()
             }
             // Not asked about: through the runner, which waits for a bulb the launch is still
-            // connecting to. Confirmed, as from the menus, so a stored scene isn't refused.
+            // connecting to. Confirmed, as from the menus, so a stored scene isn't refused; and
+            // checked again before it goes, as it was here (not edited meanwhile, by a sync say).
             if preset.colour.isStoredScene {
-                let result = await Scripting.run(.preset(preset.id.uuidString), confirmed: true, on: model)
+                let result = await Scripting.run(.preset(preset.id.uuidString), confirmed: true,
+                                                 askedAbout: .preset(preset, scene: model.library.customSceneOf(preset.colour)), on: model)
                 if let error = result.error { throw WizIntentError(localizedStringResource: "\(error.message)") }
                 return .result()
             }

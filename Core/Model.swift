@@ -1329,8 +1329,17 @@ final class Model {
     /// The method, if the text is JSON with one, names it for the reply, the log and retries. After
     /// a setPilot or setState the bulb's state is read again so the controls follow.
     func sendRawText(_ text: String, retry: Bool) {
-        let method = Net.json(Data(text.utf8))?["method"] as? String
+        let object = Net.json(Data(text.utf8))
+        let method = object?["method"] as? String
         consoleWaiting = method ?? ""
+        // A colour or scene of its own: not the custom scene played before (as for sendRaw).
+        // Text that won't parse is taken to have one if it may be a pilot (a \u may spell its
+        // method): the bulb's parser may still take it.
+        if let object {
+            if method == "setPilot" || method == "syncBroadcastPilot", Self.setsLight(object["params"]) { customSceneId = nil }
+        } else if ["setPilot", "syncBroadcastPilot", "\\u"].contains(where: { text.contains($0) }) {
+            customSceneId = nil
+        }
         consoleReply = nil
         consoleFailure = nil
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
@@ -1385,6 +1394,9 @@ final class Model {
     /// `params` nil sends the request without a params key.
     func sendRaw(_ method: String, _ params: [String: Any]?, keepOff: Bool, retry: Bool) {
         var p = params ?? [:]
+        // A colour or scene of its own: not the custom scene played before (as for a light show's
+        // cue), or its speed and flashing would be judged by that one.
+        if method == "setPilot" || method == "syncBroadcastPilot", Self.setsLight(params) { customSceneId = nil }
         // Without params, the key stays out (unless "state": false had to be added).
         func sent(_ p: [String: Any]) -> [String: Any]? { params != nil || !p.isEmpty ? p : nil }
         consoleWaiting = method
@@ -1441,6 +1453,17 @@ final class Model {
             bulb.send(method, sent(p), retry: retry)
             endConsoleWait(after: retry)
         }
+    }
+
+    /// The keys of a pilot that give the bulb a colour or scene of its own.
+    private static let lightKeys = ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"]
+
+    /// Whether a console pilot's params give a colour or scene, at any depth (a broadcast's may
+    /// be nested).
+    private static func setsLight(_ value: Any?) -> Bool {
+        if let dict = value as? [String: Any] { return dict.contains { lightKeys.contains($0.key) || setsLight($0.value) } }
+        if let list = value as? [Any] { return list.contains { setsLight($0) } }
+        return false
     }
 
     /// A console change sent once (or raw): not answered within the one timeout, settled so (a
@@ -1882,7 +1905,7 @@ final class Model {
         delayedSpeed = nil
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
         // A colour or scene of its own: not the custom scene played before.
-        if pilot.keys.contains(where: { ["r", "g", "b", "c", "w", "temp", "sceneId", "elm"].contains($0) }) { customSceneId = nil }
+        if pilot.keys.contains(where: { Self.lightKeys.contains($0) }) { customSceneId = nil }
         mismatch = nil
         pilotSwitches = false
         bulb.send("setPilot", pilot, retry: false)

@@ -33,23 +33,41 @@ enum QuickActions {
     /// first, as everywhere a person starts one.
     static func perform(_ item: UIApplicationShortcutItem) {
         let model = Shared.model
-        let command: ScriptCommand
         switch item.type {
         case power:
-            command = .power(nil)
+            run(.power(nil), model)
         case preset:
             guard let id = (item.userInfo?["id"] as? String).flatMap(UUID.init(uuidString:)) else { return }
-            guard let p = model.library.presets.first(where: { $0.id == id }) else {
+            guard model.library.presets.contains(where: { $0.id == id }) else {
                 model.status = BulbReasons.presetGone
                 return
             }
-            if model.asksFirst(p) { return model.applyAsking(p) }
-            command = .preset(id.uuidString)
+            Task {
+                // Whether to ask is judged once the light's been read (the app may have been in the
+                // background while the speed was changed elsewhere): otherwise one that flashes at
+                // the real speed would go unasked, and be refused.
+                if let error = await Scripting.readyToJudge(model) {
+                    model.status = error.message
+                    return
+                }
+                guard let p = model.library.presets.first(where: { $0.id == id }) else {
+                    model.status = BulbReasons.presetGone
+                    return
+                }
+                if model.asksFirst(p) {
+                    model.applyAsking(p)
+                } else {
+                    run(.preset(id.uuidString), model)
+                }
+            }
         default:
             return
         }
-        // A person's tap, with nothing to ask (or not asking): as if started in setPilot, so a preset
-        // of a scene stored on the bulb plays with "Ask before playing" off, as from the app's menus.
+    }
+
+    /// A person's tap, with nothing to ask (or not asking): as if started in setPilot, so a preset
+    /// of a scene stored on the bulb plays with "Ask before playing" off, as from the app's menus.
+    private static func run(_ command: ScriptCommand, _ model: Model) {
         let started = !Flashing.asks
         Task {
             if let error = await Scripting.run(command, confirmed: started, on: model).error { model.status = error.message }

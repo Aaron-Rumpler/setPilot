@@ -62,7 +62,8 @@ struct PresetsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    if !showAll, !link.presets.isEmpty, link.presets.favourites.isEmpty {
+                    // Not while locked: starring them can't be done then.
+                    if !showAll, !link.presetsLocked, !link.presets.isEmpty, link.presets.favourites.isEmpty {
                         Text("No favourites yet. Star presets from their edit screen (swipe one, then Edit).")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -393,6 +394,12 @@ struct PresetEditView: View {
                 Button { link.send(.applyPreset(preset.id)) } label: { Label("Apply", systemImage: "play.fill") }
                 // Stored by a newer build on the iPhone: applied, but not edited (as Edit's swipe).
                 let locked = link.presetsLocked
+                // Why the rest is dimmed (said as in Presets), VoiceOver included.
+                if locked {
+                    Text("Your presets were saved by a newer version of setPilot. Update setPilot on your iPhone to edit them.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 TextField("Name", text: $name)
                     .onSubmit {
                         let n = name.trimmingCharacters(in: .whitespaces)

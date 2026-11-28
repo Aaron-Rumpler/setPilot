@@ -228,7 +228,9 @@ extension Library {
         var text = "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))"
         if scalesApart > 0 {
             let single = scalesApart == 1
-            text += "; the CCT scale\(single ? "" : "s") for bulbs whose scales a newer version saved \(single ? "is" : "are") synced, but stored apart from those (not shown here) until setPilot is updated here"
+            // Synced only in a build with iCloud (one without may still have such bulbs, after a downgrade).
+            let sync = CloudSync.isEnabled ? ", and still sync\(single ? "s" : "")," : ""
+            text += "; the CCT scale\(single ? "" : "s") for bulbs whose scales a newer version saved \(single ? "is" : "are") kept apart from the ones it saved (which aren't shown)\(sync) until setPilot is updated on this device"
         }
         // Kept aside, where a newer build's data can't take them: not synced yet (nor editable,
         // while a whole list is unreadable).

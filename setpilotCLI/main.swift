@@ -53,11 +53,16 @@ func takeFlag(_ name: String) -> Bool {
     args.removeAll { $0 == name }
     return true
 }
+/// Every option and flag, so one isn't taken for another's value.
+let optionNames: Set<String> = ["--json", "--on", "--off", "--scale", "--speed", "--fade", "--rgb", "--temp",
+                                "--scene", "--custom", "--brightness"]
 func takeOption(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name) else { return nil }
     // Given twice: which was meant isn't clear.
     if args[(i + 1)...].contains(name) { badArguments("\(name) is given more than once.") }
-    guard i + 1 < args.count else { badArguments("\(name) needs a value.") }
+    // Followed by another option instead (its value left out): not taken for this one's value,
+    // or the error would blame the wrong thing.
+    guard i + 1 < args.count, !optionNames.contains(args[i + 1]) else { badArguments("\(name) needs a value.") }
     let value = args[i + 1]
     args.removeSubrange(i...(i + 1))
     return value

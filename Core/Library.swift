@@ -155,7 +155,9 @@ final class Library {
     func newerNote(forScalesOf mac: String?) -> String? {
         if let note = newerNote(Self.cctScalesKey) { return note }
         guard let mac, rawScaleMACs.contains(mac.lowercased()) else { return nil }
-        return "Some of this bulb's CCT scales were saved by a newer version of setPilot, so they aren't shown. Scales made or changed here are still synced, but stored apart from those on this device until setPilot is updated here."
+        // Synced only in a build with iCloud (one without may still have them, after a downgrade).
+        let kept = CloudSync.isEnabled ? "are kept apart from the ones the newer version saved, and still sync," : "are kept apart from the ones the newer version saved"
+        return "Some of this bulb's CCT scales were saved by a newer version of setPilot, so they aren't shown. Scales made or changed here \(kept) until setPilot is updated on this device."
     }
 
     /// Stops keeping a newer build's fields for items no longer in a list (deleted here), so a
