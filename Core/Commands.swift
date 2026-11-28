@@ -160,7 +160,7 @@ enum Scripting {
         }
         // A speed while it's off is only kept for later: nothing goes, so no time is needed (a
         // `set` of only a speed too). (Decided once the wait has read the light.)
-        try await ready(model) {
+        try await ready(model, fresh: judgedBySpeed(command, model)) {
             guard model.isOn == false else { return true }
             switch command {
             case .speed: return false
@@ -215,9 +215,8 @@ enum Scripting {
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard fade == nil else { throw bad("A speed change can't have a fade.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
-            // As for `set --speed`: a scene that can't be sent can't have a speed either.
-            let live = model.sceneId == Scenes.inlineCustom && model.knownCustomScene != nil
-            guard live || Scenes.isKnown(model.sceneId) else { throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.") }
+            // As for `set --speed`: a scene that can't be sent (or judged) can't have a speed either.
+            try speedSendable(model)
             var v = model.values
             v.speed = Double(speed)
             model.noteUndoPoint() // as other changes from a script can be undone
@@ -257,6 +256,16 @@ enum Scripting {
     }
 
     private static func bad(_ message: String) -> ScriptError { ScriptError(code: .badArguments, message: message) }
+
+    /// The scene playing can have its speed changed from here: one that can be sent, or the
+    /// custom scene it's known to be.
+    private static func speedSendable(_ model: Model) throws {
+        if model.sceneId == Scenes.inlineCustom {
+            guard model.knownCustomScene != nil else { throw bad(BulbReasons.unknownSceneSpeed()) }
+        } else if !Scenes.isKnown(model.sceneId) {
+            throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.")
+        }
+    }
 
     /// With `fade`, or the controls' fade as they send.
     private static func send(_ change: LightChange, _ fade: Int?, _ model: Model) throws {
@@ -313,8 +322,7 @@ enum Scripting {
             // The scene it's on, at that speed (as `speed` checks it).
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
-            let live = model.sceneId == Scenes.inlineCustom && model.knownCustomScene != nil
-            guard live || Scenes.isKnown(model.sceneId) else { throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.") }
+            try speedSendable(model)
             speedOnly = speed
         }
         if let b = c.brightness, !(1...100).contains(b) { throw bad("Brightness is 1–100.") }
@@ -348,14 +356,33 @@ enum Scripting {
         return .temp(Int(k))
     }
 
+    /// Whether what's refused for flashing depends on the bulb's speed or scene now: a custom
+    /// scene without a speed of its own (a preset of one too), or a speed for the one playing.
+    private static func judgedBySpeed(_ command: ScriptCommand, _ model: Model) -> Bool {
+        switch command {
+        case .customScene, .speed:
+            return true
+        case .preset(let q):
+            guard let p = find(q, in: model.library.presets, name: { $0.name }, id: { $0.id.uuidString }),
+                  case .custom(_, nil) = p.colour else { return false }
+            return true
+        case .set(let c):
+            return c.customScene != nil || (c.speed != nil && c.scene == nil && c.rgbcw == nil && c.temp == nil)
+        default:
+            return false
+        }
+    }
+
     /// The bulb chosen and controllable, or why not.
+    /// `fresh`: read afresh first, for a command judged by the bulb's speed or scene (not by one
+    /// that may be out of date: a push lost while suspended).
     /// `sends`: false for a command that sends nothing (it needs no time left for an answer),
     /// asked once the light's been read.
-    private static func ready(_ model: Model, sends: () -> Bool = { true }) async throws {
+    private static func ready(_ model: Model, fresh: Bool = false, sends: () -> Bool = { true }) async throws {
         guard let a = UserDefaults.standard.string(forKey: Model.addressKey), !a.isEmpty else { throw noBulb }
         let left = deadline.map { $0.timeIntervalSinceNow } ?? Model.answerTimeout
         let started = Date.now
-        guard await model.waitUntilControllable(timeout: max(left, 0)) else {
+        guard await model.waitUntilControllable(timeout: max(left, 0), fresh: fresh) else {
             throw notReady(model, left: left, waitStarted: started)
         }
         // Ready, but with too little of its time left for a try and its answer: not sent.

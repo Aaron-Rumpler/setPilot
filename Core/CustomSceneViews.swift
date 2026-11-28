@@ -258,7 +258,7 @@ struct CustomSceneEditor: View {
     private var locked: Bool { !model.library.canEdit(Library.customScenesKey) }
 
     private var isPlaying: Bool {
-        model.mode == .scene && model.sceneId == Scenes.inlineCustom && model.customSceneId == sceneID
+        model.mode == .scene && model.sceneId == Scenes.inlineCustom && model.knownCustomScene?.id == sceneID
     }
 
     private var sceneBinding: Binding<CustomScene>? {

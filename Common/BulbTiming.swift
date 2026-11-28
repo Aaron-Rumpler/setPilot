@@ -74,6 +74,12 @@ enum BulbReasons {
         "“\(name)” is stored on the bulb, so its speed is only changed \(startedIn(fromWatch))."
     }
 
+    /// A speed for an inline scene setPilot doesn't know (the console's, say): it can't be judged.
+    static func unknownSceneSpeed(fromWatch: Bool = false) -> String {
+        let place = fromWatch ? "your watch" : "here"
+        return "setPilot doesn't know this scene (it was started elsewhere, or from the console), so its speed isn't changed from \(place)."
+    }
+
     /// Where a scene that scripting won't start (or speed up) is started (the iPhone, for the watch).
     private static func startedIn(_ fromWatch: Bool) -> String {
         #if os(watchOS)

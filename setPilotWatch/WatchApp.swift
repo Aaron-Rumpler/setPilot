@@ -213,7 +213,10 @@ struct PowerRow: View {
         .disabled(s?.canControl != true || !link.reachable)
         // Waiting for the bulb to confirm: a spinner, as the iPhone and Mac show.
         .overlay(alignment: .trailing) {
-            if link.pending.contains("power") { ProgressView().padding(.trailing, 44).accessibilityLabel("Switching") }
+            if link.pending.contains("power") {
+                ProgressView().padding(.trailing, 44).accessibilityLabel("Switching")
+                    .allowsHitTesting(false) // taps on the row still switch it
+            }
         }
         .handGestureShortcut(.primaryAction) // double tap (Series 9 and Ultra 2 on) switches it
     }

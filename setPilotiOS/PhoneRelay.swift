@@ -92,9 +92,11 @@ final class PhoneRelay: NSObject {
     /// suspension, it re-registers for pushes and reads the state again if it's gone quiet, so a
     /// toggle doesn't go by a state from before.
     /// `asked`: a change's, whose wait is what's left of the one timeout from then.
-    private func bulbReady(_ model: Model, asked: Date? = nil) async -> Bool {
+    /// `fresh`: read afresh first, for a change judged by the bulb's speed or scene (a custom scene
+    /// from Compose, a speed alone), not by one from before a push lost while suspended.
+    private func bulbReady(_ model: Model, asked: Date? = nil, fresh: Bool = false) async -> Bool {
         let left = asked.map { Model.answerTimeout - Date.now.timeIntervalSince($0) } ?? Model.answerTimeout
-        return await model.waitUntilControllable(timeout: max(left, 0))
+        return await model.waitUntilControllable(timeout: max(left, 0), fresh: fresh)
     }
 
     /// Runs a command as far as sending it (the runner's, as far as its result: the runner keeps
@@ -179,7 +181,12 @@ final class PhoneRelay: NSObject {
         }
         let left = Model.answerTimeout - Date.now.timeIntervalSince(asked)
         let waitStarted = Date.now
-        guard await bulbReady(model, asked: asked) else {
+        let fresh = switch command {
+        case .compose(let change): change.colour.flatMap(model.library.customSceneOf) != nil
+        case .set(_, let fields): fields.contains(.speed) && !fields.contains(.colour)
+        default: false
+        }
+        guard await bulbReady(model, asked: asked, fresh: fresh) else {
             // Why, as Shortcuts say it (a refusal, too late, or not answering), with its kind.
             return .scripted(ScriptResult(state: Scripting.state(of: model), error: Scripting.notReady(model, left: left, waitStarted: waitStarted)))
         }
@@ -203,6 +210,20 @@ final class PhoneRelay: NSObject {
             pause = .milliseconds(500)
         case .set(let values, let fields):
             // (A stored scene was refused above.)
+            // A speed alone (the Speed row): not for a scene stored on the bulb, or an inline one
+            // setPilot doesn't know, which can't be judged (as the watch's intents are refused).
+            if fields.contains(.speed), !fields.contains(.colour), model.mode == .scene {
+                let refusal: String? = if Scenes.isStoredSlot(model.sceneId) {
+                    BulbReasons.storedSpeed(Scenes.name(model.sceneId), fromWatch: true)
+                } else if model.sceneId == Scenes.inlineCustom, model.knownCustomScene == nil {
+                    BulbReasons.unknownSceneSpeed(fromWatch: true)
+                } else {
+                    nil
+                }
+                if let refusal {
+                    return .scripted(ScriptResult(state: Scripting.state(of: model), error: ScriptError(code: .refused, message: refusal)))
+                }
+            }
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
             // when this answers. Later state reaches it as the iPhone's usual updates.
@@ -338,8 +359,10 @@ final class PhoneRelay: NSObject {
                 // (While it's reachable, the watch app's own reads bring it.)
                 guard let model = self.model, model.snapshot.link == .connected, let now = model.heardAt,
                       WCSession.isSupported(), !WCSession.default.isReachable else { continue }
+                // 11 minutes: more than the watch's 10 (PhoneLink) by this loop's minute, so the
+                // one it reloads by is never left to go stale first.
                 if let sent = self.sentHeard {
-                    guard now > sent, Date.now.addingTimeInterval(5 * 60) >= sent.addingTimeInterval(LightSnapshot.trustedFor) else { continue }
+                    guard now > sent, Date.now.addingTimeInterval(11 * 60) >= sent.addingTimeInterval(LightSnapshot.trustedFor) else { continue }
                 }
                 self.updateContext()
             }
@@ -470,6 +493,12 @@ extension PhoneRelay: WCSessionDelegate {
             }
         }()
         if changes, Date.now.timeIntervalSince(message.asked) > Model.answerTimeout {
+            // The mode it's already on (the watch's copy was behind): nothing would go, so it's
+            // not too late either (run says so too, for one that isn't late).
+            if case .modeChoice(let choice) = message.command, let model, choice == model.mode.choice {
+                finish(message, model.snapshot)
+                return
+            }
             let behind = Date.now.timeIntervalSince(message.arrived) > 0.1
             finish(message, model?.snapshot ?? LightSnapshot(), error: behind ? Model.behindAnother : Model.arrivedLate,
                    code: ScriptError.Code.notAnswering.rawValue)

@@ -34,6 +34,17 @@ struct ConsoleComposer: View {
     @AppStorage("consoleRetry") private var retry = true
     @AppStorage("consoleFullReply") private var fullReply = false
     @State private var confirming: String?
+    /// The message the caution above is about.
+    @State private var cautionFor: Message?
+
+    /// The message as it's being sent, to check it's what was asked about (another window, which
+    /// shares these settings, may have edited it meanwhile).
+    private struct Message: Equatable {
+        let rawMode: Bool, raw: String, method: String, params: String, sendParams: Bool, keepOff: Bool
+    }
+    private var message: Message {
+        Message(rawMode: rawMode, raw: raw, method: method, params: params, sendParams: sendParams, keepOff: keepOff)
+    }
 
     private var trimmedMethod: String { method.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var parsed: Result<[String: Any], JSONText.ParamsError> { JSONText.parseParams(params) }
@@ -47,10 +58,12 @@ struct ConsoleComposer: View {
     private var currentMethod: String { rawMode ? (rawObject?["method"] as? String ?? "") : trimmedMethod }
     private var known: BulbAPI.Method? { BulbAPI.method(currentMethod) }
     /// What to say before sending: the method's caution, or for raw text that won't parse here
-    /// (the bulb's own parser may still take it), that of any cautioned method named in it.
+    /// (the bulb's own parser may still take it), that of any cautioned method named in it. With
+    /// an escape, a method may be spelt unseen: a caution that says so.
     private var caution: String? {
         guard rawMode, rawObject == nil else { return known?.caution }
-        return BulbAPI.all.first { $0.caution != nil && raw.contains($0.name) }?.caution
+        if let named = BulbAPI.all.first(where: { $0.caution != nil && raw.contains($0.name) })?.caution { return named }
+        return rawEscapesKey || raw.contains("\\u") ? "setPilot can't read this message, so it can't tell what it changes on the bulb." : nil
     }
 
     var body: some View {
@@ -107,7 +120,7 @@ struct ConsoleComposer: View {
         .padding(14)
         .confirmationDialog(currentMethod.isEmpty ? "Send this message?" : "Send \(currentMethod)?",
                             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
-            Button("Send", role: .destructive) { send(confirmed: true, flashOK: true) }
+            Button("Send", role: .destructive) { send(confirmed: true, flashOK: true, asked: cautionFor) }
         } message: {
             Text(confirming ?? "")
         }
@@ -346,7 +359,9 @@ struct ConsoleComposer: View {
     /// The scene playing, by name ("" for an inline one), if a speed for it can't be judged: not
     /// built in, and not a custom scene setPilot knows (an inline one the console sent, say, or
     /// one stored on the bulb).
+    /// Not read yet (still connecting): what plays isn't known, so it can't be judged either.
     private var playingUnjudged: String? {
+        guard model.isOn != nil else { return "" }
         guard model.mode == .scene, !Scenes.isBuiltIn(model.sceneId) else { return nil }
         if model.sceneId == Scenes.inlineCustom {
             return model.knownCustomScene == nil ? "" : nil
@@ -354,8 +369,14 @@ struct ConsoleComposer: View {
         return Scenes.name(model.sceneId)
     }
 
-    private func send(confirmed: Bool = false, flashOK: Bool = false) {
+    /// `asked`: the message a question was about, once answered: sent only if it's unchanged.
+    private func send(confirmed: Bool = false, flashOK: Bool = false, asked: Message? = nil) {
         guard canSend else { return }
+        let message = self.message
+        if let asked, asked != message {
+            model.consoleFailure = "The message was edited while being asked about; send it again"
+            return
+        }
         // A setPilot with an inline scene that flashes, or a speed that makes the custom scene
         // playing flash: asked about first, as anywhere in the app.
         // Raw text that won't parse here (or repeats a key) but has a scene in it: the bulb's own
@@ -365,7 +386,7 @@ struct ConsoleComposer: View {
         if !flashOK, rawMode, rawObject == nil,
            rawEscapesKey || raw.contains("\\u") || raw.contains("elm") || raw.contains("sceneId")
             || ["setPilot", "setEffect", "syncBroadcastPilot"].contains(where: { raw.contains($0) }) {
-            confirmFlashing("", flashes: true, unknown: true, unparsed: true) { send(confirmed: confirmed, flashOK: true) }
+            confirmFlashing("", flashes: true, unknown: true, unparsed: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
             return
         }
         if !flashOK, currentMethod == "setPilot" {
@@ -376,7 +397,7 @@ struct ConsoleComposer: View {
             // whatever it keeps under it (a stored scene, or the inline one last sent).
             if let id = (params?["sceneId"] as? NSNumber)?.intValue,
                Scenes.isStoredSlot(id) || (!Scenes.isBuiltIn(id) && !(params?["elm"] is [String: Any])) {
-                confirmFlashing(Scenes.name(id), flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                confirmFlashing(Scenes.name(id), flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                 return
             }
             // An elm that isn't an object, or whose steps can't be read, can't be judged either.
@@ -386,18 +407,18 @@ struct ConsoleComposer: View {
                 let object = elm as? [String: Any]
                 let unknown = object?["steps"] as? [[NSNumber]] == nil
                 if unknown || object.map({ Flashing.flashes(elm: $0, speed: 200) }) == true {
-                    confirmFlashing("", flashes: true, unknown: unknown) { send(confirmed: confirmed, flashOK: true) }
+                    confirmFlashing("", flashes: true, unknown: unknown) { send(confirmed: confirmed, flashOK: true, asked: message) }
                     return
                 }
             }
             let light = ["sceneId", "elm", "r", "g", "b", "c", "w", "temp"]
             if let p = params, let speed, !light.contains(where: { p[$0] != nil }) {
                 if let name = Scripting.playingFlashes(at: speed, model) {
-                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                     return
                 }
                 if let name = playingUnjudged {
-                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                     return
                 }
             }
@@ -422,7 +443,7 @@ struct ConsoleComposer: View {
                 mayFlash = has(params) { key, _ in key == "sceneId" || key == "elm" }
             }
             if mayFlash {
-                confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                 return
             }
             // A broadcast speed with no light in it changes the custom scene playing, as a
@@ -435,17 +456,18 @@ struct ConsoleComposer: View {
                     return light.contains(key)
                 }
                 if !lit, let name = speeds.lazy.compactMap({ Scripting.playingFlashes(at: $0, model) }).first {
-                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                     return
                 }
                 if !lit, !speeds.isEmpty, let name = playingUnjudged {
-                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
+                    confirmFlashing(name, flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true, asked: message) }
                     return
                 }
             }
         }
         if !confirmed, let caution {
             confirming = caution
+            cautionFor = message
             return
         }
         if rawMode {
@@ -752,7 +774,11 @@ struct JSONEditor: UIViewRepresentable {
     /// What VoiceOver calls it: the params, or in Raw mode the whole message.
     var label = "Params"
 
-    static let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
+    /// Follows the text size as it changes (read here, so a change updates the view).
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Callout's size (16 pt at the default), scaled for the text size now.
+    static var font: UIFont { UIFontMetrics(forTextStyle: .callout).scaledFont(for: .monospacedSystemFont(ofSize: 16, weight: .regular)) }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -760,6 +786,7 @@ struct JSONEditor: UIViewRepresentable {
         let view = OwnUndoTextView()
         view.delegate = context.coordinator
         view.font = Self.font
+        view.adjustsFontForContentSizeCategory = true
         view.backgroundColor = .clear
         view.autocorrectionType = .no
         view.autocapitalizationType = .none
@@ -778,6 +805,12 @@ struct JSONEditor: UIViewRepresentable {
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
         view.accessibilityLabel = label
+        // The text size changed: coloured again in the new size.
+        _ = typeSize
+        if view.font?.pointSize != Self.font.pointSize {
+            view.font = Self.font
+            Self.colour(view)
+        }
         guard view.text != text else { return }
         view.text = text
         // As on the Mac: undo steps from the old text would go out of range in the new.
@@ -788,6 +821,7 @@ struct JSONEditor: UIViewRepresentable {
     /// Recolours in place, so the text, selection and any marked (composing) text are kept.
     static func colour(_ view: UITextView) {
         let storage = view.textStorage
+        let font = Self.font // scaled once for this pass
         let all = NSRange(location: 0, length: storage.length)
         storage.beginEditing()
         storage.addAttributes([.font: font, .foregroundColor: UIColor.label], range: all)

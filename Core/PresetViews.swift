@@ -272,7 +272,8 @@ enum SceneChoice: Hashable {
 extension Model {
     /// The scene in use, as the picker lists it.
     var currentSceneChoice: SceneChoice {
-        if sceneId == Scenes.inlineCustom, let id = customSceneId { return .custom(id) }
+        // The custom scene known to play: not one the console may have replaced, or one not yet answered.
+        if sceneId == Scenes.inlineCustom, let known = knownCustomScene { return .custom(known.id) }
         return .builtin(sceneId)
     }
 
@@ -294,9 +295,10 @@ extension Model {
         )
     }
 
-    /// The current scene isn't one the picker lists (Rhythm, a newer ID, a deleted custom scene).
+    /// The current scene isn't one the picker lists (Rhythm, a newer ID, a deleted custom scene,
+    /// or an inline one that isn't known).
     var sceneIsUnlisted: Bool {
-        if sceneId == Scenes.inlineCustom { return customSceneId.flatMap(library.customScene) == nil }
+        if sceneId == Scenes.inlineCustom { return knownCustomScene == nil }
         return !Scenes.isKnown(sceneId)
     }
 }

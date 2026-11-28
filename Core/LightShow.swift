@@ -812,7 +812,8 @@ extension Model {
         let mac: String?
     }
 
-    var savedLight: SavedLight { SavedLight(values: values, customScene: customSceneId, isOn: isOn, mac: chosenMAC) }
+    /// The custom scene only if it's known to play: one that isn't isn't put back as if it were.
+    var savedLight: SavedLight { SavedLight(values: values, customScene: knownCustomScene?.id, isOn: isOn, mac: chosenMAC) }
 
     /// Nil, or why only part of it could be put back.
     @discardableResult

@@ -105,7 +105,7 @@ final class WidgetPublisher {
             publishedKey = signingKey
             SigningKeyStore.set(signingKey, for: SigningKeyStore.current)
         }
-        let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
+        let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.bulbName ?? "")"
         trailingReload?.cancel()
         if key != widgetKey || wasStale || stampedElsewhere {
             widgetKey = key

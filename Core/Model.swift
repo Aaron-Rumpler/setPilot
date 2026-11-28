@@ -24,24 +24,37 @@ final class Model {
     var sceneId = 1
     var speed = 100.0
     var isOn: Bool?
-    /// The custom scene playing, while the bulb reports setPilot's inline scene ID.
+    /// The app's own custom scene, while the bulb reports setPilot's inline scene ID: the one
+    /// started again on coming back to Scene mode. Not what speed and flashing are judged by
+    /// (knownCustomScene): it's set as it's sent, and the console may have replaced it since.
     var customSceneId: UUID? = UserDefaults.standard.string(forKey: Model.customSceneKey).flatMap(UUID.init) {
         didSet {
             UserDefaults.standard.set(customSceneId?.uuidString, forKey: Self.customSceneKey)
-            consoleSceneUnjudged = false // what plays is known again (or known not to be judged)
+            // Another one (or none): not known to play until it's answered.
+            if customSceneId != confirmedSceneId { confirmedSceneId = nil }
         }
     }
     static let customSceneKey = "customScene"
-    /// Console text that wouldn't parse (or a console scene sent with the bulb kept off) may have
-    /// started a scene of its own, so the custom scene above isn't known to be what plays. Cleared
-    /// by the next colour or scene sent otherwise.
-    var consoleSceneUnjudged = UserDefaults.standard.bool(forKey: Model.consoleSceneUnjudgedKey) {
-        didSet { UserDefaults.standard.set(consoleSceneUnjudged, forKey: Self.consoleSceneUnjudgedKey) }
+    /// The custom scene the bulb took: set only once the app's own send of it is answered, and
+    /// cleared as soon as anything else that may set the light goes (the console's, a broadcast,
+    /// a light show's cue), whatever its outcome. Nil means not known: an inline scene is then
+    /// unjudged.
+    private var confirmedSceneId: UUID? = UserDefaults.standard.string(forKey: Model.confirmedSceneKey).flatMap(UUID.init) {
+        didSet { UserDefaults.standard.set(confirmedSceneId?.uuidString, forKey: Self.confirmedSceneKey) }
     }
-    static let consoleSceneUnjudgedKey = "consoleSceneUnjudged"
+    static let confirmedSceneKey = "confirmedCustomScene"
     /// The custom scene the bulb's inline scene is known to be: what its speed and flashing are
-    /// judged by. Nil if none, or console text may have replaced it.
-    var knownCustomScene: CustomScene? { consoleSceneUnjudged ? nil : customSceneId.flatMap(library.customScene) }
+    /// judged by, and what's shown as playing. Nil if none, or it isn't known.
+    var knownCustomScene: CustomScene? { confirmedSceneId.flatMap(library.customScene) }
+    /// The app's own send of a custom scene, waiting for its answer to confirm it.
+    @ObservationIgnored private var sceneConfirm: (ticket: Int, scene: UUID)?
+
+    /// Something that may set the light went out other than the app's own colour or scene: what
+    /// plays isn't known until the app's next one is answered.
+    private func unjudge() {
+        confirmedSceneId = nil
+        sceneConfirm = nil
+    }
     /// Presets, custom scenes and CCT scales.
     let library = Library()
 
@@ -241,7 +254,6 @@ final class Model {
         readBackEnd = .distantPast
         ticket += 1
         rawTicket = 0 // set again if this one's raw
-        consoleSceneTicket = 0 // set again if this one's the console's, with a colour or scene
         rawStateTicket = 0
         changeNote = nil
         refusal = nil
@@ -826,7 +838,7 @@ final class Model {
         quietReads = 0
         speedOwed = false
         pilotSwitches = false // a switch still unanswered was for the previous bulb
-        broadcastSetsLight = false // its answer would be the previous connection's
+        sceneConfirm = nil // its answer would be the previous connection's
         if consoleWaiting != nil { // its answer would be the new connection's, or never come
             consoleWaiting = nil
             consoleFailure = "Reconnected (or another bulb chosen) before a reply came: send it again"
@@ -1353,17 +1365,16 @@ final class Model {
         let object = JSONText.hasRepeatedKey(text) ? nil : Net.json(Data(text.utf8))
         let method = object?["method"] as? String
         consoleWaiting = method ?? ""
-        // A colour or scene of its own: not the custom scene played before (as for sendRaw), once
-        // answered. Text that won't parse may still be a pilot (a \u may spell its method) the
-        // bulb's parser takes, and its answer can't be told apart: what plays can't be judged.
+        // A colour or scene of its own (as for sendRaw): what plays isn't judged from now, however
+        // it's answered. Text that won't parse may still be a pilot (a \u may spell its method)
+        // the bulb's parser takes.
         let lights: Bool
         if let object {
             lights = (method == "setPilot" || method == "syncBroadcastPilot") && Self.setsLight(object["params"])
         } else {
             lights = ["setPilot", "syncBroadcastPilot", "\\u"].contains(where: { text.contains($0) })
         }
-        if object == nil, lights { consoleSceneUnjudged = true }
-        if object != nil, method == "syncBroadcastPilot", lights { broadcastSetsLight = true }
+        if lights { unjudge() }
         consoleReply = nil
         consoleFailure = nil
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
@@ -1376,10 +1387,6 @@ final class Model {
                 powerBefore = isOn // what a refusal puts back
             } else {
                 rawTicket = ticket // settled by its reply
-                if lights {
-                    consoleSceneTicket = ticket
-                    consoleSceneOff = (object?["params"] as? [String: Any])?["state"] as? Bool == false
-                }
             }
             settleUnanswered(ticket)
             // The last change's read-back isn't this one's (its delayed speed went with startChange).
@@ -1422,11 +1429,10 @@ final class Model {
     /// `params` nil sends the request without a params key.
     func sendRaw(_ method: String, _ params: [String: Any]?, keepOff: Bool, retry: Bool) {
         var p = params ?? [:]
-        // A colour or scene of its own: not the custom scene played before (as for a light show's
-        // cue), or its speed and flashing would be judged by that one. Only once answered: one
-        // refused or lost leaves that scene playing.
-        let lights = (method == "setPilot" || method == "syncBroadcastPilot") && Self.setsLight(params)
-        if method == "syncBroadcastPilot", lights { broadcastSetsLight = true }
+        // A colour or scene of its own: what plays isn't judged from now (as for a light show's
+        // cue), whatever the answer. Lost doesn't mean not taken, and with "state": false it
+        // isn't known whether the bulb took it.
+        if (method == "setPilot" || method == "syncBroadcastPilot"), Self.setsLight(params) { unjudge() }
         // Without params, the key stays out (unless "state": false had to be added).
         func sent(_ p: [String: Any]) -> [String: Any]? { params != nil || !p.isEmpty ? p : nil }
         consoleWaiting = method
@@ -1451,10 +1457,6 @@ final class Model {
             // A change like the controls' own: an earlier one's reason and delayed speed no longer
             // apply (startChange), and a switch that goes unanswered puts the power back.
             startChange()
-            if lights {
-                consoleSceneTicket = ticket
-                consoleSceneOff = p["state"] as? Bool == false
-            }
             let before = isOn
             if let s = p["state"] as? Bool { isOn = s } else if changesLight { isOn = true }
             if before != isOn { powerBefore = before }
@@ -1494,7 +1496,7 @@ final class Model {
 
     /// Whether a console pilot's params give a colour or scene, at any depth (a broadcast's may
     /// be nested). Not the inline scene ID alone (no elm or colour): the bulb plays the inline
-    /// scene last sent again, so the custom scene named still is what plays.
+    /// scene last sent again, so what plays is as it was (known or not).
     private static func setsLight(_ value: Any?) -> Bool {
         if let dict = value as? [String: Any] {
             return dict.contains { k, v in
@@ -1529,12 +1531,20 @@ final class Model {
 
     /// A speed for the custom scene playing that would make it flash (and it doesn't as it is):
     /// only as fast as it doesn't (it's asked about where it's started, not on a slider or the
-    /// watch's Crown), saying so.
-    func allowedSpeed(_ new: Double) -> Double {
+    /// watch's Crown), saying so. An inline scene that isn't known can't be judged: no faster
+    /// than it is.
+    /// `starting`: the custom scene this speed goes with, being sent with it.
+    func allowedSpeed(_ new: Double, starting: CustomScene? = nil) -> Double {
         speedNote = nil // only this one's: an earlier clamp that sent nothing doesn't carry over
-        guard Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom,
-              let scene = knownCustomScene,
-              scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }
+        guard Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom else { return new }
+        guard let scene = starting ?? knownCustomScene else {
+            guard new > speed else { return new }
+            let note = "setPilot doesn't know this scene (it was started elsewhere, or from the console), so it isn't played faster from here"
+            status = note
+            speedNote = note
+            return speed
+        }
+        guard scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }
         let fastest = stride(from: Int(new), through: Int(speed), by: -1).first { !scene.flashes(atSpeed: $0) } ?? Int(speed)
         let note = "Any faster and “\(scene.name)” flashes quickly. To play it faster, start it again with that speed (from a preset, say), to be asked first"
         status = note
@@ -1565,7 +1575,6 @@ final class Model {
         if fields.contains(.colour) {
             let colour = colourParams()
             p.merge(colour) { $1 }
-            if !colour.isEmpty { consoleSceneUnjudged = false } // a colour or scene of the app's own
         }
         let speed = (fields.contains(.speed) || speedOwed) && mode == .scene ? Int(speed) : nil
         if !p.isEmpty, let fade = fadeForControls { p["trans"] = fade }
@@ -1659,6 +1668,9 @@ final class Model {
         if let speed, speedParams != nil { lastPilot["speed"] = speed }
         lastState = isOn
         startChange()
+        // The app's own custom scene: known to play once this is answered (with "state": false
+        // too: taken, it plays once the bulb's switched on).
+        if p["elm"] != nil, let id = customSceneId { sceneConfirm = (ticket, id) }
         sendSeq += 1
         pending = true
         if !p.isEmpty { bulb.send("setPilot", p, retry: retry, tag: ticket, until: changeEnd) }
@@ -1771,7 +1783,6 @@ final class Model {
                 refusal = status
                 return false
             }
-            consoleSceneUnjudged = false // a colour or scene of the app's own
         }
         if let d = change.dimming {
             dimming = min(max(Double(d), minDimming), 100)
@@ -1857,7 +1868,7 @@ final class Model {
         case .custom: activeScale.map { .customCCT(scale: $0.id, kelvin: Int(customKelvin)) }
         case .scene:
             // Not a custom scene that's been deleted meanwhile: that can't be sent (or saved).
-            if sceneId == Scenes.inlineCustom, let id = customSceneId, library.customScene(id) != nil { .custom(id, speed: Int(speed)) }
+            if sceneId == Scenes.inlineCustom, let known = knownCustomScene { .custom(known.id, speed: Int(speed)) }
             else if Scenes.isKnown(sceneId) { .scene(id: sceneId, speed: Int(speed)) }
             else { nil }
         }
@@ -1950,7 +1961,10 @@ final class Model {
         delayedSpeed = nil
         if let s = pilot["state"] as? Bool { isOn = s } else if pilot.keys.contains(where: { $0 != "trans" }) { isOn = true }
         // A colour or scene of its own: not the custom scene played before.
-        if pilot.keys.contains(where: { Self.lightKeys.contains($0) }) { customSceneId = nil }
+        if pilot.keys.contains(where: { Self.lightKeys.contains($0) }) {
+            customSceneId = nil
+            unjudge()
+        }
         mismatch = nil
         pilotSwitches = false
         bulb.send("setPilot", pilot, retry: false)
@@ -1967,7 +1981,10 @@ final class Model {
             customKelvin = v.customKelvin
             sceneId = v.sceneId
         }
-        if fields.contains(.speed) { speed = allowedSpeed(v.speed) }
+        // With the colour, the speed is the custom scene's being sent (if one), not the one playing.
+        let starting = fields.contains(.colour) && mode == .scene && sceneId == Scenes.inlineCustom
+            ? customSceneId.flatMap(library.customScene) : nil
+        if fields.contains(.speed) { speed = allowedSpeed(v.speed, starting: starting) }
         if fields.contains(.dimming) { dimming = v.dimming }
         // The watch switching to Scene mode sends the last scene, which may be one that can't be set.
         if mode == .scene, fields.contains(.colour) { useSendableScene() }
@@ -1998,7 +2015,7 @@ final class Model {
         s.minDimming = minDimming
         s.tempMin = tempRange.lowerBound
         s.tempMax = tempRange.upperBound
-        s.customScene = mode == .scene && sceneId == Scenes.inlineCustom ? customSceneId : nil
+        s.customScene = mode == .scene && sceneId == Scenes.inlineCustom ? knownCustomScene?.id : nil
         s.customKelvin = customKelvin
         if let range = activeScale?.range {
             s.customMin = Double(range.lowerBound)
@@ -2321,13 +2338,6 @@ final class Model {
     /// raw setPilot's.
     @ObservationIgnored private var stateTicket = 0
     @ObservationIgnored private var rawTicket = 0
-    /// A console setPilot's with a colour or scene of its own: once answered, the custom scene
-    /// played before isn't what plays.
-    @ObservationIgnored private var consoleSceneTicket = 0
-    /// It had `"state": false`: answered, it isn't known whether the bulb took the scene.
-    @ObservationIgnored private var consoleSceneOff = false
-    /// The same for a console broadcast with a colour or scene, which has no change of its own.
-    @ObservationIgnored private var broadcastSetsLight = false
     /// A raw setState's (the console's): its answer is reported as such.
     @ObservationIgnored private var rawStateTicket = 0
     /// What to say about a change once it's answered, instead of the usual: only for that one
@@ -2406,6 +2416,7 @@ final class Model {
             // The controls already show the refused change: read the bulb's actual state, without
             // letting that read's status replace the error below.
             if method == "setPilot" {
+                if sceneConfirm?.ticket == ticket { sceneConfirm = nil } // refused: not known to play
                 pilotSwitches = false // the read that follows says how it is
                 // A scene's speed still to follow would be answered "ok", hiding this refusal.
                 delayedSpeed?.cancel()
@@ -2502,11 +2513,10 @@ final class Model {
             if let f = result["fwVersion"] as? String { firmware = f }
         case "setPilot":
             if ticket == rawTicket, results[ticket] == nil { settle(ticket, .done) } // a raw one's: answered
-            // The console's colour or scene taken: not the custom scene played before. Sent with
-            // "state": false, it isn't known whether the bulb took it, so neither is judged.
-            if consoleSceneTicket != 0, ticket == consoleSceneTicket, result["success"] as? Bool != false {
-                consoleSceneTicket = 0
-                if consoleSceneOff { consoleSceneUnjudged = true } else { customSceneId = nil }
+            // The app's own custom scene taken (this change's first answer is its): known to play.
+            if let c = sceneConfirm, c.ticket == ticket, !pilotAnswered, result["success"] as? Bool != false {
+                sceneConfirm = nil
+                if customSceneId == c.scene { confirmedSceneId = c.scene }
             }
             pilotSwitches = false // answered
             // The scene's was before: this is its speed's. Not if the scene went more than once and
@@ -2525,11 +2535,6 @@ final class Model {
                 }
             }
         default:
-            // A console broadcast with a colour or scene, answered (as for setPilot above).
-            if method == "syncBroadcastPilot", broadcastSetsLight, result["success"] as? Bool != false {
-                broadcastSetsLight = false
-                customSceneId = nil
-            }
             // Reads (device info) aren't worth the status line.
             if !method.hasPrefix("get") { status = "\(method) ok" }
         }
