@@ -25,8 +25,11 @@ struct SetPilotWatchApp: App {
         .onChange(of: phase) { _, new in
             link.isActive = new == .active
             if new == .active {
-                link.refresh()
-                for left in WatchLinkInbox.take() { link.open(left.url, at: left.at) } // the controls', left while the app wasn't running
+                // The controls' taps, left while the app wasn't running, go first: a read ahead of
+                // them could use up their time on the iPhone, and their replies bring the state.
+                let left = WatchLinkInbox.take()
+                for tap in left { link.open(tap.url, at: tap.at) }
+                if left.isEmpty { link.refresh() }
             }
         }
     }

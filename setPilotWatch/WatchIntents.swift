@@ -88,13 +88,16 @@ struct WatchSceneEntity: AppEntity {
 }
 
 struct WatchSceneQuery: EntityQuery {
-    func entities(for identifiers: [Int]) async throws -> [WatchSceneEntity] {
-        identifiers.compactMap { id in Scenes.all.first { $0.id == id }.map { WatchSceneEntity(id: $0.id, name: $0.name) } }
+    /// The bulb's built-in scenes (not its stored slots, 256–265), as on the iPhone.
+    private static var all: [WatchSceneEntity] {
+        Scenes.all.filter { !(256...265).contains($0.id) }.map { WatchSceneEntity(id: $0.id, name: $0.name) }
     }
 
-    func suggestedEntities() async throws -> [WatchSceneEntity] {
-        Scenes.all.map { WatchSceneEntity(id: $0.id, name: $0.name) }
+    func entities(for identifiers: [Int]) async throws -> [WatchSceneEntity] {
+        identifiers.compactMap { id in Self.all.first { $0.id == id } }
     }
+
+    func suggestedEntities() async throws -> [WatchSceneEntity] { Self.all }
 }
 
 struct WatchCustomSceneEntity: AppEntity {
@@ -240,7 +243,9 @@ struct WatchAdjustBrightnessIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let s = try await relay(.adjustBrightness(direction == .brighter ? step : -step), fade: fade)
-        return .result(dialog: "Brightness \(Int(s.dimming))%.")
+        return .result(dialog: s.isOn == false
+                       ? "Brightness \(Int(s.dimming))%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(Int(s.dimming))%.")
     }
 }
 
@@ -258,7 +263,9 @@ struct WatchSetBrightnessIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let s = try await relay(.brightness(level), fade: fade)
-        return .result(dialog: "Brightness \(Int(s.dimming))%.")
+        return .result(dialog: s.isOn == false
+                       ? "Brightness \(Int(s.dimming))%, for when the bulb's switched on (it's off)."
+                       : "Brightness \(Int(s.dimming))%.")
     }
 }
 
@@ -276,7 +283,7 @@ struct WatchSetColourIntent: AppIntent {
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the colour to \(\.$r), \(\.$g), \(\.$b)") { \.$c; \.$w; \.$switchOn; \.$fade }
+        Summary("Set the colour to \(\.$r), \(\.$g), \(\.$b), \(\.$c), \(\.$w)") { \.$switchOn; \.$fade }
     }
 
     init() {}
@@ -293,20 +300,23 @@ struct WatchSetTemperatureIntent: AppIntent {
     static let description = IntentDescription("Sets the bulb to a colour temperature, on its own scale or one of your CCT scales.")
 
     @Parameter(title: "Temperature", default: 2700, inclusiveRange: (1000, 20000)) var kelvin: Int
-    @Parameter(title: "CCT Scale", description: "Empty for the bulb's own.") var scale: WatchScaleEntity?
+    @Parameter(title: "CCT Scale", description: "Empty: as Temperature was last used.") var scale: WatchScaleEntity?
+    @Parameter(title: "Bulb's Own Scale", description: "Use the bulb's own temperatures, not a CCT scale.", default: false)
+    var bulbOwn: Bool
     @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
     var switchOn: Bool
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Set the temperature to \(\.$kelvin) K") { \.$scale; \.$switchOn; \.$fade }
+        Summary("Set the temperature to \(\.$kelvin) K") { \.$scale; \.$bulbOwn; \.$switchOn; \.$fade }
     }
 
     init() {}
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let s = try await relay(.temperature(kelvin, scale: scale?.id.uuidString ?? "bulb", power: switchOn ? true : nil), fade: fade)
+        let scaleQuery = bulbOwn ? "bulb" : scale?.id.uuidString
+        let s = try await relay(.temperature(kelvin, scale: scaleQuery, power: switchOn ? true : nil), fade: fade)
         return .result(dialog: "\(Int(s.mode == .custom ? s.customKelvin : s.temp)) K.")
     }
 }
@@ -316,7 +326,7 @@ struct WatchSetSceneIntent: AppIntent {
     static let description = IntentDescription("Plays one of the bulb's built-in scenes.")
 
     @Parameter(title: "Scene") var scene: WatchSceneEntity
-    @Parameter(title: "Speed", inclusiveRange: (10, 200)) var speed: Int?
+    @Parameter(title: "Speed", description: "10–200; empty leaves it as it is.") var speed: Int?
     @Parameter(title: "Switch On", description: "Off leaves the power as it is, as the controls do.", default: false)
     var switchOn: Bool
     @Parameter(title: "Fade (ms)", description: "This change's fade; empty for the controls' fade.") var fade: Int?
@@ -448,8 +458,8 @@ struct WatchSwitchBulbIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        _ = try await relay(.switchBulb(bulb.id))
-        return .result(dialog: "Switched to \(bulb.name).")
+        let s = try await relay(.switchBulb(bulb.id))
+        return .result(dialog: "Now on \(s.bulbName ?? bulb.name).")
     }
 }
 

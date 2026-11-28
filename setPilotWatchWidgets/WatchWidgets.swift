@@ -95,17 +95,27 @@ struct BulbEntry: TimelineEntry {
     /// the preset, or any preset).
     var relevance: TimelineEntryRelevance? = nil
 
+    /// Its state is the bulb's own, not just the last known: answering, and heard lately.
+    var answering: Bool { snapshot?.link == .connected && snapshot?.isStale(at: date) != true }
+
     /// Entries every half hour for the next day, each as relevant as `keys` (presets, or power
     /// on/off; any, if nil) usually are then (Common/PresetUsage.swift).
     static func timeline(preset: Preset?, keys: Set<String>?, snapshot: LightSnapshot?) -> Timeline<BulbEntry> {
         let now = Date.now
         let uses = PresetUsage.load(SharedStore.defaults)
-        let entries = (0..<48).map { i -> BulbEntry in
+        var entries = (0..<48).map { i -> BulbEntry in
             let date = now.addingTimeInterval(Double(i) * 1800)
             // The middle of the half hour it stands for.
             let score = PresetUsage.usualness(uses, keys: keys, at: date.addingTimeInterval(900), now: now)
             return BulbEntry(date: date, snapshot: snapshot, preset: preset,
                              relevance: TimelineEntryRelevance(score: Float(score), duration: 1800))
+        }
+        // One more when the state turns into only the last known (the iPhone's stopped sending
+        // news: out of reach, or its app suspended), unless that's already on a half hour.
+        if let staleAt = snapshot?.staleAt, staleAt > now, !entries.contains(where: { $0.date == staleAt }) {
+            let before = entries.last { $0.date < staleAt }
+            entries.append(BulbEntry(date: staleAt, snapshot: snapshot, preset: preset, relevance: before?.relevance))
+            entries.sort { $0.date < $1.date }
         }
         // Worked out again tomorrow (or sooner, when the app reloads the widgets).
         return Timeline(entries: entries, policy: .after(now.addingTimeInterval(86_400)))
@@ -121,8 +131,17 @@ struct BulbEntry: TimelineEntry {
     }()
 }
 
-func statusText(_ s: LightSnapshot?) -> String {
+/// `date`: when it's shown (a timeline entry's), for whether it's only the last known by then.
+func statusText(_ s: LightSnapshot?, at date: Date = .now) -> String {
     guard let s else { return "Open setPilot" }
+    // Not heard from lately (the iPhone's out of reach, or its app suspended): what it was.
+    if s.isStale(at: date) {
+        switch s.isOn {
+        case true?: return "Last known: On"
+        case false?: return "Last known: Off"
+        case nil: return "Open setPilot"
+        }
+    }
     switch s.link {
     case .none: return "No bulb chosen"
     case .connecting: return "Connecting…"
@@ -170,25 +189,29 @@ struct StatusView: View {
 
     var body: some View {
         let s = entry.snapshot
-        // On only while it's answering: the other families say "Not answering" for the same state.
-        let on = s?.link == .connected && s?.isOn == true
-        let symbol = on ? "lightbulb.fill" : "lightbulb"
+        // On only while it's answering: the other families say "Not answering" (or "Last known")
+        // for the same state.
+        let on = entry.answering && s?.isOn == true
+        // Off, unknown and on, as the power complication shows them.
+        let symbol = on ? "lightbulb.fill" : entry.answering && s?.isOn == false ? "lightbulb.slash" : "lightbulb"
+        let status = statusText(s, at: entry.date)
         switch family {
         case .accessoryCircular:
             Gauge(value: on ? (s?.dimming ?? 0) : 0, in: 0...100) { Image(systemName: symbol) }
                 .gaugeStyle(.accessoryCircularCapacity)
+                .accessibilityLabel(status) // not a gauge at 0 when it's off
         case .accessoryCorner:
             Image(systemName: symbol)
                 .font(.title2)
-                .widgetLabel { Text(statusText(s)) }
+                .widgetLabel { Text(status) }
         case .accessoryInline:
-            Label(statusText(s), systemImage: symbol)
+            Label(status, systemImage: symbol)
         default:
             VStack(alignment: .leading, spacing: 2) {
                 Label(s?.bulbName ?? "setPilot", systemImage: symbol)
                     .font(.headline)
                     .lineLimit(1)
-                Text(statusText(s)).lineLimit(1)
+                Text(status).lineLimit(1)
                 if on, let s {
                     Gauge(value: s.dimming, in: 0...100) { EmptyView() }
                         .gaugeStyle(.accessoryLinearCapacity)
@@ -318,7 +341,7 @@ struct PowerWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "power", provider: StatusProvider(keys: [PresetUsage.powerOn, PresetUsage.powerOff])) { entry in
             // Known only while it's answering (as the status complication shows it).
-            let isOn = entry.snapshot?.link == .connected ? entry.snapshot?.isOn : nil
+            let isOn = entry.answering ? entry.snapshot?.isOn : nil
             let on = isOn == true
             ZStack {
                 AccessoryWidgetBackground()

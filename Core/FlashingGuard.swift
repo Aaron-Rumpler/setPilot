@@ -138,8 +138,9 @@ extension Model {
     /// Whether a custom scene flashes as it would play: at `speed`, or with none given, the
     /// speed the bulb's on (as fast as it may go: at least as timed).
     func flashes(_ scene: CustomScene, speed: Int? = nil) -> Bool {
-        // Never slower than as timed (as the bulb's own speed is judged).
-        scene.flashes(atSpeed: speed.map { max(100, $0) } ?? flashingSpeed)
+        // At least the speed the bulb's on (and as timed): a scene's own speed follows it, so it
+        // plays at the bulb's until then.
+        scene.flashes(atSpeed: max(speed ?? 0, flashingSpeed))
     }
 
     /// The speed something with no speed of its own is judged at for flashing: the bulb's (at

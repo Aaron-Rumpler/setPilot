@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       variants:
-        description: Also compile with iCloud on and App Groups off (Account.xcconfig's other settings)
+        description: Also compile with Account.xcconfig's other settings (iCloud on, App Groups off, both on)
         type: boolean
         default: false
 
@@ -71,6 +71,14 @@ jobs:
         run: |
           xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= WIZ_ICLOUD=YES build
+      - name: Mac without App Groups
+        run: |
+          # Its own build folder: the one above has the widgets in the app.
+          xcodebuild -project setPilot.xcodeproj -target setPilot -configuration Release \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= SYMROOT="$PWD/build/no-groups" \
+            WIZ_APP_GROUPS=NO build
+          # Without App Groups the widgets are left out.
+          test ! -e build/no-groups/Release/setPilot.app/Contents/PlugIns/setPilotMacWidgets.appex
       - name: iPhone and watch with iCloud, without App Groups
         run: |
           xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \
@@ -80,3 +88,10 @@ jobs:
           app=build/ios/Build/Products/Release-iphoneos/setPilot.app
           test ! -e "$app/PlugIns/setPilotWidgets.appex"
           test ! -e "$app/Watch/setPilot.app/PlugIns/setPilotWatchWidgets.appex"
+      - name: iPhone and watch with iCloud and App Groups
+        run: |
+          xcodebuild -project setPilot.xcodeproj -scheme "setPilot iOS" -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build/ios-groups CODE_SIGNING_ALLOWED=NO \
+            WIZ_ICLOUD=YES WIZ_APP_GROUPS=YES build
+          app=build/ios-groups/Build/Products/Release-iphoneos/setPilot.app
+          ls "$app/PlugIns/setPilotWidgets.appex" "$app/Watch/setPilot.app/PlugIns/setPilotWatchWidgets.appex" > /dev/null

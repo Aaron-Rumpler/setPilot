@@ -17,6 +17,7 @@ final class WidgetPublisher {
         self.model = model
         publishLibrary()
         observe()
+        keepHeardCurrent()
         // "Ask before playing" turned on or off: which presets a widget refuses.
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -72,7 +73,9 @@ final class WidgetPublisher {
             publishedAddress = s.address
             publishLibrary()
         }
-        SharedStore.save(s, SharedStore.snapshotKey)
+        // Shown as only the last known by now: reloaded whatever else has changed.
+        let wasStale = shownStale(within: 0)
+        saveState(s)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
         let signingKey = model?.signingKey(for: model?.chosenMAC)
         if signingKey != publishedKey { // the Keychain only when it changes
@@ -81,7 +84,7 @@ final class WidgetPublisher {
         }
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
         trailingReload?.cancel()
-        if key != widgetKey {
+        if key != widgetKey || wasStale {
             widgetKey = key
             reloadedDimming = Int(s.dimming)
             reload()
@@ -95,6 +98,52 @@ final class WidgetPublisher {
                 reload()
             }
         }
+    }
+
+    /// When the shared state says the bulb was last heard, and when it said so as the widgets were
+    /// last reloaded (what they go by until the next).
+    private var publishedHeard: Date?
+    private var reloadedHeard: Date?
+
+    private func saveState(_ s: LightSnapshot) {
+        var s = s
+        s.heardAt = model?.heardAt
+        publishedHeard = s.heardAt
+        SharedStore.save(s, SharedStore.snapshotKey)
+    }
+
+    /// Whether what the widgets show turns into the last known state within `seconds`.
+    private func shownStale(within seconds: TimeInterval) -> Bool {
+        guard let heard = reloadedHeard else { return false }
+        return Date.now.addingTimeInterval(seconds) >= heard.addingTimeInterval(LightSnapshot.trustedFor)
+    }
+
+    /// The bulb is heard from all the time without the state changing, so once a minute the time
+    /// it was last heard is written again (read when the widgets next reload). They're reloaded
+    /// only when theirs is about to show as the last known, or already does (the app was
+    /// suspended, or the Mac asleep), as they have a reload budget.
+    private func keepHeardCurrent() {
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(60))
+                guard let self else { return }
+                guard let s = self.lastSnapshot, let heard = self.model?.heardAt, heard != self.publishedHeard else { continue }
+                let due = self.shownStale(within: 5 * 60)
+                self.saveState(s)
+                if due { self.reload() }
+            }
+        }
+    }
+
+    /// The Mac app is quitting: nothing keeps the state current once it's gone, so the widgets and
+    /// controls show it as not known (until one of them hears from the bulb itself).
+    func appTerminating() {
+        guard let model else { return }
+        var s = lastSnapshot ?? model.snapshot
+        s.isOn = nil
+        s.heardAt = .distantPast
+        SharedStore.save(s, SharedStore.snapshotKey)
+        reload()
     }
 
     // MARK: Library
@@ -159,7 +208,13 @@ final class WidgetPublisher {
     }
 
     func reload() {
+        reloadedHeard = publishedHeard
         WidgetCenter.shared.reloadAllTimelines()
         ControlCenter.shared.reloadAllControls()
     }
+}
+
+extension Model {
+    /// When the bulb was last heard (a reply or a push), while it's answering.
+    var heardAt: Date? { link == .connected && lastHeard != .distantPast ? lastHeard : nil }
 }

@@ -73,7 +73,7 @@
         </command>
         <command name="change brightness" code="sPltChBr" description="Makes the bulb brighter (positive) or dimmer (negative) by a step.">
             <cocoa class="SetPilotChangeBrightnessCommand"/>
-            <parameter name="by" code="sPby" type="integer" description="The step, in percent."><cocoa key="by"/></parameter>
+            <parameter name="by" code="by  " type="integer" description="The step, in percent."><cocoa key="by"/></parameter>
             <parameter name="fade" code="sPfd" type="integer" optional="yes" description="This change's fade, in ms."><cocoa key="fade"/></parameter>
             <result type="light state"/>
         </command>

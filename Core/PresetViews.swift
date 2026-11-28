@@ -59,7 +59,8 @@ struct PresetGrid: View {
                         .hoverEffect(.lift) // the iPad's pointer
                         #endif
                         .disabled(model.link != .connected)
-                        .accessibilityLabel(preset.name)
+                        // The tile's own label is replaced: its star is said here.
+                        .accessibilityLabel(preset.isFavourite ? "\(preset.name), Favourite" : preset.name)
                         .accessibilityValue("\(lib.spokenName(of: preset.colour)), \(preset.dimming)%")
                         .accessibilityHint("Applies the preset")
                         .help("\(lib.name(of: preset.colour)), \(preset.dimming)%")
@@ -285,6 +286,8 @@ extension Model {
 /// The scene picker's items: the bulb's scenes, then ours, then whatever the bulb reported.
 struct SceneMenuItems: View {
     let model: Model
+    /// The bulb's scene when it isn't listed (Compose leaves it out: it can't be sent).
+    var showsUnlisted = true
 
     var body: some View {
         // Sections, not Dividers: on iPhone the picker is a list, where a Divider is an empty row
@@ -293,7 +296,7 @@ struct SceneMenuItems: View {
         if !model.library.customScenes.isEmpty {
             Section { ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) } }
         }
-        if model.sceneIsUnlisted {
+        if showsUnlisted, model.sceneIsUnlisted {
             Section { Text(Scenes.name(model.sceneId)).tag(model.currentSceneChoice) }
         }
     }

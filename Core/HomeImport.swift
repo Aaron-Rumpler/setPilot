@@ -24,10 +24,14 @@ extension Model {
         }
         let keys = setKeys && plan.key != nil ? chosen.count : 0
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
-        var parts = ["Named \(count(named, "bulb"))"]
+        // Only what happened (a zero count left out).
+        var parts: [String] = []
+        if named > 0 { parts.append("named \(count(named, "bulb"))") }
         if keys > 0 { parts.append("set the signing key for \(count(keys, "bulb"))") }
         if added > 0 { parts.append("added \(count(added, "bulb")) to Your Bulbs") }
-        return parts.joined(separator: " and ") + "."
+        guard !parts.isEmpty else { return "Nothing was changed." }
+        let text = parts.joined(separator: " and ") + "."
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 

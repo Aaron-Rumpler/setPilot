@@ -218,6 +218,14 @@ extension CustomScene.Step {
 /// long hasn't been tried yet.
 enum Fade {
     static let maximum = 86_400_000
+
+    /// A fade time as DurationField shows it: in the largest unit it's a whole number of
+    /// ("1 h", "90 s", "1500 ms").
+    static func text(_ ms: Int) -> String {
+        let units: [(size: Int, name: String)] = [(3_600_000, "h"), (60_000, "min"), (1000, "s")]
+        if let u = units.first(where: { ms >= $0.size && ms % $0.size == 0 }) { return "\(ms / u.size) \(u.name)" }
+        return "\(ms) ms"
+    }
 }
 
 /// How a composed change fades: the fade time setting (only offered when one is set), none
@@ -231,7 +239,7 @@ enum FadeChoice: String, Codable, Hashable, Sendable {
 
     func title(setting: Int?) -> String {
         switch self {
-        case .setting: "Default (\(setting ?? 0) ms)"
+        case .setting: "Default (\(Fade.text(setting ?? 0)))"
         case .none: "None"
         case .custom: "Custom"
         }

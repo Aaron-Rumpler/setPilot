@@ -63,7 +63,10 @@ enum QuickBulb {
             if let trans = SharedStore.defaults.object(forKey: SharedStore.controlsTransKey) as? Int { params["trans"] = trans }
             if isOn == false { params["state"] = false }
             _ = try await send(host, "setPilot", params, by: deadline)
-            remember { $0.dimming = target }
+            remember { s in
+                s.dimming = target
+                s.isOn = isOn // just read (the app may have left it unknown, quitting)
+            }
         }
     }
 
@@ -72,6 +75,7 @@ enum QuickBulb {
     private static func remember(_ change: (inout LightSnapshot) -> Void) {
         guard var s = SharedStore.snapshot else { return }
         s.link = .connected // it's just answered
+        s.heardAt = .now
         change(&s)
         SharedStore.save(s, SharedStore.snapshotKey)
     }

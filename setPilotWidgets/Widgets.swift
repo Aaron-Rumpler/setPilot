@@ -28,6 +28,20 @@ struct BulbEntry: TimelineEntry {
     let snapshot: LightSnapshot?
     let presets: [Preset]
 
+    /// Its state is the bulb's own, not just the last known: answering, and heard lately.
+    var answering: Bool { snapshot?.link == .connected && snapshot?.isStale(at: date) != true }
+
+    /// Now, and (if it's a state that does) once it's only the last known: nothing rewrites it
+    /// once the app's suspended or quit, so it's said then.
+    static func timeline(snapshot: LightSnapshot?, presets: [Preset]) -> Timeline<BulbEntry> {
+        let now = Date.now
+        var entries = [BulbEntry(date: now, snapshot: snapshot, presets: presets)]
+        if let staleAt = snapshot?.staleAt, staleAt > now {
+            entries.append(BulbEntry(date: staleAt, snapshot: snapshot, presets: presets))
+        }
+        return Timeline(entries: entries, policy: .never)
+    }
+
     static let sample = BulbEntry(date: .now, snapshot: {
         var s = LightSnapshot()
         s.link = .connected
@@ -43,7 +57,8 @@ struct BulbEntry: TimelineEntry {
     ])
 }
 
-/// The app reloads the widgets when the state or presets change; nothing changes by itself.
+/// The app reloads the widgets when the state or presets change; by itself, the state only turns
+/// into the last known.
 struct BulbProvider: TimelineProvider {
     func placeholder(in context: Context) -> BulbEntry { .sample }
 
@@ -52,7 +67,7 @@ struct BulbProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BulbEntry>) -> Void) {
-        completion(Timeline(entries: [current], policy: .never))
+        completion(BulbEntry.timeline(snapshot: current.snapshot, presets: current.presets))
     }
 
     private var current: BulbEntry {
@@ -80,9 +95,11 @@ struct PresetsProvider: AppIntentTimelineProvider {
         context.isPreview ? .sample : entry(configuration)
     }
 
-    /// The app reloads the widgets when the state or presets change; nothing changes by itself.
+    /// The app reloads the widgets when the state or presets change; by itself, the state only
+    /// turns into the last known.
     func timeline(for configuration: PresetsWidgetConfiguration, in context: Context) async -> Timeline<BulbEntry> {
-        Timeline(entries: [entry(configuration)], policy: .never)
+        let e = entry(configuration)
+        return BulbEntry.timeline(snapshot: e.snapshot, presets: e.presets)
     }
 
     private func entry(_ configuration: PresetsWidgetConfiguration) -> BulbEntry {
@@ -162,7 +179,7 @@ struct PresetsWidgetView: View {
                 Text(entry.snapshot?.bulbName ?? "setPilot")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                Text(statusText(entry.snapshot))
+                Text(statusText(entry.snapshot, at: entry.date))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -179,11 +196,11 @@ struct PresetsWidgetView: View {
             // Lit only while it's answering (as the status line says); the toggle goes by the last
             // known state, dimmed while that's all it is.
             Toggle(isOn: entry.snapshot?.isOn ?? false, intent: powerIntent) {
-                Image(systemName: entry.snapshot?.link == .connected && entry.snapshot?.isOn == true ? "lightbulb.fill" : "lightbulb")
+                Image(systemName: entry.answering && entry.snapshot?.isOn == true ? "lightbulb.fill" : "lightbulb")
             }
             .toggleStyle(.button)
             .labelStyle(.iconOnly)
-            .opacity(entry.snapshot?.link == .connected ? 1 : 0.5)
+            .opacity(entry.answering ? 1 : 0.5)
             .accessibilityLabel("Power")
         }
     }
@@ -226,8 +243,17 @@ extension PresetsWidgetView {
     }
 }
 
-func statusText(_ s: LightSnapshot?) -> String {
+/// `date`: when it's shown (a timeline entry's), for whether it's only the last known by then.
+func statusText(_ s: LightSnapshot?, at date: Date = .now) -> String {
     guard let s else { return "Open setPilot" }
+    // Not heard from lately (the app's suspended, or quit): what it was, if that's known.
+    if s.isStale(at: date) {
+        switch s.isOn {
+        case true?: return "Last known: On"
+        case false?: return "Last known: Off"
+        case nil: return "Open setPilot"
+        }
+    }
     switch s.link {
     case .none: return "No bulb chosen"
     case .connecting: return "Connecting…"
@@ -268,8 +294,9 @@ struct StatusWidgetView: View {
 
     var body: some View {
         let s = entry.snapshot
-        // Shown on only while it's answering: the status line says "Not answering" for the same state.
-        let on = s?.link == .connected && s?.isOn == true
+        // Shown on only while it's answering: the status line says "Not answering" (or "Last
+        // known") for the same state.
+        let on = entry.answering && s?.isOn == true
         // The toggles go by the last known state (WidgetKit sends the toggle's new value), so a
         // tap switches a bulb that was on, off, even while it isn't answering.
         let lastOn = s?.isOn == true
@@ -282,7 +309,7 @@ struct StatusWidgetView: View {
                     .foregroundStyle(on ? Color.yellow : Color.secondary)
                     .widgetAccentable()
                 Text(s?.bulbName ?? "setPilot").font(.headline).lineLimit(1)
-                Text(statusText(s)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(statusText(s, at: entry.date)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 0)
                 HStack {
                     Button(intent: DimStepIntent(step: -10)) { Image(systemName: "sun.min") }
@@ -299,7 +326,7 @@ struct StatusWidgetView: View {
                     }
                     .toggleStyle(.button)
                     .labelStyle(.iconOnly)
-                    .opacity(s?.link == .connected ? 1 : 0.5) // its state is only the last known
+                    .opacity(entry.answering ? 1 : 0.5) // its state is only the last known
                     .accessibilityLabel("Power")
                 }
                 .buttonStyle(.plain)
@@ -311,14 +338,15 @@ struct StatusWidgetView: View {
                 Image(systemName: on ? "lightbulb.fill" : "lightbulb")
             }
             .gaugeStyle(.accessoryCircularCapacity)
+            .accessibilityLabel(statusText(s, at: entry.date)) // not a gauge at 0 when it's off
         case .accessoryInline:
-            Label(statusText(s), systemImage: on ? "lightbulb.fill" : "lightbulb")
+            Label(statusText(s, at: entry.date), systemImage: on ? "lightbulb.fill" : "lightbulb")
         #endif
         default:
             HStack {
                 VStack(alignment: .leading) {
                     Text(s?.bulbName ?? "setPilot").font(.headline).lineLimit(1)
-                    Text(statusText(s)).lineLimit(1)
+                    Text(statusText(s, at: entry.date)).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Toggle(isOn: lastOn, intent: {
@@ -330,7 +358,7 @@ struct StatusWidgetView: View {
                 }
                 .toggleStyle(.button)
                 .labelStyle(.iconOnly)
-                .opacity(s?.link == .connected ? 1 : 0.5) // its state is only the last known
+                .opacity(entry.answering ? 1 : 0.5) // its state is only the last known
                 .accessibilityLabel("Power")
             }
         }
@@ -366,7 +394,9 @@ struct PowerValueProvider: ControlValueProvider {
 
     func currentValue() async throws -> PowerState {
         let s = SharedStore.snapshot
-        return PowerState(on: s?.isOn ?? false, answering: s?.link == .connected && s?.isOn != nil, status: statusText(s))
+        // Not heard from lately: not taken as answering (the app may have been suspended or quit).
+        let answering = s?.link == .connected && s?.isOn != nil && s?.isStale(at: .now) != true
+        return PowerState(on: s?.isOn ?? false, answering: answering, status: statusText(s))
     }
 }
 

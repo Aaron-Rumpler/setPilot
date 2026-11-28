@@ -210,7 +210,9 @@ struct MillisecondsField: View {
             .onChange(of: text) { _, new in
                 let digits = new.filter { $0.isASCII && $0.isNumber } // what Int() can read
                 if digits != new { text = digits; return }
-                if let n = Int(digits.prefix(6)) {
+                // Every digit, saturating: a long number pasted is over the limit, not cut short.
+                if !digits.isEmpty {
+                    let n = digits.reduce(0) { n, d in n > maximum ? n : n * 10 + (d.wholeNumberValue ?? 0) }
                     let clamped = min(max(n, 0), maximum)
                     if clamped != value { value = clamped }
                     // Over the limit (or too long): show what's used.

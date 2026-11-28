@@ -8,6 +8,10 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     /// When the iPhone sent it (its clock), so the watch can tell which of a message, a reply and
     /// the application context is newest: they can arrive in any order.
     var sentAt: Date?
+    /// When the app last heard from the bulb (a reply or a push), while it's answering. Widgets
+    /// and complications show the state as only the last known once that's `trustedFor` ago: the
+    /// app may have been suspended or quit since, and nothing rewrites it then.
+    var heardAt: Date?
     var bulbName: String?
     var isOn: Bool?
     var mode: Mode = .temp
@@ -59,6 +63,19 @@ struct LightSnapshot: Codable, Equatable, Sendable {
     var lastSent: String?
 
     var canControl: Bool { link == .connected && isOn != nil }
+
+    /// How long a state is shown as the bulb's own after it was last heard. The Mac app keeps
+    /// running, so its widgets are refreshed less often (they have a reload budget).
+    #if os(macOS)
+    static let trustedFor: TimeInterval = 60 * 60
+    #else
+    static let trustedFor: TimeInterval = 15 * 60
+    #endif
+
+    /// When it becomes only the last known state, if it's one that does.
+    var staleAt: Date? { heardAt.map { $0.addingTimeInterval(Self.trustedFor) } }
+
+    func isStale(at date: Date) -> Bool { staleAt.map { date >= $0 } ?? false }
 
     var values: LightValues {
         LightValues(mode: mode, r: r, g: g, b: b, c: c, w: w, temp: temp, customKelvin: customKelvin,

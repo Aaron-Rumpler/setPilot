@@ -51,11 +51,11 @@ struct TemperatureScalePicker: View {
 
     var body: some View {
         Picker("CCT Scale", selection: model.temperatureScaleChoice) {
-            Text("Bulb's own").tag(UUID?.none)
+            // Sections, not a Divider (SceneMenuItems).
+            Section { Text("Bulb's own").tag(UUID?.none) }
             let scales = model.usableScales
             if !scales.isEmpty {
-                Divider()
-                ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
+                Section { ForEach(scales) { Text($0.name).tag(Optional($0.id)) } }
             }
         }
     }

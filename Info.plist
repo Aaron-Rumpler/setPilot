@@ -16,7 +16,7 @@
 	<key>SetPilotAppGroup</key>
 	<string>$(TeamIdentifierPrefix)nz.aaronrumpler.setPilot</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>setPilot talks to your WiZ bulb over UDP and searches for bulbs on your network.</string>
+	<string>setPilot controls your WiZ bulb, and reads how it is, over your local network, where it also looks for bulbs.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>nz.aaronrumpler.setPilot.controls</string>

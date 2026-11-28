@@ -12,15 +12,9 @@ enum Shared {
     static let model = Model()
 }
 
+/// Why an action failed: the shared runner's reasons (Core/Commands.swift), or a missing choice.
 struct WizIntentError: Error, CustomLocalizedStringResourceConvertible {
     let localizedStringResource: LocalizedStringResource
-
-    #if os(iOS)
-    static let unreachable = WizIntentError(localizedStringResource: "The bulb isn't answering. Check it's powered and on the same network as your iPhone.")
-    #else
-    static let unreachable = WizIntentError(localizedStringResource: "The bulb isn't answering. Check it's powered and on the same network as your Mac.")
-    #endif
-    static let noBulb = WizIntentError(localizedStringResource: "Choose a bulb in setPilot first.")
 }
 
 struct ApplyPresetIntent: AppIntent {
@@ -168,6 +162,14 @@ struct SetPilotShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Brighter or Dimmer",
             systemImageName: "sun.max"
+        )
+        AppShortcut(
+            intent: PlayCustomSceneIntent(),
+            phrases: [
+                "Play \(\.$scene) in \(.applicationName)",
+            ],
+            shortTitle: "Play Custom Scene",
+            systemImageName: "sparkles"
         )
     }
 }

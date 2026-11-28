@@ -21,16 +21,19 @@ enum Scripting {
     /// `confirmed`: a flashing scene that's been asked about (in the app); otherwise one is refused
     /// while "Ask before playing" is on (Shortcuts, links, the CLI and AppleScript can't ask).
     static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, arrived: Date? = nil, confirmed: Bool = false, on model: Model) async -> ScriptResult {
-        if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
+        // Refused at once if it's known to flash; checked again once the light's been read (below).
+        if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
                 message: BulbReasons.flashes(name)))
         }
+        // Listing reads nothing from the bulb: not kept waiting behind changes.
+        if case .list = command { return await runNow(command, fade: fade, confirmed: confirmed, on: model) }
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
             let queued = min(arrived ?? .now, .now)
             _ = await previous?.value
             // Again after waiting its turn: the one before may have changed what it would play.
-            if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
+            if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: BulbReasons.flashes(name)))
             }
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
@@ -43,7 +46,7 @@ enum Scripting {
             // for (switching bulbs, which lands elsewhere, gets the whole of it).
             deadline = command.changes ? asked.addingTimeInterval(Model.answerTimeout) : nil
             defer { deadline = nil }
-            return await runNow(command, fade: fade, on: model)
+            return await runNow(command, fade: fade, confirmed: confirmed, on: model)
         }
         queue = Task { @MainActor in _ = await task.value }
         return await task.value
@@ -52,13 +55,13 @@ enum Scripting {
     /// When the command being run has to have gone out by (see run).
     private static var deadline: Date?
 
-    private static func runNow(_ command: ScriptCommand, fade: Int?, on model: Model) async -> ScriptResult {
+    private static func runNow(_ command: ScriptCommand, fade: Int?, confirmed: Bool, on model: Model) async -> ScriptResult {
         if let fade, !(0...Fade.maximum).contains(fade) {
             return ScriptResult(state: state(of: model), error: bad("The fade is 0–\(Fade.maximum) ms (a day)."))
         }
         do {
             Log.scripting.info("\(String(describing: command), privacy: .public)")
-            return try await perform(command, fade, model)
+            return try await perform(command, fade, confirmed: confirmed, model)
         } catch let error as ScriptError {
             Log.scripting.error("\(error.code.rawValue, privacy: .public): \(error.message, privacy: .public)")
             return ScriptResult(state: state(of: model), error: error)
@@ -104,7 +107,7 @@ enum Scripting {
 
     // MARK: Running
 
-    private static func perform(_ command: ScriptCommand, _ fade: Int?, _ model: Model) async throws -> ScriptResult {
+    private static func perform(_ command: ScriptCommand, _ fade: Int?, confirmed: Bool, _ model: Model) async throws -> ScriptResult {
         switch command {
         case .list(let kind):
             return ScriptResult(items: items(kind, model))
@@ -133,6 +136,10 @@ enum Scripting {
         // A speed while it's off is only kept for later: nothing goes, so no time is needed.
         // (Decided once the wait has read the light.)
         try await ready(model) { if case .speed = command, model.isOn == false { return false }; return true }
+        // As the light is now it's been read (the speed it's on, perhaps not as it was thought).
+        if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
+            throw ScriptError(code: .refused, message: BulbReasons.flashes(name))
+        }
         model.mismatch = nil // an earlier change's: this one's own read-back says
         // Its tries end with its time, counted from when it was asked (taken by its change).
         model.changeDeadline = deadline
@@ -174,8 +181,11 @@ enum Scripting {
             if model.isOn == false { return ScriptResult(state: state(of: model)) }
         case .preset(let query):
             guard let preset = find(query, in: model.library.presets, name: { $0.name }, id: { $0.id.uuidString }) else {
+                // By ID (the watch, Spotlight): it was there, and has been deleted since.
+                if UUID(uuidString: query) != nil { throw ScriptError(code: .notFound, message: BulbReasons.presetGone) }
                 throw ScriptError(code: .notFound, message: "No preset called “\(query)”.")
             }
+            if model.presetPartGone(preset) { throw ScriptError(code: .notFound, message: BulbReasons.presetPartGone) }
             if fade != nil {
                 try send(LightChange(colour: preset.colour, dimming: preset.dimming, power: true), fade, model)
             } else {
@@ -218,6 +228,7 @@ enum Scripting {
 
     private static func customScene(_ query: String, speed: Int?, _ model: Model) throws -> LightColour {
         guard let scene = find(query, in: model.library.customScenes, name: { $0.name }, id: { $0.id.uuidString }) else {
+            if UUID(uuidString: query) != nil { throw ScriptError(code: .notFound, message: BulbReasons.sceneGone) }
             throw ScriptError(code: .notFound, message: "No custom scene called “\(query)”.")
         }
         if let speed, !(10...200).contains(speed) { throw bad("Speed is 10–200.") }
@@ -261,7 +272,7 @@ enum Scripting {
             let exact = scales.first { $0.id.uuidString.caseInsensitiveCompare(q) == .orderedSame || $0.name.caseInsensitiveCompare(q) == .orderedSame }
             if let exact {
                 scale = exact
-            } else if ["bulb", "own", "bulb's own"].contains(q.lowercased()) {
+            } else if ["bulb", "own", "bulb's own"].contains(plainQuotes(q).lowercased()) {
                 scale = nil
             } else if let found = find(q, in: scales, name: { $0.name }, id: { $0.id.uuidString }) {
                 scale = found
@@ -362,9 +373,15 @@ enum Scripting {
     // MARK: Finding by name
 
     /// By ID, then exact name (ignoring case), then the only name that starts with it.
+    /// Curly quotes as straight ones: iOS text fields (Shortcuts) type “Mum’s” for Mum's.
+    static func plainQuotes(_ s: String) -> String {
+        String(s.map { "‘’".contains($0) ? "'" : "“”".contains($0) ? "\"" : $0 })
+    }
+
     static func find<T>(_ query: String, in list: [T], name: (T) -> String?, id: (T) -> String,
                         also: (T) -> [String] = { _ in [] }) -> T? {
-        let q = query.trimmingCharacters(in: .whitespaces)
+        let q = plainQuotes(query.trimmingCharacters(in: .whitespaces))
+        func plainName(_ item: T) -> String? { name(item).map(plainQuotes) }
         // A MAC in any notation (aa:bb:…, AA-BB-…); anything else (an address) exactly, ignoring case.
         func norm(_ s: String) -> String {
             let hex = s.lowercased().filter { !":-. ".contains($0) }
@@ -373,8 +390,8 @@ enum Scripting {
         if let hit = list.first(where: { id($0).caseInsensitiveCompare(q) == .orderedSame || also($0).contains { norm($0) == norm(q) } }) {
             return hit
         }
-        if let hit = list.first(where: { name($0)?.caseInsensitiveCompare(q) == .orderedSame }) { return hit }
-        let starts = list.filter { name($0)?.lowercased().hasPrefix(q.lowercased()) == true }
+        if let hit = list.first(where: { plainName($0)?.caseInsensitiveCompare(q) == .orderedSame }) { return hit }
+        let starts = list.filter { plainName($0)?.lowercased().hasPrefix(q.lowercased()) == true }
         return starts.count == 1 ? starts[0] : nil
     }
 
@@ -383,20 +400,9 @@ enum Scripting {
         case .presets: model.library.presets.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .scenes: Scenes.all.filter { !(256...265).contains($0.id) }.map { ScriptItem(name: $0.name, id: String($0.id)) }
         case .customScenes: model.library.customScenes.map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
-        case .scales: model.library.scales(for: model.chosenMAC).map { ScriptItem(name: $0.name, id: $0.id.uuidString) }
+        case .scales: model.library.scales(for: model.chosenMAC).filter { $0.range != nil }.map { // only those it can use ScriptItem(name: $0.name, id: $0.id.uuidString) }
         case .bulbs: model.namedBulbs.map { ScriptItem(name: $0.name ?? "Unnamed bulb", id: $0.mac ?? $0.address) }
         }
     }
 }
 
-extension ScriptCommand {
-    /// Whether it changes the light (or which bulb), rather than only reading.
-    var changes: Bool {
-        switch self {
-        // Switching bulbs is the way out of one that isn't answering, and lands on another.
-    // (Used by PhoneRelay too.)
-        case .get, .list, .switchBulb: false
-        default: true
-        }
-    }
-}

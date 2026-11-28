@@ -372,7 +372,7 @@ struct LightControls: View {
                 }
                 ChannelSlider(label: "Speed", range: 10...200, value: model.binding(\.speed))
             }
-            ChannelSlider(label: "Brightness", range: model.minDimming...100, value: model.binding(\.dimming))
+            ChannelSlider(label: "Brightness", range: model.minDimming...100, unit: "%", value: model.binding(\.dimming))
             ControlsFadeRow(model: model)
     }
 }
@@ -416,6 +416,8 @@ struct ChannelSlider: View {
     var marks: [Double] = []
     var scale: SliderScale = .linear
     var colourTemperatureStrip = false
+    /// After the number, for VoiceOver ("%").
+    var unit = ""
     @Binding var value: Double
     @AppStorage(Stepping.snapKey) private var snaps = true
 
@@ -426,7 +428,7 @@ struct ChannelSlider: View {
             // or Option is held; the field works in 1s.
             SnappingSlider(value: $value, range: range, step: Stepping.snapStep(for: range, snapping: snaps),
                            marks: marks, scale: scale,
-                           colourTemperatureStrip: colourTemperatureStrip, tint: tint, label: label)
+                           colourTemperatureStrip: colourTemperatureStrip, tint: tint, label: label, unit: unit)
                 // Centre the row on the track, not on the track plus the marks below it.
                 .alignmentGuide(VerticalAlignment.center) { _ in SnapSliderContainer.sliderHeight / 2 }
             NumberField(value: $value, range: range, label: label)

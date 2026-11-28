@@ -31,7 +31,7 @@ extension View {
 
 /// The last light show and media opened from setPilot's iCloud Drive folder, kept as paths within
 /// it and synced (CloudSync), so every device can open them again; and what Handoff carries for
-/// the light show (them, and where it's up to).
+/// the light show (what's open in it, and where it's up to).
 @MainActor
 enum LastShow {
     static let mediaKey = "lightShowLastMedia"
@@ -66,23 +66,28 @@ enum LastShow {
         }
     }
 
+    /// Only a file in the iCloud Drive folder: any other (or one opened before the folder's
+    /// known) would clear what every device opens again.
     static func remember(media url: URL) {
-        UserDefaults.standard.set(relative(url) ?? "", forKey: mediaKey)
+        guard let path = relative(url) else { return }
+        UserDefaults.standard.set(path, forKey: mediaKey)
     }
 
     static func remember(show url: URL) {
-        UserDefaults.standard.set(relative(url) ?? "", forKey: showKey)
+        guard let path = relative(url) else { return }
+        UserDefaults.standard.set(path, forKey: showKey)
     }
 
     static var media: URL? { resolve(UserDefaults.standard.string(forKey: mediaKey)) }
     static var show: URL? { resolve(UserDefaults.standard.string(forKey: showKey)) }
 
-    /// For Handoff: the open show's files (if in the iCloud Drive folder) and where it's up to.
+    /// For Handoff: the files open in this player (if in the iCloud Drive folder; not the
+    /// remembered ones, which another device may have changed) and where it's up to.
     static func handoffInfo(_ player: LightShowPlayer?) -> [String: Any] {
-        var info: [String: Any] = [:]
-        if let s = UserDefaults.standard.string(forKey: mediaKey), !s.isEmpty { info["media"] = s }
-        if let s = UserDefaults.standard.string(forKey: showKey), !s.isEmpty { info["show"] = s }
-        if let player { info["position"] = player.time }
+        guard let player else { return [:] }
+        var info: [String: Any] = ["position": player.time]
+        if let s = player.mediaURL.flatMap(relative) { info["media"] = s }
+        if let s = player.showURL.flatMap(relative) { info["show"] = s }
         return info
     }
 }

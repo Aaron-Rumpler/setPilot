@@ -170,10 +170,16 @@ final class PhoneLink: NSObject {
         send(.deviceInfo)
     }
 
-    /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach.
+    /// A quiet read of the state is on its way.
+    @ObservationIgnored private var refreshing = false
+
+    /// Asks for the bulb's state, quietly: no error if the iPhone is out of reach. Not while one
+    /// is still on its way: the iPhone answers one at a time, and each can wait for the bulb, so
+    /// they'd pile up ahead of a tap.
     func refresh() {
-        guard WCSession.default.activationState == .activated, WCSession.default.isReachable else { return }
-        send(.state, quiet: true)
+        guard WCSession.default.activationState == .activated, WCSession.default.isReachable, !refreshing else { return }
+        refreshing = true
+        send(.state, quiet: true) { [weak self] _ in self?.refreshing = false }
     }
 
     /// `context`: it came as the application context, which is always the iPhone's latest
@@ -194,13 +200,18 @@ final class PhoneLink: NSObject {
         }
         snapshot = s
         if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: WatchKey.snapshot) }
-        // For the complications: reloaded only when something they show changes.
+        // For the complications: reloaded only when something they show changes, or when the
+        // state they have is about to show as only the last known (or already does) and this
+        // one's fresher.
         SharedStore.save(s, SharedStore.snapshotKey)
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.bulbName ?? "")"
+        let staling = reloadedHeard.map { Date.now.addingTimeInterval(5 * 60) >= $0.addingTimeInterval(LightSnapshot.trustedFor) } ?? false
+        let fresher = staling && (s.heardAt ?? .distantPast) > (reloadedHeard ?? .distantPast)
         trailingReload?.cancel()
-        if key != widgetKey {
+        if key != widgetKey || fresher {
             widgetKey = key
             reloadedDimming = Int(s.dimming)
+            reloadedHeard = s.heardAt
             reloadWidgets()
         } else if Int(s.dimming) != reloadedDimming {
             // The same step of 5, but they show the exact level: once it's settled (one more
@@ -209,11 +220,14 @@ final class PhoneLink: NSObject {
                 try? await Task.sleep(for: .seconds(1.5))
                 guard !Task.isCancelled else { return }
                 reloadedDimming = Int(s.dimming)
+                reloadedHeard = s.heardAt
                 reloadWidgets()
             }
         }
     }
     @ObservationIgnored private var reloadedDimming: Int?
+    /// When the bulb was last heard, in the state the complications were last reloaded with.
+    @ObservationIgnored private var reloadedHeard: Date?
     @ObservationIgnored private var trailingReload: Task<Void, Never>?
 
     private var widgetKey: String?
@@ -277,14 +291,18 @@ final class PhoneLink: NSObject {
         }
     }
 
-    /// Acts on the taps that were waiting for the session, in the order they came.
-    private func openWaitingURL() {
+    /// Acts on the taps that were waiting for the session, in the order they came. True if any
+    /// was still in time to be sent (its reply brings the state).
+    @discardableResult
+    private func openWaitingURL() -> Bool {
         let waiting = waitingURLs
         waitingURLs = []
+        let inTime = waiting.contains { Date.now.timeIntervalSince($0.at) < BulbTiming.answerTimeout }
         for tap in waiting {
             stopWaiting(tap.url)
             open(tap.url, at: tap.at)
         }
+        return inTime
     }
 
     private func stopWaiting(_ url: URL) {
@@ -338,6 +356,8 @@ final class PhoneLink: NSObject {
             defaults.set(d, forKey: WatchKey.customScenes)
             SharedStore.save(s, SharedStore.customScenesKey) // for custom scene swatches
             reloadWidgets()
+            // And Siri learns the scene names (Play … in setPilot).
+            WatchShortcuts.updateAppShortcutParameters()
         }
         // Only when it's changed: the context comes with every state change too, and reloads have a budget.
         if let d = context[WatchKey.presetUsage] as? Data, d != defaults.data(forKey: WatchKey.presetUsage),
@@ -360,10 +380,9 @@ extension PhoneLink: WCSessionDelegate {
         Task { @MainActor in
             self.applyContext(box.value)
             self.reachable = reachable
-            if reachable {
-                self.refresh()
-                self.openWaitingURL()
-            }
+            // Waiting taps first, ahead of a read that could use up their time on the iPhone
+            // (which answers one at a time); their replies bring the state.
+            if reachable, !self.openWaitingURL() { self.refresh() }
             // Otherwise taps waiting stay so until their time's up (dropWhenDue, set as they came).
         }
     }
@@ -372,11 +391,8 @@ extension PhoneLink: WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor in
             self.reachable = reachable
-            if reachable {
-                // (A tap that wasn't sent stays said until the next tap.)
-                self.refresh()
-                self.openWaitingURL()
-            }
+            // (A tap that wasn't sent stays said until the next tap.) Waiting taps first, as above.
+            if reachable, !self.openWaitingURL() { self.refresh() }
         }
     }
 

@@ -40,6 +40,7 @@ struct MobileSlider: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("\(label): type or fine-tune the value")
+                .accessibilityValue(spokenValue) // the label alone hides the number
                 .popover(isPresented: $editing) {
                     FineValueEditor(label: label, range: range, unit: unit, value: $value)
                         .presentationCompactAdaptation(.popover)

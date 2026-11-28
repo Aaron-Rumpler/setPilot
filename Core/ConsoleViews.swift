@@ -27,7 +27,9 @@ struct ConsoleComposer: View {
     @AppStorage("consoleRawMode") private var rawMode = false
     /// Off: the request has no params key at all.
     @AppStorage("consoleSendParams") private var sendParams = true
-    @AppStorage("consoleRaw") private var raw = #"{"method": "getPilot", "params": {}}"#
+    @AppStorage("consoleRaw") private var raw = ConsoleComposer.defaultRaw
+    /// The raw message to start with (ConsoleLog stores into the same key).
+    static let defaultRaw = #"{"method": "getPilot", "params": {}}"#
     @AppStorage("consoleDontSwitchOn") private var keepOff = false
     @AppStorage("consoleRetry") private var retry = true
     @AppStorage("consoleFullReply") private var fullReply = false
@@ -329,11 +331,18 @@ struct ConsoleComposer: View {
         guard canSend else { return }
         // A setPilot with an inline scene that flashes, or a speed that makes the custom scene
         // playing flash: asked about first, as anywhere in the app.
+        // Raw text that won't parse here but has a scene in it: the bulb's own parser may still
+        // take it, and what it would play can't be judged, so asked about anyway.
+        if !flashOK, rawMode, rawObject == nil, raw.contains("elm") {
+            confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
+            return
+        }
         if !flashOK, currentMethod == "setPilot" {
             let params = rawMode ? rawObject?["params"] as? [String: Any] : (sendParams ? try? parsed.get() : nil)
             let speed = (params?["speed"] as? NSNumber)?.intValue
-            // At the speed given (never slower than as timed), or the bulb's.
-            let judged = speed.map { max(100, $0) } ?? model.flashingSpeed
+            // At least the bulb's (and as timed): it plays at that until a speed of its own lands,
+            // if one does (with the scene in the same setPilot, the bulb may drop it).
+            let judged = max(speed ?? 0, model.flashingSpeed)
             if let p = params, let elm = p["elm"] as? [String: Any], Flashing.flashes(elm: elm, speed: judged) {
                 confirmFlashing("", flashes: true) { send(confirmed: confirmed, flashOK: true) }
                 return
@@ -366,7 +375,7 @@ struct ConsoleLog: View {
     @AppStorage("logShowRegistration") private var showRegistration = true
     @AppStorage("consoleMethod") private var method = "getPilot"
     @AppStorage("consoleParams") private var params = "{}"
-    @AppStorage("consoleRaw") private var raw = ""
+    @AppStorage("consoleRaw") private var raw = ConsoleComposer.defaultRaw
     @AppStorage("consoleRawMode") private var rawMode = false
     @AppStorage("consoleSendParams") private var sendParams = true
     @AppStorage(Model.logLimitKey) private var limit = 1000

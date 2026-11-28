@@ -195,6 +195,22 @@ private struct LightShowScreen: View {
         return LightColour.rgbcw(r: ch[0], g: ch[1], b: ch[2], c: ch[3], w: ch[4]).colourName
     }
 
+    /// A cue in words, for VoiceOver: its colour, brightness, speed and fade (nil: none of those).
+    private static func spoken(_ pilot: [String: Any]) -> String? {
+        var parts: [String] = []
+        if let name = colourName(pilot) {
+            parts.append(name)
+        } else if pilot["elm"] != nil {
+            parts.append("a custom scene")
+        } else if pilot["state"] as? Bool == true {
+            parts.append("on")
+        }
+        if let d = (pilot["dimming"] as? NSNumber)?.intValue { parts.append("brightness \(d)%") }
+        if let v = (pilot["speed"] as? NSNumber)?.intValue { parts.append("speed \(v)") }
+        if let t = (pilot["trans"] as? NSNumber)?.intValue { parts.append("fade \(Fade.text(t))") }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     // MARK: Controls
 
     private var controls: some View {
@@ -283,6 +299,7 @@ private struct LightShowScreen: View {
                    onEditingChanged: { player.setScrubbing($0) })
                 .disabled(player.duration == 0)
                 .accessibilityLabel("Position")
+                .accessibilityValue("\(LightShowPlayer.format(player.time)) of \(LightShowPlayer.format(player.duration))")
             Text(verbatim: LightShowPlayer.format(player.duration))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -308,7 +325,8 @@ private struct LightShowScreen: View {
         } else if player.sendsToBulb && model.link != .connected {
             // Ahead of a show's warnings: nothing reaches the bulb until it's fixed. (Connected
             // with its state still to be read is fine: cues go anyway.)
-            Label("Bulb not connected", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+            Label(model.link == .connecting ? "Connecting to the bulb…" : "Bulb not connected", systemImage: "exclamationmark.circle")
+                .foregroundStyle(.orange)
         } else if warnsFlashing, let show = player.show, player.showFlashes {
             // With the summary and any other warning (on iPhone this is the only place the title shows).
             let text = ([summary(show), Flashing.warning] + show.warnings.prefix(1)).joined(separator: " · ")
@@ -369,7 +387,7 @@ private struct LightShowScreen: View {
                 .help("Go to this cue")
                 // The row's highlight, and the colour in words rather than the raw params.
                 .accessibilityLabel(cue.label.map { "\(LightShowPlayer.format(cue.time)), \($0)" } ?? LightShowPlayer.format(cue.time))
-                .accessibilityValue(Self.colourName(cue.pilot) ?? cue.summary)
+                .accessibilityValue(Self.spoken(cue.pilot) ?? cue.summary)
                 .accessibilityHint("Goes to this cue")
                 .accessibilityAddTraits(cue.id == player.currentCue ? .isSelected : [])
             }

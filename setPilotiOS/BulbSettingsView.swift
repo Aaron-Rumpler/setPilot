@@ -32,10 +32,12 @@ struct BulbSettingsView: View {
             } header: {
                 Text("Bulb")
             } footer: {
-                Text("setPilot doesn't search your network on iPhone. Enter the bulb's IP address (the Mac app and your router show it) or its DNS name. A name keeps working if the bulb's address changes.")
+                Text("setPilot doesn't search your network on iPhone or iPad. Enter the bulb's IP address (the Mac app and your router show it) or its DNS name. A name keeps working if the bulb's address changes.")
             }
 
-            if model.knownBulbs.count > 1 || (model.knownBulbs.first.map { $0.address != saved } ?? false) {
+            // Also for one from the WiZ import alone, whose address is entered here.
+            if model.knownBulbs.count > 1 || (model.knownBulbs.first.map { $0.address != saved } ?? false)
+                || model.knownBulbs.contains(where: { $0.address.isEmpty }) {
                 Section {
                     ForEach(model.namedBulbs) { bulb in
                         Button {
@@ -60,7 +62,7 @@ struct BulbSettingsView: View {
                                 }
                                 Spacer()
                                 if bulb.address == saved {
-                                    Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("Current")
+                                    Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("In use") // as on the watch
                                 }
                             }
                         }

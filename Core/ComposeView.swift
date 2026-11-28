@@ -132,6 +132,23 @@ extension Model {
         d.fadeChoice = Model.fade == nil ? .none : .setting
     }
 
+    /// Takes a draft handed off from another device, kept to what this one can send, as
+    /// `loadDraft` keeps it (that device may have scenes or a scale this one hasn't, or another
+    /// bulb's brightness range).
+    func takeDraft(_ info: [String: Any]) {
+        let d = draft
+        d.take(info)
+        if case .builtin(let id) = d.scene, !Scenes.isKnown(id) { d.scene = .builtin(1) }
+        if case .custom(let id) = d.scene, library.customScene(id) == nil { d.scene = .builtin(1) }
+        d.scaleID = draftScale?.id
+        clampDraftKelvin()
+        (d.r, d.g, d.b, d.c, d.w) = (min(max(d.r, 0), 255), min(max(d.g, 0), 255), min(max(d.b, 0), 255),
+                                     min(max(d.c, 0), 255), min(max(d.w, 0), 255))
+        d.dimming = min(max(d.dimming, Int(minDimming)), 100)
+        d.speed = min(max(d.speed, 10), 200)
+        d.fade = min(max(d.fade, 0), Fade.maximum)
+    }
+
     /// Sends the draft and goes back to the live controls, which then show the result. The next
     /// Compose starts from the bulb's new state.
     /// If it can't be sent (a scene or scale in it deleted meanwhile), the draft stays, and the
@@ -305,11 +322,11 @@ struct ComposeControls: View {
                     d.scaleID = id
                     model.clampDraftKelvin()
                 })) {
-                    Text("Bulb's own").tag(UUID?.none)
+                    // Sections, not a Divider (SceneMenuItems).
+                    Section { Text("Bulb's own").tag(UUID?.none) }
                     let scales = model.usableScales
                     if !scales.isEmpty {
-                        Divider()
-                        ForEach(scales) { Text($0.name).tag(Optional($0.id)) }
+                        Section { ForEach(scales) { Text($0.name).tag(Optional($0.id)) } }
                     }
                 }
             }
@@ -317,13 +334,8 @@ struct ComposeControls: View {
                          tint: ColourTemperature.color(kelvin: Double(d.kelvin)))
         case .scenes:
             row("Scene") {
-                Picker("Scene", selection: $d.scene) {
-                    ForEach(Scenes.all) { Text($0.name).tag(SceneChoice.builtin($0.id)) }
-                    if !model.library.customScenes.isEmpty {
-                        Divider()
-                        ForEach(model.library.customScenes) { Text($0.name).tag(SceneChoice.custom($0.id)) }
-                    }
-                }
+                // Not the scene the bulb reported if it's unlisted: a draft can't send it.
+                Picker("Scene", selection: $d.scene) { SceneMenuItems(model: model, showsUnlisted: false) }
             }
             #if os(macOS)
             HStack(spacing: 8) {

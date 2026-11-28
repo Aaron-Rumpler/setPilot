@@ -41,6 +41,7 @@ final class PhoneRelay: NSObject {
             for await message in incoming { await self.handle(message) }
         }
         observeState()
+        keepContextHeardCurrent()
         WidgetPublisher.shared.start(model: model) // the widgets and controls (Core/WidgetPublisher.swift)
         // A preset applied here: the watch's Smart Stack learns when (Common/PresetUsage.swift).
         NotificationCenter.default.addObserver(forName: PresetUsage.recorded, object: nil, queue: .main) { _ in
@@ -128,7 +129,7 @@ final class PhoneRelay: NSObject {
             return .scripted(await Scripting.run(scripted, fade: fade, asked: asked, arrived: arrived, on: model))
         }
         if case .script = command {
-            return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps")
+            return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps.")
         }
         switch command {
         case .state:
@@ -266,11 +267,33 @@ final class PhoneRelay: NSObject {
         }
     }
 
-    /// The state as it goes to the watch, marked with when.
+    /// The state as it goes to the watch, marked with when, and when the bulb was last heard
+    /// (its complications show it as only the last known once that's long ago).
     private static func stamped(_ snapshot: LightSnapshot) -> LightSnapshot {
         var s = snapshot
         s.sentAt = .now
+        s.heardAt = snapshot.link == .connected ? Shared.model.heardAt : nil
         return s
+    }
+
+    /// When the bulb was last heard, in the state last put in the application context.
+    private var contextHeard: Date?
+
+    /// The bulb is heard from all the time without the state changing, so the context (which the
+    /// complications go by while the watch app isn't open) is written again once its state is
+    /// about to show there as only the last known. Not more often: each one can reload them.
+    private func keepContextHeardCurrent() {
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(60))
+                guard let self else { return }
+                // (While it's reachable, the watch app's own reads bring it.)
+                guard let heard = self.contextHeard, let now = self.model?.heardAt, now > heard,
+                      Date.now.addingTimeInterval(5 * 60) >= heard.addingTimeInterval(LightSnapshot.trustedFor),
+                      WCSession.isSupported(), !WCSession.default.isReachable else { continue }
+                self.updateContext()
+            }
+        }
     }
 
     private var stateContextScheduled = false
@@ -302,7 +325,7 @@ final class PhoneRelay: NSObject {
             // A setting the state carries (snapping, the fades; not observed) to a watch that's here now.
             lastSnapshot = nil
             schedulePush()
-            SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset names
+            SetPilotShortcuts.updateAppShortcutParameters() // so Siri knows the preset and custom scene names
         }
     }
 
@@ -319,8 +342,12 @@ final class PhoneRelay: NSObject {
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
         if let data = UserDefaults.standard.data(forKey: PresetUsage.key) { context[WatchKey.presetUsage] = data }
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
-        if model.snapshot.link == .connected, let data = try? encoder.encode(Self.stamped(model.snapshot)) {
-            context[WatchKey.snapshot] = data
+        if model.snapshot.link == .connected {
+            let s = Self.stamped(model.snapshot)
+            if let data = try? encoder.encode(s) {
+                context[WatchKey.snapshot] = data
+                contextHeard = s.heardAt
+            }
         } else if let kept = session.applicationContext[WatchKey.snapshot] as? Data,
                   var s = try? JSONDecoder().decode(LightSnapshot.self, from: kept) {
             // The last good state, with the settings it carries as they are now (snapping, the
@@ -353,7 +380,7 @@ extension PhoneRelay: WCSessionDelegate {
                              replyHandler: @escaping ([String: Any]) -> Void) {
         guard let data = message[WatchKey.command] as? Data,
               let command = try? JSONDecoder().decode(WatchCommand.self, from: data) else {
-            replyHandler([WatchKey.error: "setPilot on your iPhone didn't understand that; update both apps"])
+            replyHandler([WatchKey.error: "setPilot on your iPhone didn't understand that; update both apps."])
             return
         }
         let arrived = Date.now

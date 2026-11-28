@@ -20,10 +20,12 @@ final class Library {
     @ObservationIgnored var onChange: (() -> Void)?
 
     init() {
-        presets = Self.load(Self.presetsKey) ?? []
-        customScenes = Self.load(Self.customScenesKey) ?? []
-        cctScales = Self.load(Self.cctScalesKey) ?? [:]
+        var unread: [String: [Unread]] = [:]
+        presets = Self.loadList(Self.presetsKey, &unread)
+        customScenes = Self.loadList(Self.customScenesKey, &unread)
+        cctScales = Self.loadScales(&unread)
         activeCCTScale = Self.load(Self.activeCCTScaleKey) ?? [:]
+        unreadable = unread
         syncWithCloud()
         // Which scale is in use syncs as a setting (CloudSync).
         NotificationCenter.default.addObserver(forName: CloudSync.settingsChanged, object: nil, queue: .main) { [weak self] note in
@@ -39,6 +41,29 @@ final class Library {
 
     /// Set while taking a value from iCloud, so it isn't sent straight back.
     @ObservationIgnored private var fromCloud = false
+
+    /// Elements of each list this build can't decode (from a newer build, say), by storage key:
+    /// kept as raw JSON with their place, and written back as they were, so they're never lost
+    /// here or taken for deletions (CloudLibrary skips them).
+    @ObservationIgnored private var unreadable: [String: [Unread]] = [:]
+
+    private struct Unread {
+        var index: Int
+        var json: Any
+        var id: String?
+        /// For CCT scales: the bulb whose list it's in.
+        var mac: String?
+    }
+
+    /// The IDs of a list's elements this build couldn't decode.
+    func unreadableIDs(_ key: String) -> Set<String> { Set((unreadable[key] ?? []).compactMap(\.id)) }
+
+    /// Stops keeping undecodable elements with these IDs (deleted in iCloud), or all of them;
+    /// they go from what's stored at the list's next save.
+    func forgetUnreadable(_ ids: Set<String>? = nil) {
+        guard let ids else { unreadable = [:]; return }
+        for key in unreadable.keys { unreadable[key]?.removeAll { $0.id.map(ids.contains) == true } }
+    }
 
     /// Builds before item-by-item sync kept each list whole in iCloud key-value storage: take
     /// anything there that isn't here yet, once, so it goes up with the first sync.
@@ -156,18 +181,107 @@ final class Library {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(value) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        UserDefaults.standard.set(withUnreadable(data, key), forKey: key)
         guard !fromCloud else { return }
         switch key {
         case Self.presetsKey: CloudLibrary.shared.localChanged(.preset)
         case Self.customScenesKey: CloudLibrary.shared.localChanged(.customScene)
         case Self.cctScalesKey: CloudLibrary.shared.localChanged(.cctScale)
-        default: break // which scale is in use stays on each device
+        default: break // which scale is in use syncs as a setting (CloudSync)
         }
     }
 
     private static func load<T: Decodable>(_ key: String) -> T? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// A list, element by element: the ones that won't decode go into `unread`, not the list.
+    private static func loadList<T: Decodable>(_ key: String, _ unread: inout [String: [Unread]]) -> [T] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        guard let array = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else {
+            keepUnparsed(data, key)
+            return []
+        }
+        let (list, rest): ([T], [Unread]) = decode(array, mac: nil)
+        if !rest.isEmpty { unread[key] = rest }
+        return list
+    }
+
+    /// CCT scales by bulb, the same way.
+    private static func loadScales(_ unread: inout [String: [Unread]]) -> [String: [CCTScale]] {
+        let key = cctScalesKey
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
+        guard let lists = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              lists.values.allSatisfy({ $0 is [Any] }) else {
+            keepUnparsed(data, key)
+            return [:]
+        }
+        var out: [String: [CCTScale]] = [:]
+        var rest: [Unread] = []
+        for (mac, value) in lists {
+            let (list, r): ([CCTScale], [Unread]) = decode(value as? [Any] ?? [], mac: mac)
+            if !list.isEmpty { out[mac] = list }
+            rest += r
+        }
+        if !rest.isEmpty { unread[key] = rest }
+        return out
+    }
+
+    private static func decode<T: Decodable>(_ array: [Any], mac: String?) -> ([T], [Unread]) {
+        let decoder = JSONDecoder()
+        var list: [T] = []
+        var rest: [Unread] = []
+        for (i, element) in array.enumerated() {
+            if JSONSerialization.isValidJSONObject(element), let d = try? JSONSerialization.data(withJSONObject: element),
+               let v = try? decoder.decode(T.self, from: d) {
+                list.append(v)
+            } else {
+                rest.append(Unread(index: i, json: element, id: id(of: element), mac: mac))
+            }
+        }
+        return (list, rest)
+    }
+
+    /// Stored data that isn't a list at all: copied aside (once), as nothing of it can be kept.
+    private static func keepUnparsed(_ data: Data, _ key: String) {
+        let aside = key + "Unreadable"
+        if UserDefaults.standard.data(forKey: aside) == nil { UserDefaults.standard.set(data, forKey: aside) }
+    }
+
+    private static func id(of element: Any) -> String? {
+        ((element as? [String: Any])?["id"] as? String).flatMap { UUID(uuidString: $0)?.uuidString }
+    }
+
+    /// `data` (a list, or for CCT scales lists by bulb) with the elements this build couldn't
+    /// decode put back where they were. One that decodes now (taken from iCloud since) isn't kept.
+    private func withUnreadable(_ data: Data, _ key: String) -> Data {
+        guard var kept = unreadable[key], !kept.isEmpty,
+              let top = try? JSONSerialization.jsonObject(with: data) else { return data }
+        func ids(_ list: [Any]) -> [String] { list.compactMap { Self.id(of: $0) } }
+        func merged(_ list: [Any], _ extra: [Unread]) -> [Any] {
+            var out = list
+            for u in extra.sorted(by: { $0.index < $1.index }) { out.insert(u.json, at: min(u.index, out.count)) }
+            return out
+        }
+        let out: Any
+        if let list = top as? [Any] {
+            let have = Set(ids(list))
+            kept.removeAll { $0.id.map(have.contains) == true }
+            out = merged(list, kept)
+        } else if var lists = top as? [String: Any] {
+            let have = Set(lists.values.flatMap { ids($0 as? [Any] ?? []) })
+            kept.removeAll { $0.id.map(have.contains) == true }
+            for (mac, extra) in Dictionary(grouping: kept, by: { $0.mac ?? "" }) {
+                lists[mac] = merged(lists[mac] as? [Any] ?? [], extra)
+            }
+            out = lists
+        } else {
+            return data
+        }
+        unreadable[key] = kept.isEmpty ? nil : kept
+        guard JSONSerialization.isValidJSONObject(out),
+              let joined = try? JSONSerialization.data(withJSONObject: out, options: .sortedKeys) else { return data }
+        return joined
     }
 }

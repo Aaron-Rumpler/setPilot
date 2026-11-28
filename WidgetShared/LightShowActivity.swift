@@ -39,8 +39,9 @@ struct LightShowControlIntent: LiveActivityIntent {
         guard let a = LightShowControl.Action(rawValue: action) else { return .result() }
         if let handler = LightShowControl.handler {
             handler(a)
-        } else if a == .stop {
-            // No show open (the app was quit or killed with one playing): the activity's left over.
+        } else {
+            // No show open (the app was quit or killed with one playing): the activity's left
+            // over, and there's nothing to play or pause, so either button ends it.
             for activity in Activity<LightShowAttributes>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
         }
         return .result()

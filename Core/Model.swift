@@ -228,6 +228,7 @@ final class Model {
         readBackEnd = .distantPast
         ticket += 1
         rawTicket = 0 // set again if this one's raw
+        rawStateTicket = 0
         refusal = nil
         pilotAnswered = false
         speedAwaited = false
@@ -525,6 +526,13 @@ final class Model {
         undoManager?.setActionName(Self.undoActionName)
     }
 
+    /// Edit › Undo or Redo came to nothing (the bulb away): the manager has already spent that
+    /// step, and putting it back would clear the other side, so the history is left to the
+    /// buttons, which keep all of it; Edit › Undo takes up again from the next change.
+    private func leaveManager() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { self.undoManager?.removeAllActions(withTarget: self) } }
+    }
+
     private func clearUndo() {
         undoHistory = []
         redoHistory = []
@@ -555,9 +563,7 @@ final class Model {
         // history is kept (the Undo button still has it) rather than spent on a change that can't go.
         guard canControl else {
             status = "The bulb isn't answering, so nothing was undone"
-            if undoManager?.isUndoing == true {
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.registerWithManager(redo: false) } } // back on Edit › Undo
-            }
+            if undoManager?.isUndoing == true { leaveManager() }
             return
         }
         guard let last = undoHistory.popLast() else { return }
@@ -571,6 +577,7 @@ final class Model {
     private func redoNow() {
         guard canControl else {
             status = "The bulb isn't answering, so nothing was redone"
+            if undoManager?.isRedoing == true { leaveManager() }
             return
         }
         guard let next = redoHistory.popLast() else { return }
@@ -1272,19 +1279,23 @@ final class Model {
         noteUndoPoint()
         // Custom CCT without a scale (deleted since) can't send anything: the bulb's own instead.
         let m = m == .custom && activeScale?.range == nil ? Mode.temp : m
+        let was = mode
         mode = m
         if m == .custom, let range = activeScale?.range {
             customKelvin = min(max(customKelvin, Double(range.lowerBound)), Double(range.upperBound))
         }
-        if m == .scene { useSendableScene() }
+        if m == .scene { useSendableScene(restarting: was != .scene) }
         sendPilot([.colour], retry: true)
     }
 
     /// A scene that can't be sent (Rhythm, a newer ID, or a deleted custom scene): start with the
     /// first one instead, so switching to Scene mode always sends something.
-    private func useSendableScene() {
-        guard !Scenes.isKnown(sceneId),
-              !(sceneId == Scenes.inlineCustom && customSceneId.flatMap(library.customScene) != nil) else { return }
+    /// `restarting`: coming back to Scene mode, the custom scene from before would start again
+    /// unasked: not one that flashes (it's asked about where it's started).
+    private func useSendableScene(restarting: Bool = false) {
+        let custom = sceneId == Scenes.inlineCustom ? customSceneId.flatMap(library.customScene) : nil
+        let flashes = restarting && Flashing.asks && custom.map { self.flashes($0) } == true
+        guard flashes || (!Scenes.isKnown(sceneId) && custom == nil) else { return }
         sceneId = Scenes.all[0].id
         customSceneId = nil
     }
@@ -1307,8 +1318,10 @@ final class Model {
         // A change of its own: whatever was waiting on the last one isn't told this one's answer.
         if method == "setPilot" || method == "setState" {
             startChange()
+            pilotSwitches = false // an earlier switch's: this one's failure doesn't put it back
             if method == "setState" {
                 stateTicket = ticket
+                rawStateTicket = ticket // its answer doesn't say which way (isOn isn't set for it)
                 powerBefore = isOn // what a refusal puts back
             } else {
                 rawTicket = ticket // settled by its reply
@@ -1436,7 +1449,6 @@ final class Model {
         }
     }
 
-    /// Coalesces slider drags into at most one setPilot per ~40 ms.
     /// A speed for the custom scene playing that would make it flash (and it doesn't as it is):
     /// only as fast as it doesn't (it's asked about where it's started, not on a slider or the
     /// watch's Crown), saying so.
@@ -1445,10 +1457,11 @@ final class Model {
               let scene = customSceneId.flatMap(library.customScene),
               scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }
         let fastest = stride(from: Int(new), through: Int(speed), by: -1).first { !scene.flashes(atSpeed: $0) } ?? Int(speed)
-        status = "Faster, “\(scene.name)” flashes quickly: play it again at that speed to be asked first"
+        status = "Any faster and “\(scene.name)” flashes quickly. To play it faster, start it again with that speed (from a preset, say), to be asked first"
         return Double(fastest)
     }
 
+    /// Coalesces slider drags into at most one setPilot per ~40 ms.
     func changed(_ field: PilotField) {
         unsent.insert(field)
         guard !sendScheduled else { return }
@@ -1574,6 +1587,11 @@ final class Model {
                     guard connectGeneration == generation, pending, pilotAnswered, Date() < end, verifyingSeq != seq else {
                         lastPilot["speed"] = nil // not sent: the read-back mustn't expect it
                         delayedSpeed = nil
+                        // Its time ran out with the scene answered: the speed never went, so the
+                        // change isn't done (not "not applied" either: the bulb wasn't asked).
+                        if connectGeneration == generation, pending, pilotAnswered, Date() >= end, ticket == change {
+                            settle(change, .notKnown("Its time ran out before the scene's speed could be sent."))
+                        }
                         return
                     }
                     guard isOn != false else {
@@ -1661,6 +1679,15 @@ final class Model {
     }
 
     /// Makes `colour` the current one (mode and values). False, with a status, if it can't be used.
+    /// A preset whose custom scene or CCT scale has been deleted (so it can't be sent).
+    func presetPartGone(_ preset: Preset) -> Bool {
+        switch preset.colour {
+        case let .custom(id, _): library.customScene(id) == nil
+        case let .customCCT(id, _): library.scale(id) == nil
+        default: false
+        }
+    }
+
     private func select(_ colour: LightColour, speed: inout Int?) -> Bool {
         switch colour {
         case let .rgbcw(r, g, b, c, w):
@@ -1925,7 +1952,7 @@ final class Model {
     @ObservationIgnored private var lastRegistration = Date.distantPast
 
     /// When something was last heard from the bulb (a reply or a push).
-    @ObservationIgnored private var lastHeard = Date.distantPast
+    @ObservationIgnored private(set) var lastHeard = Date.distantPast
     /// How long without hearing from the bulb before `ensureLive` reads the state again.
     static let staleAfter: Double = 25
     /// When the state was last read (a getPilot answered).
@@ -2178,6 +2205,8 @@ final class Model {
     /// raw setPilot's.
     @ObservationIgnored private var stateTicket = 0
     @ObservationIgnored private var rawTicket = 0
+    /// A raw setState's (the console's): its answer is reported as such.
+    @ObservationIgnored private var rawStateTicket = 0
     /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
     @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).
@@ -2344,7 +2373,7 @@ final class Model {
             pilotAnswered = true
             status = "setPilot ok" // as before; a read-back that follows says more
         case "setState":
-            status = isOn == false ? "Switched off" : "Switched on"
+            status = ticket == rawStateTicket ? "setState ok" : isOn == false ? "Switched off" : "Switched on"
             if ticket == stateTicket { settle(ticket, .done) } // nothing to read back for setState
         case "registration":
             if result["success"] as? Bool == true, push.isRunning, !live {

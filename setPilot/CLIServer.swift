@@ -66,7 +66,11 @@ final class CLIServer {
             watch(fd, model: model)
             return
         }
-        guard let command = request.command else { return }
+        guard let command = request.command else {
+            // Answered, so the tool says what's wrong rather than that the app hung up.
+            write(ScriptResult(error: ScriptError(code: .badArguments, message: "No command given (are the app and the tool from the same build?).")), to: fd)
+            return
+        }
         let done = DispatchSemaphore(value: 0)
         let box = ResultBox()
         Task { @MainActor in

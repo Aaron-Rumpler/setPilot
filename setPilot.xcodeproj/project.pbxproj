@@ -1257,7 +1257,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotMacWidgets-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot's widgets talk to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1285,7 +1285,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "setPilotMacWidgets-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = setPilot;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot's widgets talk to your WiZ bulb over UDP on your local network.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "setPilot controls your WiZ bulb, and reads how it is, over your local network.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

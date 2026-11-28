@@ -159,7 +159,8 @@ case "list":
     command = .list(kind)
 case "set":
     guard !(onFlag && offFlag) else { badArguments("--on or --off, not both.") }
-    let rgb = rgbOption.map { $0.split(separator: ",").map { int(String($0).trimmingCharacters(in: .whitespaces), "Each channel") } }
+    // An empty part is an error (as in links), not skipped.
+    let rgb = rgbOption.map { $0.split(separator: ",", omittingEmptySubsequences: false).map { int(String($0).trimmingCharacters(in: .whitespaces), "Each channel") } }
     command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "The kelvin") }, scale: scaleOption,
                                 scene: sceneOption, customScene: customOption,
                                 speed: speedOption.map { int($0, "The speed") },
@@ -262,8 +263,11 @@ func connectToApp() -> Int32 {
 
 let fd = connectToApp()
 if !watching {
-    // A hung app doesn't hang the tool: longer than a bulb's retries (about 6 s) plus the read-back.
-    var wait = timeval(tv_sec: 30, tv_usec: 0)
+    // A hung app doesn't hang the tool: longer than a bulb's retries (about 6 s) plus the read-back,
+    // or for switching, finding a bulb known only by its MAC (which can wait on Local Network access).
+    var switching = false
+    if case .switchBulb = command { switching = true }
+    var wait = timeval(tv_sec: switching ? 90 : 30, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
 }
 let request = Array((encode(ScriptRequest(command: command, fade: fade, watch: watching ? true : nil, asked: started.timeIntervalSince1970)) + "\n").utf8)
@@ -344,7 +348,9 @@ lines { data in
 }
 guard let result = answer else {
     if timedOut {
-        fail(ScriptError(code: .notAnswering, message: "The setPilot app didn't answer in time (the change may still go through)."))
+        fail(ScriptError(code: .notAnswering, message: command.changes
+            ? "The setPilot app didn't answer in time (the change may still go through)."
+            : "The setPilot app didn't answer in time."))
     }
     fail(ScriptError(code: .appUnavailable, message: "The setPilot app closed the connection without an answer (did it quit, or is it a different version?)."))
 }

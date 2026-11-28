@@ -12,7 +12,8 @@ struct SetPilotApp: App {
     @State private var model = Shared.model
 
     init() {
-        // Shortcuts and Siri learn the preset names from this, at launch and when they change.
+        // Shortcuts and Siri learn the preset and custom scene names from this, at launch and when
+        // they change.
         Shared.model.library.onChange = {
             ShortcutNames.update()
             SpotlightIndex.update(Shared.model.library)
@@ -67,8 +68,9 @@ struct SetPilotApp: App {
                 .modifier(HandoffWindowOpener())
         }
         .menuBarExtraStyle(.window)
-        // Wide enough for the list, the editor and the step inspector side by side.
-        Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model) }
+        // The guard sits outside the window's view so its list (which reads it) gets it too. Wide
+        // enough for the list, the editor and the step inspector side by side.
+        Window("Custom Scenes", id: "scenes") { CustomScenesWindow(model: model).flashingGuard() }
             .handlesExternalEvents(matching: []) // setpilot:// links go to the app delegate
             .defaultSize(width: 1060, height: 680)
         Window("CCT Scales", id: "scales") { CCTScalesWindow(model: model) }
@@ -87,7 +89,8 @@ struct SetPilotApp: App {
     }
 }
 
-/// Tells Shortcuts the preset names once edits pause (renaming types a name a letter at a time).
+/// Tells Shortcuts the preset and custom scene names once edits pause (renaming types a name a
+/// letter at a time).
 @MainActor
 enum ShortcutNames {
     private static var pending: Task<Void, Never>?
@@ -223,6 +226,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateCancel
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        #if WIZ_APP_GROUPS
+        // Really quitting (not ⌘Q, which only closes the windows): the widgets' state stops here.
+        WidgetPublisher.shared.appTerminating()
+        #endif
+    }
+
     /// Right-click on the Dock icon (there while a window is open): power and the presets.
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let model = Shared.model
@@ -240,10 +250,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             none.isEnabled = false
             menu.addItem(none)
         }
-        for (i, preset) in presets.prefix(20).enumerated() {
+        for preset in presets.prefix(20) {
             let item = NSMenuItem(title: preset.name, action: #selector(dockPreset(_:)), keyEquivalent: "")
             item.target = self
-            item.tag = i
             item.representedObject = preset.id.uuidString
             item.isEnabled = model.canControl // (as power is)
             menu.addItem(item)
@@ -287,7 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct SettingsView: View {
     let model: Model
-    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    /// Waiting for approval counts as on, as `refreshLoginItem` has it.
+    @State private var openAtLogin = SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval
     @State private var loginItemNote: String?
     @AppStorage(ColourTemperature.adaptingWhiteKey) private var adaptingWhite = ColourTemperature.defaultAdaptingWhite
     @AppStorage(Stepping.snapKey) private var snaps = true

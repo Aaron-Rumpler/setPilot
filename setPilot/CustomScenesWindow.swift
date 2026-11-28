@@ -79,7 +79,6 @@ struct CustomScenesWindow: View {
             Text("Presets that use it will stop working.")
         }
         .onAppear { if selection == nil { selection = lib.customScenes.first?.id } }
-        .flashingGuard()
         // Handoff from another device (setPilot/App.swift opens this window).
         .onChange(of: HandoffRouter.shared.sceneToSelect, initial: true) { _, id in
             guard let id else { return }

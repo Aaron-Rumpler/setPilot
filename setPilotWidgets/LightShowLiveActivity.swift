@@ -33,6 +33,8 @@ struct LightShowLiveActivityWidget: Widget {
                 LightSwatch(rgb: context.state.swatch).frame(width: 18, height: 18)
             } compactTrailing: {
                 Image(systemName: context.isStale ? "stop.fill" : context.state.playing ? "play.fill" : "pause.fill")
+                    // What it's doing, not a button's name.
+                    .accessibilityLabel(context.isStale ? "Not playing" : context.state.playing ? "Playing" : "Paused")
             } minimal: {
                 LightSwatch(rgb: context.state.swatch).frame(width: 18, height: 18)
             }

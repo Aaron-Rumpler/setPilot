@@ -21,7 +21,7 @@ final class HandoffRouter {
         case .controls:
             // A Compose draft from the other device: carried on here, in Compose.
             if let draft = info?["draft"] as? [String: Any] {
-                Shared.model.draft.take(draft)
+                Shared.model.takeDraft(draft)
                 Shared.model.composing = true
             }
         default: break

@@ -25,14 +25,16 @@ struct PresetEntity: AppEntity {
 }
 
 struct PresetQuery: EntityQuery {
+    @MainActor
     func entities(for identifiers: [UUID]) async throws -> [PresetEntity] {
         // In the order asked (a widget's chosen presets keep theirs).
-        let presets = SharedStore.presets
+        let presets = WidgetPerformer.presets
         return identifiers.compactMap { id in presets.first { $0.id == id } }.map(PresetEntity.init)
     }
 
+    @MainActor
     func suggestedEntities() async throws -> [PresetEntity] {
-        SharedStore.presets.map(PresetEntity.init)
+        WidgetPerformer.presets.map(PresetEntity.init)
     }
 }
 
@@ -53,6 +55,11 @@ enum WidgetCommand: Sendable {
 enum WidgetPerformer {
     /// Set by the app; nil in the extension.
     @MainActor static var handler: (@MainActor (WidgetCommand) async throws -> Void)?
+    /// Set by the app: its own presets, for Shortcuts and Siri, which run in the app. Without it
+    /// (the extension), those it left in the App Group, which a build without App Groups has none of.
+    @MainActor static var library: (@MainActor () -> [Preset])?
+
+    @MainActor static var presets: [Preset] { library?() ?? SharedStore.presets }
 
     @MainActor
     static func perform(_ command: WidgetCommand) async throws {

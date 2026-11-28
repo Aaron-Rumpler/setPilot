@@ -38,6 +38,7 @@ enum BulbReasons {
     #endif
     static var notAnswering: String { "The bulb isn't answering. Check it's powered and on the same network as your \(device)." }
     static let presetGone = "That preset no longer exists."
+    static let sceneGone = "That custom scene no longer exists."
     static let presetPartGone = "That preset can't be sent: its custom scene or CCT scale has been deleted."
 
     /// The setting that turns the question about flashing off, as Settings labels it.
@@ -47,8 +48,14 @@ enum BulbReasons {
     private static let askSetting = "“Ask Before Playing It”"
     #endif
 
+    #if os(watchOS)
+    private static let whereAsked = "in setPilot on your iPhone"
+    #else
+    private static let whereAsked = "in setPilot"
+    #endif
+
     /// A scene that flashes, where it can't be asked about.
     static func flashes(_ name: String) -> String {
-        "“\(name)” flashes quickly, so it's only started in setPilot, which asks first (or turn off \(askSetting) in Settings)."
+        "“\(name)” flashes quickly, so it's only started \(whereAsked), which asks first (or turn off \(askSetting) in setPilot's Settings)."
     }
 }

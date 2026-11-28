@@ -97,9 +97,13 @@ enum SpotlightIndex {
             }
             try? await index.indexAppEntities(presets)
             try? await index.indexAppEntities(scenes)
-            // Replaced meanwhile by a newer run: its list is the one kept (this one's is older).
-            guard !Task.isCancelled else { return }
-            UserDefaults.standard.set((Array(now) + stillIndexed).map(\.uuidString), forKey: indexedKey)
+            // Added to what's noted now, not replacing it: a newer run (this one cancelled
+            // meanwhile, or not) may have noted its own, and what this one indexed must be noted
+            // too, or a deleted item it added would stay in the index.
+            let removed = Set(gone).subtracting(stillIndexed)
+            let noted = Set((UserDefaults.standard.stringArray(forKey: indexedKey) ?? []).compactMap(UUID.init(uuidString:)))
+            let indexed = noted.union(before).subtracting(removed).union(now)
+            UserDefaults.standard.set(indexed.map(\.uuidString), forKey: indexedKey)
         }
     }
 }

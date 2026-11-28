@@ -162,6 +162,7 @@ extension Library {
             scaleCount += taken
         }
         cctScales = scales
+        guard presetCount + sceneCount + scaleCount > 0 else { return "Nothing new to add: you already have all of these." }
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         return "Imported \(count(presetCount, "preset")), \(count(sceneCount, "custom scene")) and \(count(scaleCount, "CCT scale"))."
     }
@@ -233,15 +234,13 @@ struct LibraryTransferSection: View {
             let file = try JSONDecoder().decode(LibraryFile.self, from: Data(contentsOf: url))
             // A later format may mean something else by the same keys: don't guess.
             guard file.setPilotLibrary <= 1 else {
-                result = "That library file is from a newer version of setPilot."
+                result = "That library file is from a newer version of setPilot. Update setPilot here to import it."
                 return
             }
             // Items already here: asked about first (IncomingItems).
+            // (After any other still being asked about; the main window asks, opened for it on the Mac.)
             if model.library.clashes(file) > 0 {
-                IncomingItems.shared.pending = file
-                #if os(macOS)
-                HandoffRouter.shared.open(.controls) // the main window asks
-                #endif
+                IncomingItems.shared.offer(file)
             } else {
                 result = model.library.merge(file)
             }

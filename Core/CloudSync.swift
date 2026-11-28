@@ -2,7 +2,7 @@ import Foundation
 
 /// iCloud sync of settings (how fades work, the adapting white, snapping, the light show's
 /// options, the log's and console's, when presets are used) through iCloud key-value storage,
-/// between the Mac and iPhone apps. The library, bulb names, Your Bulbs and signing keys sync
+/// between the account's Macs, iPhones and iPads. The library, bulb names, Your Bulbs and signing keys sync
 /// item by item through CloudKit instead (CloudLibrary). Only in builds with `WIZ_ICLOUD` set
 /// (Account.xcconfig), since it needs a paid developer account; otherwise everything here does
 /// nothing.
@@ -63,7 +63,7 @@ final class CloudSync {
         var changed: [String] = []
         for key in Self.settingKeys {
             if key == PresetUsage.key {
-                mergeUsage(store.object(forKey: Self.prefix + key))
+                mergeUsage(store.object(forKey: Self.prefix + key), upload: true)
                 continue
             }
             if let remote = store.object(forKey: Self.prefix + key) as? NSObject {
@@ -90,8 +90,9 @@ final class CloudSync {
             MainActor.assumeIsolated {
                 // Another Apple ID: what was known of the last one's settings is nothing to it.
                 // (This device's settings stay, and don't go up to it until changed here.)
-                if reason == NSUbiquitousKeyValueStoreAccountChange { CloudSync.shared.markLocalKnown() }
-                CloudSync.shared.takeRemote(keys)
+                let accountChanged = reason == NSUbiquitousKeyValueStoreAccountChange
+                if accountChanged { CloudSync.shared.markLocalKnown() }
+                CloudSync.shared.takeRemote(keys, accountChanged: accountChanged)
             }
         }
         #endif
@@ -116,25 +117,30 @@ final class CloudSync {
     }
 
     /// The usage record: another device's uses are added to this one's, and the union goes up.
-    private func mergeUsage(_ remote: Any?) {
+    /// `upload`: not after an Apple ID change, or the record's removal there: as for the other
+    /// settings, what's here then goes up only once it changes here.
+    private func mergeUsage(_ remote: Any?, upload: Bool) {
         let defaults = UserDefaults.standard
         if let data = remote as? Data, let uses = try? JSONDecoder().decode([PresetUsage.Use].self, from: data),
            PresetUsage.merge(uses, into: defaults) {
             NotificationCenter.default.post(name: PresetUsage.recorded, object: nil) // quick actions, the watch
         }
-        guard let mine = defaults.data(forKey: PresetUsage.key) as NSData?, !mine.isEqual(remote) else { return }
+        guard let mine = defaults.data(forKey: PresetUsage.key) as NSData? else { return }
         known[PresetUsage.key] = mine // the merge's own write isn't sent again
+        guard upload, !mine.isEqual(remote) else { return }
         NSUbiquitousKeyValueStore.default.set(mine, forKey: Self.prefix + PresetUsage.key)
     }
 
-    private func takeRemote(_ keys: [String]) {
+    /// `accountChanged`: another Apple ID's (nothing here goes up to it until changed here).
+    private func takeRemote(_ keys: [String], accountChanged: Bool = false) {
         let defaults = UserDefaults.standard
         let store = NSUbiquitousKeyValueStore.default
         var changed: [String] = []
         for cloudKey in keys where cloudKey.hasPrefix(Self.prefix) {
             let key = String(cloudKey.dropFirst(Self.prefix.count))
             if key == PresetUsage.key {
-                mergeUsage(store.object(forKey: cloudKey))
+                let remote = store.object(forKey: cloudKey)
+                mergeUsage(remote, upload: !accountChanged && remote != nil)
                 continue
             }
             guard Self.settingKeys.contains(key) else { continue }
@@ -185,7 +191,7 @@ struct CloudSyncSection: View {
             Text("Sync")
         } footer: {
             Text(CloudSync.isEnabled
-                 ? "Presets, custom scenes, CCT scales, your bulbs with their names and signing keys, and settings sync between your Mac and iPhone through iCloud, item by item: changes to different presets on each both survive. The chosen bulb and the light show delay stay on each device."
+                 ? "Presets, custom scenes, CCT scales, your bulbs with their names and signing keys, and settings sync between your Macs, iPhones and iPads through iCloud, item by item: changes to different presets on each both survive. In a household, its library is shared with everyone in it (settings stay yours). The chosen bulb and the light show delay stay on each device."
                  : "iCloud needs a paid Apple developer account. To build with it, set WIZ_ICLOUD\u{00A0}=\u{00A0}YES in Account.xcconfig.") // no-break spaces keep the setting in one piece
                 .font(.callout)
                 .foregroundStyle(.secondary)

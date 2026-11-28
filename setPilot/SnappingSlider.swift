@@ -47,6 +47,8 @@ struct SnappingSlider: NSViewRepresentable {
     var tint: Color? = nil
     /// For VoiceOver.
     var label = ""
+    /// After the number, for VoiceOver ("60%", as on iPhone and the watch).
+    var unit = ""
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -90,6 +92,9 @@ struct SnappingSlider: NSViewRepresentable {
         // A temperature's colour in words too, for VoiceOver ("2700 K, warm white").
         if colourTemperatureStrip {
             slider.valueDescription = { kelvin in "\(Int(kelvin.rounded())) K, \(ColourNames.name(kelvin: kelvin))" }
+        } else if !unit.isEmpty {
+            let unit = unit
+            slider.valueDescription = { "\(Int($0.rounded()))\(unit)" }
         } else {
             slider.valueDescription = nil
         }

@@ -38,7 +38,10 @@ struct SetPilotMobileApp: App {
             let result = await Scripting.run(script, on: Shared.model)
             if let error = result.error { throw WidgetError(localizedStringResource: "\(error.message)") }
         }
-        // Siri learns the preset names from this (also refreshed whenever the presets change).
+        // Shortcuts' and Siri's presets, from the library itself (there may be no App Group).
+        WidgetPerformer.library = { Shared.model.library.presets }
+        // Siri learns the preset and custom scene names from this (also refreshed whenever the
+        // library changes).
         SetPilotShortcuts.updateAppShortcutParameters()
     }
 

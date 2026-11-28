@@ -27,14 +27,15 @@ struct CustomSceneEditor: View {
                     NameField(name: binding.name, untitled: "Untitled Scene")
                     HStack {
                         Button {
-                            // At speed 100, so the preview shows the steps as timed. On the Mac, a
+                            // At speed 100, so the preview shows the steps as timed. Judged at the
+                            // bulb's speed too, which it plays at until its own arrives. On the Mac, a
                             // number being typed reaches the step only once its field ends editing.
                             #if os(macOS)
                             NSApp.keyWindow?.makeFirstResponder(nil)
                             #endif
                             DispatchQueue.main.async {
                                 if let scene = model.library.customScene(sceneID) {
-                                    confirmFlashing(scene.name, flashes: scene.flashes) { model.playCustom(scene, speed: 100) }
+                                    confirmFlashing(scene.name, flashes: model.flashes(scene, speed: 100)) { model.playCustom(scene, speed: 100) }
                                 }
                             }
                         } label: {

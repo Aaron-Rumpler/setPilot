@@ -220,6 +220,10 @@ final class LightShowPlayer {
     @ObservationIgnored private var saved: Model.SavedLight?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var mediaAccess: URL?
+    /// The media and show open in this player, for Handoff (the remembered ones sync, so they
+    /// can be another device's).
+    @ObservationIgnored private(set) var mediaURL: URL?
+    @ObservationIgnored private(set) var showURL: URL?
     @ObservationIgnored private var scrubbing = false
     /// A seek is under way: the player's time is still the old one until it finishes.
     @ObservationIgnored private var seeking = false
@@ -281,6 +285,7 @@ final class LightShowPlayer {
         seeking = false
         plainSeek = nil
         mediaName = url.lastPathComponent
+        mediaURL = url
         LastShow.remember(media: url)
         hasVideo = false
         duration = 0
@@ -308,11 +313,6 @@ final class LightShowPlayer {
     }
 
     func openShow(_ url: URL) {
-        opened += 1
-        restoreNote = nil // about the last show
-        #if os(iOS)
-        LightShowLiveActivity.shared.end() // it names the show: the next play starts one for this
-        #endif
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
@@ -321,6 +321,12 @@ final class LightShowPlayer {
         }
         switch LightShow.parse(data) {
         case .success(let s):
+            // Only once it's opened: a file that fails leaves the open show as it was.
+            opened += 1
+            restoreNote = nil // about the last show
+            #if os(iOS)
+            LightShowLiveActivity.shared.end() // it names the show: the next play starts one for this
+            #endif
             show = s
             confirmed = false // this show's flashing hasn't been asked about
             // A flashing one opened while playing: paused, for Play to ask first.
@@ -329,6 +335,7 @@ final class LightShowPlayer {
                 restoreNote = Self.flashingNote
             }
             showName = url.lastPathComponent
+            showURL = url
             LastShow.remember(show: url)
             error = nil
             sentUpTo = nil // catch up to wherever the media is, on the next tick that plays
@@ -777,9 +784,10 @@ extension Model {
             return "The scene from before (\(Scenes.name(v.sceneId))) can't be sent: only the brightness and power were put back"
         }
         // A custom scene that flashes as it is now (edited since, say): not started unasked; only
-        // the brightness and power go back.
+        // the brightness and power go back. Judged at the faster of its own speed and the bulb's
+        // now: the speed is sent after the scene, which plays at the bulb's speed until then.
         if v.mode == .scene, v.sceneId == Scenes.inlineCustom, Flashing.asks,
-           let scene = saved.customScene.flatMap(library.customScene), scene.flashes(atSpeed: Int(v.speed)) {
+           let scene = saved.customScene.flatMap(library.customScene), flashes(scene, speed: max(Int(v.speed), flashingSpeed)) {
             apply(v, fields: [.dimming])
             return "“\(scene.name)” flashes quickly, so it wasn't started again: only the brightness and power were put back"
         }

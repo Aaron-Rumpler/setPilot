@@ -106,19 +106,22 @@ final class IncomingItems {
         }
         // A later format may mean something else by the same keys: don't guess.
         guard file.setPilotLibrary <= 1 else {
-            problem = "That's from a newer version of setPilot: update setPilot here to add it."
+            problem = "That's from a newer version of setPilot. Update setPilot here to add it."
             return
         }
         guard !file.presets.isEmpty || !file.customScenes.isEmpty || file.cctScales.values.contains(where: { !$0.isEmpty }) else {
             problem = "There's nothing in that to add."
             return
         }
-        // Another still being asked about: this one's asked about next.
+        offer(file)
+    }
+
+    /// Asks about a file to add: now, or after the one still being asked about.
+    func offer(_ file: LibraryFile) {
         if pending != nil { waiting.append(file) } else { pending = file }
     }
 
-    var summary: String {
-        guard let f = pending else { return "" }
+    static func summary(of f: LibraryFile) -> String {
         let names = f.presets.map(\.name) + f.customScenes.map(\.name) + f.cctScales.values.flatMap { $0.map(\.name) }
         return names.map { "“\($0)”" }.joined(separator: ", ")
     }
@@ -133,12 +136,25 @@ private struct IncomingItemsPrompt: ViewModifier {
     let model: Model
     /// The text kept while the alert closes (problem is cleared first).
     @State private var shownProblem = ""
+    /// The question as it was, kept while the alert closes (pending is cleared first, and once
+    /// added, every item would count as already here).
+    @State private var shown = Question(clashes: 0, summary: "")
+
+    private struct Question {
+        var clashes: Int
+        var summary: String
+    }
+
+    private var asked: Question? {
+        IncomingItems.shared.pending.map { Question(clashes: model.library.clashes($0), summary: IncomingItems.summary(of: $0)) }
+    }
 
     func body(content: Content) -> some View {
         let incoming = IncomingItems.shared
-        let clashes = incoming.pending.map(model.library.clashes) ?? 0
+        let question = asked ?? shown
+        let clashes = question.clashes
         content.alert(clashes > 0 ? "You already have some of these" : "Add to setPilot?",
-                      isPresented: Binding(get: { incoming.pending != nil }, set: { if !$0 { incoming.pending = nil } })) {
+                      isPresented: Binding(get: { incoming.pending != nil }, set: { if !$0 { close() } })) {
             if clashes > 0 {
                 Button("Replace Mine") { add(.replace) }
                 Button("Keep Both") { add(.keepBoth) }
@@ -146,12 +162,12 @@ private struct IncomingItemsPrompt: ViewModifier {
             } else {
                 Button("Add") { add(.replace) }
             }
-            Button("Cancel", role: .cancel) { incoming.pending = nil }
+            Button("Cancel", role: .cancel) { close() }
         } message: {
             if clashes > 0 {
-                Text("\(incoming.summary): \(clashes == 1 ? "one is" : "\(clashes) are") already here. Replace yours with these, keep both (the new ones as copies), or add only the ones you don't have?")
+                Text("\(question.summary): \(clashes == 1 ? "one is" : "\(clashes) are") already here. Replace yours with these, keep both (the new ones as copies), or add only the ones you don't have?")
             } else {
-                Text("\(incoming.summary).")
+                Text("\(question.summary).")
             }
         }
         .onChange(of: incoming.problem) { _, text in if let text { shownProblem = text } }
@@ -163,8 +179,14 @@ private struct IncomingItemsPrompt: ViewModifier {
     }
 
     private func add(_ clash: Library.Clash) {
+        if let question = asked { shown = question }
         // What was added, as an import without clashes says it.
         if let file = IncomingItems.shared.pending { model.status = model.library.merge(file, clash: clash) }
+        IncomingItems.shared.pending = nil
+    }
+
+    private func close() {
+        if let question = asked { shown = question }
         IncomingItems.shared.pending = nil
     }
 }
