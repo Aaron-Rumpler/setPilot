@@ -42,6 +42,7 @@ enum URLCommands {
         // it as it is); anything else is an error, not ignored without a word. (Power's own `on`
         // takes "toggle" too.)
         let switchOn: Bool? = flag("on") == true ? true : nil
+        var unknownAction = false
 
         let parsed: Result<ScriptCommand, ScriptError> = {
         switch action {
@@ -103,11 +104,14 @@ enum URLCommands {
             guard let bulb = value("bulb") ?? value("name") else { return .failure(bad("Give bulb=… (a name, MAC or address).")) }
             return .success(.switchBulb(bulb))
         default:
+            unknownAction = true
             return .failure(bad("Unknown action “\(action)”."))
         }
         }()
-        // The action first (an unknown one says so), then what doesn't go with it, said rather than
-        // ignored: `on` only where it switches the bulb on, a fade only on changes.
+        // The action first (an unknown one says so), then a number that isn't one (not "Give …"
+        // for it), then what doesn't go with it, said rather than ignored: `on` only where it
+        // switches the bulb on, a fade only on changes.
+        if !unknownAction, let invalid { return .failure(bad("\(invalid) has to be a whole number.")) }
         guard case .success(let command) = parsed else { return parsed }
         let switches: Set<String> = ["colour", "color", "rgb", "rgbcw", "temperature", "temp", "kelvin", "scene", "custom-scene", "customscene"]
         if value("on") != nil, action != "power" {
@@ -117,7 +121,6 @@ enum URLCommands {
             if flag("on") == nil { return .failure(bad("on is true or false.")) }
         }
         if value("fade") != nil, !command.changes { return .failure(bad("A fade doesn't go with \(action).")) }
-        if let invalid { return .failure(bad("\(invalid) has to be a whole number.")) }
         return parsed
     }
 

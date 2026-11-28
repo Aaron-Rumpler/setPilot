@@ -35,6 +35,12 @@ enum SharedStore {
     static let presetParamsKey = "shared.presetParams"
     /// The presets a widget tap refuses (they flash, and the app asks first): their IDs.
     static let flashingPresetsKey = "shared.flashingPresets"
+    /// Those of them that play one of the bulb's stored scenes (never started by a tap, asked
+    /// about or not): their IDs.
+    static let storedPresetsKey = "shared.storedPresets"
+    /// Whether the app asks before playing a scene that flashes (Flashing.askKey's value), for
+    /// wording a stored scene's refusal.
+    static let asksFlashingKey = "shared.asksFlashing"
     static let addressKey = "shared.address"
     /// Where builds before the Keychain kept the chosen bulb's signing key (removed at launch).
     static let signingKeyKey = "shared.signingKey"

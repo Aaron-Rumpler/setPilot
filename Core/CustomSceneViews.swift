@@ -22,8 +22,6 @@ struct CustomSceneEditor: View {
 
     var body: some View {
         if let binding = sceneBinding {
-            // Not edited while the stored scenes are a newer build's: changes would be lost.
-            let locked = !model.library.canEdit(Library.customScenesKey)
             Form {
                 if let note = model.library.newerNote(Library.customScenesKey) {
                     Section { Label(note, systemImage: "info.circle").foregroundStyle(.secondary) }
@@ -101,15 +99,15 @@ struct CustomSceneEditor: View {
                 } footer: {
                     Text("Up to \(CustomScene.maxSteps) steps. Level dims steps of only warm or cool white; most colours look much the same until it's very low. To dim the whole scene, use Brightness above.")
                 }
-                .disabled(locked)
+                // Not disabled when locked: choosing a step only shows it (adding is, in the strip).
             }
             .formStyle(.grouped)
             .navigationTitle(binding.wrappedValue.name)
             // The chosen step's settings, beside the scene (on iPhone, a sheet).
             .inspector(isPresented: $showsStep) {
+                // Locked, the step's settings and actions are disabled, not Previous and Next.
                 Form { stepSection(binding) }
                     .formStyle(.grouped)
-                    .disabled(locked)
                     .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
             }
             .toolbar {
@@ -132,6 +130,7 @@ struct CustomSceneEditor: View {
                            kelvinRange: Int(model.tempRange.lowerBound)...Int(model.tempRange.upperBound),
                            levelRange: 0...100,
                            ownTiming: binding.wrappedValue.timing == .steps)
+                    .disabled(locked)
                     .id(id)
             } header: {
                 HStack(spacing: 10) {
@@ -156,6 +155,7 @@ struct CustomSceneEditor: View {
                     .help("Next step (⌘])")
                     .accessibilityLabel("Next step")
                     stepMenu(binding, index: i, id: id)
+                        .disabled(locked)
                 }
                 .buttonStyle(.borderless)
             }
@@ -212,7 +212,7 @@ struct CustomSceneEditor: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(steps.count >= CustomScene.maxSteps)
+                    .disabled(steps.count >= CustomScene.maxSteps || locked)
                     .help("Add a step after the chosen one (a copy of it)")
                     .accessibilityLabel("Add step")
                 }
@@ -252,6 +252,10 @@ struct CustomSceneEditor: View {
             set: { scene.wrappedValue.startStep = $0 }
         )
     }
+
+    /// Not edited while the stored scenes are a newer build's: changes would be lost. The steps
+    /// can still be chosen and looked at.
+    private var locked: Bool { !model.library.canEdit(Library.customScenesKey) }
 
     private var isPlaying: Bool {
         model.mode == .scene && model.sceneId == Scenes.inlineCustom && model.customSceneId == sceneID

@@ -161,6 +161,9 @@ enum WatchKey {
     /// When the watch sent a command (seconds since 1970): a change that reaches the bulb later
     /// than anything waits for it (BulbTiming.answerTimeout) isn't sent.
     static let sentAt = "sentAt"
+    /// In the context, true while the iPhone's presets are a newer build's it can't read
+    /// (Library.newerNote): the watch saves and edits none, as the iPhone refuses them.
+    static let presetsLocked = "presetsLocked"
 }
 
 /// A custom scene's name and swatch, which is all the watch needs.

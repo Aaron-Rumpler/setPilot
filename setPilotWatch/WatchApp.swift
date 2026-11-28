@@ -52,7 +52,12 @@ struct PresetsView: View {
                 }
                 ErrorRow(link: link)
                 Section("Presets") {
-                    if link.presets.isEmpty {
+                    // Stored by a newer build on the iPhone: why none can be saved or edited.
+                    if link.presetsLocked {
+                        Text("Your presets were saved by a newer version of setPilot. Update setPilot on your iPhone to see and edit them.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if link.presets.isEmpty {
                         Text("Save presets here or in setPilot on your iPhone. Swipe one to edit it.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -83,6 +88,7 @@ struct PresetsView: View {
                         .swipeActions {
                             Button { editing = preset } label: { Label("Edit", systemImage: "pencil") }
                                 .tint(.blue)
+                                .disabled(link.presetsLocked)
                         }
                     }
                     // With favourites starred, those come first; the rest are a tap away.
@@ -114,7 +120,7 @@ struct PresetsView: View {
                     } onSubmit: { name in
                         link.send(.savePreset(name: name))
                     }
-                    .disabled(link.snapshot?.canControl != true)
+                    .disabled(link.snapshot?.canControl != true || link.presetsLocked)
                 }
                 Section {
                     NavigationLink {

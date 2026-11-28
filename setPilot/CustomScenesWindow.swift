@@ -11,8 +11,15 @@ struct CustomScenesWindow: View {
 
     var body: some View {
         let lib = model.library
+        // Not while the stored scenes are a newer build's: nothing here would reach them, or iCloud.
+        let locked = !lib.canEdit(Library.customScenesKey)
         NavigationSplitView {
             List(selection: $selection) {
+                // Stored by a newer build this one can't read (some taken from iCloud meanwhile are
+                // listed): why they can't be added to or changed. Empty, the overlay says it.
+                if !lib.customScenes.isEmpty, let note = lib.newerNote(Library.customScenesKey) {
+                    Text(note).font(.callout).foregroundStyle(.secondary)
+                }
                 ForEach(lib.customScenes) { scene in
                     CustomSceneRow(scene: scene)
                         .tag(scene.id)
@@ -29,14 +36,15 @@ struct CustomScenesWindow: View {
                             }
                             .disabled(!model.canControl)
                             Button("Duplicate") { selection = lib.duplicate(scene).id }
-                                .disabled(!lib.canEdit(Library.customScenesKey))
-                            ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
-                            if let link = SharedItem.scene(scene).link { Button("Copy Link") { Pasteboard.copy(link.absoluteString) } }
+                                .disabled(locked)
+                            ShareLink(item: SharedItem.scene(scene, from: lib), preview: SharePreview(scene.name))
+                            if let link = SharedItem.scene(scene, from: lib).link { Button("Copy Link") { Pasteboard.copy(link.absoluteString) } }
                             Divider()
                             Button("Delete…", role: .destructive) { deleting = scene }
+                                .disabled(locked)
                         }
                 }
-                .onMove { lib.customScenes.move(fromOffsets: $0, toOffset: $1) }
+                .onMove(perform: locked ? nil : { lib.customScenes.move(fromOffsets: $0, toOffset: $1) })
             }
             .overlay {
                 if lib.customScenes.isEmpty {
@@ -68,13 +76,13 @@ struct CustomScenesWindow: View {
                     .handoff(.customScenes)
             }
         }
-        .onDeleteCommand { if let id = selection { deleting = lib.customScene(id) } }
+        .onDeleteCommand { if let id = selection, !locked { deleting = lib.customScene(id) } }
         .onChange(of: deleting?.name) { _, name in if let name { deletingName = name } }
         .confirmationDialog("Delete “\(deleting?.name ?? deletingName)”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                lib.customScenes.removeAll { $0.id == d.id }
+                if lib.canEdit(Library.customScenesKey) { lib.customScenes.removeAll { $0.id == d.id } }
                 if selection == d.id { selection = nil }
                 deleting = nil
             }

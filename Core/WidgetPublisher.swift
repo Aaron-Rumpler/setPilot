@@ -98,7 +98,7 @@ final class WidgetPublisher {
         }
         // Shown as only the last known by now: reloaded whatever else has changed.
         let wasStale = shownStale(within: 0)
-        saveState(s)
+        let stampedElsewhere = saveState(s)
         SharedStore.defaults.set(s.address, forKey: SharedStore.addressKey)
         let signingKey = model?.signingKey(for: model?.chosenMAC)
         if signingKey != publishedKey { // the Keychain only when it changes
@@ -107,7 +107,7 @@ final class WidgetPublisher {
         }
         let key = "\(s.link) \(String(describing: s.isOn)) \(Int(s.dimming / 5)) \(s.mode) \(s.bulbName ?? "")"
         trailingReload?.cancel()
-        if key != widgetKey || wasStale {
+        if key != widgetKey || wasStale || stampedElsewhere {
             widgetKey = key
             reloadedDimming = Int(s.dimming)
             reload()
@@ -128,11 +128,21 @@ final class WidgetPublisher {
     private var publishedHeard: Date?
     private var reloadedHeard: Date?
 
-    private func saveState(_ s: LightSnapshot) {
+    /// Writes the state with when the bulb was last heard. True if the one there had been stamped
+    /// by someone else since (a Mac widget's tap, which backdates it and reloads them): what they
+    /// show goes by that, so they're to be reloaded with this one.
+    @discardableResult
+    private func saveState(_ s: LightSnapshot) -> Bool {
         var s = s
         s.heardAt = model?.heardAt
+        // (Within a second: the stamp goes through JSON.)
+        var stampedElsewhere = false
+        if let there = SharedStore.snapshot?.heardAt {
+            stampedElsewhere = publishedHeard.map { abs(there.timeIntervalSince($0)) > 1 } ?? true
+        }
         publishedHeard = s.heardAt
         SharedStore.save(s, SharedStore.snapshotKey)
+        return stampedElsewhere
     }
 
     /// Whether what the widgets show turns into the last known state within `seconds`.
@@ -152,8 +162,7 @@ final class WidgetPublisher {
                 guard let self else { return }
                 guard !self.asleep, let s = self.lastSnapshot, let heard = self.model?.heardAt, heard != self.publishedHeard else { continue }
                 let due = self.shownStale(within: 5 * 60)
-                self.saveState(s)
-                if due { self.reload() }
+                if self.saveState(s) || due { self.reload() }
             }
         }
     }
@@ -202,6 +211,7 @@ final class WidgetPublisher {
         var s = lastSnapshot ?? model.snapshot
         s.isOn = nil
         s.heardAt = .distantPast
+        publishedHeard = s.heardAt // this one's own stamp (not another's, when it's next written)
         SharedStore.save(s, SharedStore.snapshotKey)
         reload()
     }
@@ -238,12 +248,16 @@ final class WidgetPublisher {
         }
         SharedStore.defaults.set(params, forKey: SharedStore.presetParamsKey)
         // Those a tap can't play: the app asks before a flashing scene (a person's tap, which a
-        // widget can't ask about).
+        // widget can't ask about), and one of the bulb's stored scenes is only started in the app,
+        // asked about or not (it can't be judged), as scripts refuse it.
         publishedAsks = Flashing.asks
+        let stored = model.library.presets.filter(\.colour.isStoredScene).map(\.id.uuidString)
         // At the fastest speed: the widgets' requests carry no speed, so it plays at the bulb's.
         let flashing = publishedAsks
             ? model.library.presets.filter { model.library.customSceneOf($0.colour)?.flashes(atSpeed: 200) == true }.map(\.id.uuidString) : []
-        SharedStore.defaults.set(flashing, forKey: SharedStore.flashingPresetsKey)
+        SharedStore.defaults.set(stored + flashing, forKey: SharedStore.flashingPresetsKey)
+        SharedStore.defaults.set(stored, forKey: SharedStore.storedPresetsKey)
+        SharedStore.defaults.set(publishedAsks, forKey: SharedStore.asksFlashingKey)
         SharedStore.defaults.set(model.fadeForControls, forKey: SharedStore.controlsTransKey)
         // Only when something they show or send has changed (most library edits, a custom scene's
         // steps say, don't).

@@ -591,7 +591,8 @@ final class Model {
     private func restoreForUndo(_ saved: SavedLight) {
         undoing = true
         defer { undoing = false; lastUndoPoint = .distantPast }
-        if let note = restore(saved) { status = note }
+        let before = ticket
+        if let note = restore(saved) { keepNote(note, since: before) }
     }
 
     // MARK: Connection
@@ -1097,6 +1098,7 @@ final class Model {
                 rememberBulb(address: bulb.ip, mac: saved)
                 connect(bulb.ip)
                 status = "\(label) moved to \(bulb.ip); reconnected" // after connect, which clears it
+                quietReads += 1 // connect's own read isn't to replace it with "Synced"
             } else if link == .connected || localNetworkDenied {
                 return // answered meanwhile, or the search couldn't have found it
             } else if found.contains(where: { $0.mac.lowercased() == saved }) {
@@ -1259,8 +1261,9 @@ final class Model {
         guard mode == .custom, activeScale?.range == nil, link == .connected else { return }
         let kelvin = customKelvin
         temp = min(max((kelvin / 50).rounded() * 50, tempRange.lowerBound), tempRange.upperBound)
+        let before = ticket
         setMode(Mode.temp)
-        status = "The CCT scale in use needs at least two points, so Temperature is on the bulb's own"
+        keepNote("The CCT scale in use needs at least two points, so Temperature is on the bulb's own", since: before)
     }
 
     func useTemperatureScale(_ id: UUID?) {
@@ -1309,7 +1312,7 @@ final class Model {
         sceneId = Scenes.all[0].id
         customSceneId = nil
         if flashes, let custom {
-            return "“\(custom.name)” flashes quickly, so it wasn't started again (start it from its scene to be asked first)"
+            return "“\(custom.name)” flashes quickly, so it wasn't started again (start it from Custom Scenes (or a preset of it) to be asked first)"
         }
         if flashes { return "“\(stored)” is stored on the bulb and may flash quickly, so it wasn't started again (choose it to be asked first)" }
         return nil
@@ -1469,7 +1472,9 @@ final class Model {
               let scene = customSceneId.flatMap(library.customScene),
               scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }
         let fastest = stride(from: Int(new), through: Int(speed), by: -1).first { !scene.flashes(atSpeed: $0) } ?? Int(speed)
-        status = "Any faster and “\(scene.name)” flashes quickly. To play it faster, start it again with that speed (from a preset, say), to be asked first"
+        let note = "Any faster and “\(scene.name)” flashes quickly. To play it faster, start it again with that speed (from a preset, say), to be asked first"
+        status = note
+        speedNote = note // and once the speed that goes is answered (sendPilot)
         return Double(fastest)
     }
 
@@ -1496,7 +1501,29 @@ final class Model {
         if fields.contains(.colour) { p.merge(colourParams()) { $1 } }
         let speed = (fields.contains(.speed) || speedOwed) && mode == .scene ? Int(speed) : nil
         if !p.isEmpty, let fade = fadeForControls { p["trans"] = fade }
+        let before = ticket
         transmit(p, speed: speed, power: nil, retry: retry)
+        // A held-back speed's note, if this sends that speed (not one left from a clamp that sent nothing).
+        if let note = speedNote, fields.contains(.speed) { keepNote(note, since: before) }
+        speedNote = nil
+    }
+
+    /// A speed for the scene playing, with the brightness and power if given (a script's speed):
+    /// only the speed goes, not the scene again, which would restart it as it's defined now.
+    /// The caller checks it's on a scene that can be sent.
+    func setSpeed(_ value: Int, dimming level: Int? = nil, power: Bool? = nil, fade: Int? = nil) {
+        noteUndoPoint() // as other changes from a script can be undone
+        speed = allowedSpeed(Double(value))
+        var p: [String: Any] = [:]
+        if let level {
+            dimming = min(max(Double(level), minDimming), 100)
+            p["dimming"] = Int(dimming)
+        }
+        if let fade, !p.isEmpty || power != nil { p["trans"] = fade }
+        let before = ticket
+        transmit(p, speed: Int(speed), power: power, retry: true)
+        if let note = speedNote { keepNote(note, since: before) }
+        speedNote = nil
     }
 
     /// The current colour as setPilot parameters (empty if it can't be sent).
@@ -2224,6 +2251,15 @@ final class Model {
     /// (a light show's cues and stray replies aren't it).
     @ObservationIgnored private var changeNote: (ticket: Int, text: String)?
     private var noteForThis: String? { changeNote?.ticket == ticket ? changeNote?.text : nil }
+    /// Why the speed about to go was held back (allowedSpeed): kept for that send's answer.
+    @ObservationIgnored private var speedNote: String?
+
+    /// Says `note`, and keeps saying it once the change started since `before` is answered (not
+    /// replaced by "Bulb confirmed"). None started (nothing could go): only said now.
+    func keepNote(_ note: String, since before: Int) {
+        status = note
+        if ticket != before { changeNote = (ticket, note) }
+    }
     /// When a read-back asked again on a fresh connection has had its tries (result(of:)).
     @ObservationIgnored private var readBackEnd = Date.distantPast
     /// When the latest change's tries end (startChange).

@@ -110,6 +110,30 @@ final class PhoneRelay: NSObject {
         if case .script = command {
             return .failed(model.snapshot, "setPilot on your iPhone didn't understand that; update both apps.")
         }
+        // Not while the stored presets are a newer build's (Library.newerNote), as in the app:
+        // what's saved or changed here wouldn't reach that list, or iCloud.
+        let editsPresets = switch command {
+        case .savePreset, .updatePreset, .renamePreset, .movePreset, .favourite, .deletePreset: true
+        default: false
+        }
+        if editsPresets, !model.library.canEdit(Library.presetsKey) {
+            return .failed(model.snapshot, model.library.newerNote(Library.presetsKey) ?? "Your presets were saved by a newer version of setPilot.")
+        }
+        // A stored scene (Custom Mode 1–10) can't be judged for flashing, so it's never started from
+        // here, asked about or not, as scripts' aren't: refused at once, not after waiting for the bulb.
+        var stored: Int?
+        switch command {
+        case let .set(values, fields):
+            if fields.contains(.colour), values.mode == .scene, Scenes.isStoredSlot(values.sceneId) { stored = values.sceneId }
+        case .compose(let change):
+            if case .scene(let id, _)? = change.colour, Scenes.isStoredSlot(id) { stored = id }
+        default:
+            break
+        }
+        if let stored {
+            return .scripted(ScriptResult(state: Scripting.state(of: model),
+                                          error: ScriptError(code: .refused, message: BulbReasons.stored(Scenes.name(stored), asks: Flashing.asks, fromWatch: true))))
+        }
         switch command {
         case .state:
             _ = await bulbReady(model)
@@ -174,12 +198,7 @@ final class PhoneRelay: NSObject {
             model.sync()
             pause = .milliseconds(500)
         case .set(let values, let fields):
-            // A stored scene (Custom Mode 1–10) can't be judged for flashing, so it's refused
-            // when that's asked about, as Compose's is below: the watch can't ask.
-            if fields.contains(.colour), values.mode == .scene, Scenes.isStoredSlot(values.sceneId), Flashing.asks {
-                return .scripted(ScriptResult(state: Scripting.state(of: model),
-                                              error: ScriptError(code: .refused, message: BulbReasons.flashes(Scenes.name(values.sceneId), fromWatch: true, unknown: true))))
-            }
+            // (A stored scene was refused above.)
             model.apply(values, fields: fields)
             // Answered once sent, not after the read-back: the watch sends the next live change
             // when this answers. Later state reaches it as the iPhone's usual updates.
@@ -187,14 +206,12 @@ final class PhoneRelay: NSObject {
         case .compose(let change):
             // A scene that flashes quickly is asked about before it plays, which the watch can't
             // do: started on the iPhone instead (not queued there to start later, unasked-for).
-            // Judged once the light's been read: until then its speed isn't known.
+            // Judged once the light's been read: until then its speed isn't known. (A stored scene
+            // was refused above.)
             if Flashing.asks, model.flashes(change.colour) {
-                // A stored scene by its slot's name, and worded as one that may flash (it can't be told).
-                var stored: Int?
-                if case .scene(let id, _)? = change.colour, Scenes.isStoredSlot(id) { stored = id }
-                let name = stored.map { Scenes.name($0) } ?? change.colour.flatMap(model.library.customSceneOf)?.name
+                let name = change.colour.flatMap(model.library.customSceneOf)?.name
                 // BulbReasons quotes the name, so with none it's said without one.
-                let message = name.map { BulbReasons.flashes($0, fromWatch: true, unknown: stored != nil) }
+                let message = name.map { BulbReasons.flashes($0, fromWatch: true) }
                     ?? "That scene flashes quickly, so it's only started in setPilot on your iPhone, which asks first (or turn off “Ask Before Playing It” in setPilot's Settings)."
                 return .scripted(ScriptResult(state: Scripting.state(of: model),
                                               error: ScriptError(code: .refused, message: message)))
@@ -345,6 +362,7 @@ final class PhoneRelay: NSObject {
         if let data = try? encoder.encode(model.library.presets) { context[WatchKey.presets] = data }
         if let data = try? encoder.encode(model.library.summaries) { context[WatchKey.customScenes] = data }
         if let data = UserDefaults.standard.data(forKey: PresetUsage.key) { context[WatchKey.presetUsage] = data }
+        if !model.library.canEdit(Library.presetsKey) { context[WatchKey.presetsLocked] = true }
         // Only a state worth keeping: "connecting" or "no bulb" would replace the watch's last good one.
         if model.snapshot.link == .connected, let data = try? encoder.encode(stamped(model.snapshot)) {
             context[WatchKey.snapshot] = data

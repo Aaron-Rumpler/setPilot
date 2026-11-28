@@ -19,10 +19,15 @@ enum Scripting {
     /// `arrived`: when it got here, if it waited its turn before this (the watch's, in the
     /// relay's own queue): time since then is time spent behind another.
     /// `fromWatch`: asked for on the watch (refusals worded for it).
-    /// `confirmed`: a flashing scene that's been asked about (in the app); otherwise one is refused
-    /// while "Ask before playing" is on (Shortcuts, links, the CLI and AppleScript can't ask).
+    /// `confirmed`: a flashing scene that's been asked about (in the app), or one of the bulb's
+    /// stored scenes started there; otherwise one is refused while "Ask before playing" is on
+    /// (Shortcuts, links, the CLI and AppleScript can't ask), and a stored scene whether or not.
     static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, arrived: Date? = nil, fromWatch: Bool = false, confirmed: Bool = false, on model: Model) async -> ScriptResult {
-        // Refused at once if it's known to flash; checked again once the light's been read (below).
+        // Refused at once if it's known to flash, or starts a scene stored on the bulb; checked
+        // again once the light's been read (below).
+        if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
+            return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
+        }
         if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
                 message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
@@ -34,6 +39,9 @@ enum Scripting {
             let queued = min(arrived ?? .now, .now)
             _ = await previous?.value
             // Again after waiting its turn: the one before may have changed what it would play.
+            if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
+                return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
+            }
             if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
             }
@@ -138,6 +146,9 @@ enum Scripting {
         // (Decided once the wait has read the light.)
         try await ready(model) { if case .speed = command, model.isOn == false { return false }; return true }
         // As the light is now it's been read (the speed it's on, perhaps not as it was thought).
+        if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
+            throw ScriptError(code: .refused, message: message)
+        }
         if !confirmed, Flashing.asks, let name = flashingScene(command, model) {
             throw ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model)))
         }
@@ -167,7 +178,7 @@ enum Scripting {
         case let .temperature(kelvin, scaleQuery, power):
             try send(LightChange(colour: try temperature(kelvin, scaleQuery, model), power: power), fade, model)
         case let .scene(query, speed, power):
-            try send(LightChange(colour: try scene(query, speed: speed), power: power), fade, model)
+            try send(LightChange(colour: try scene(query, speed: speed, fromWatch: fromWatch), power: power), fade, model)
         case let .customScene(query, power):
             try send(LightChange(colour: try customScene(query, speed: nil, model), power: power), fade, model)
         case .speed(let speed):
@@ -194,7 +205,14 @@ enum Scripting {
             // (Through apply, with or without a fade: it's counted for habits and Siri too.)
             guard model.apply(preset, fade: fade) else { throw ScriptError(code: .refused, message: model.refusal ?? model.status) }
         case .set(let change):
-            try send(try lightChange(change, model), fade, model)
+            let (light, speed) = try lightChange(change, fromWatch: fromWatch, model)
+            if let speed {
+                // Only a speed (with brightness or power): just that goes, as for `speed`, not the
+                // scene again (which would restart it as it's defined now, perhaps edited since).
+                model.setSpeed(speed, dimming: light.dimming, power: light.power, fade: fade ?? model.fadeForControls)
+            } else {
+                try send(light, fade, model)
+            }
         case .get, .list, .switchBulb:
             break
         }
@@ -219,14 +237,13 @@ enum Scripting {
         return .rgbcw(r: v[0], g: v[1], b: v[2], c: v[3], w: v[4])
     }
 
-    private static func scene(_ query: String, speed: Int?) throws -> LightColour {
+    private static func scene(_ query: String, speed: Int?, fromWatch: Bool) throws -> LightColour {
         let scenes = Scenes.all.filter { !Scenes.isStoredSlot($0.id) } // the bulb's stored slots: not settable here
         guard let scene = find(query, in: scenes, name: { $0.name }, id: { String($0.id) }) else {
             // One stored on the bulb: there, but only started in the app (it can't be judged).
-            if let stored = find(query, in: Scenes.all.filter { Scenes.isStoredSlot($0.id) }, name: { $0.name }, id: { String($0.id) }) {
-                throw ScriptError(code: .refused, message: Flashing.asks
-                    ? BulbReasons.flashes(stored.name, unknown: true)
-                    : "“\(stored.name)” is stored on the bulb, so it's only started in setPilot.")
+            // (Refused before this, in run; here too in case it's reached another way.)
+            if let stored = storedScene(query) {
+                throw ScriptError(code: .refused, message: BulbReasons.stored(stored.name, asks: Flashing.asks, fromWatch: fromWatch))
             }
             throw ScriptError(code: .notFound, message: "No built-in scene called “\(query)”.")
         }
@@ -243,8 +260,9 @@ enum Scripting {
         return .custom(scene.id, speed: speed)
     }
 
-    /// A combined change, checked: one kind of colour at most, and something to change.
-    private static func lightChange(_ c: ScriptChange, _ model: Model) throws -> LightChange {
+    /// A combined change, checked: one kind of colour at most, and something to change. With only
+    /// a speed for the scene playing (and brightness or power), that speed, and no colour.
+    private static func lightChange(_ c: ScriptChange, fromWatch: Bool, _ model: Model) throws -> (LightChange, speed: Int?) {
         let kinds = [c.rgbcw != nil, c.temp != nil, c.scene != nil, c.customScene != nil].filter { $0 }.count
         guard kinds <= 1 else { throw bad("Set one of a colour, a temperature, a scene or a custom scene.") }
         if c.scale != nil, c.temp == nil { throw bad("A scale goes with a temperature.") }
@@ -252,23 +270,20 @@ enum Scripting {
         var colour: LightColour?
         if let v = c.rgbcw { colour = try rgbcw(v) }
         if let k = c.temp { colour = try temperature(k, c.scale, model) }
-        if let q = c.scene { colour = try scene(q, speed: c.speed) }
+        if let q = c.scene { colour = try scene(q, speed: c.speed, fromWatch: fromWatch) }
         if let q = c.customScene { colour = try customScene(q, speed: c.speed, model) }
+        var speedOnly: Int?
         if colour == nil, let speed = c.speed {
-            // The scene it's on, at that speed.
+            // The scene it's on, at that speed (as `speed` checks it).
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard model.mode == .scene else { throw bad("The bulb isn't on a scene.") }
-            if model.sceneId == Scenes.inlineCustom, let id = model.customSceneId, model.library.customScene(id) != nil {
-                colour = .custom(id, speed: speed)
-            } else if Scenes.isKnown(model.sceneId) {
-                colour = .scene(id: model.sceneId, speed: speed)
-            } else {
-                throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.")
-            }
+            let live = model.sceneId == Scenes.inlineCustom && model.customSceneId.flatMap(model.library.customScene) != nil
+            guard live || Scenes.isKnown(model.sceneId) else { throw bad("This scene can't be sent (Rhythm, say), so neither can its speed.") }
+            speedOnly = speed
         }
         if let b = c.brightness, !(1...100).contains(b) { throw bad("Brightness is 1–100.") }
-        guard colour != nil || c.brightness != nil || c.power != nil else { throw bad("Nothing to set.") }
-        return LightChange(colour: colour, dimming: c.brightness, power: c.power)
+        guard colour != nil || speedOnly != nil || c.brightness != nil || c.power != nil else { throw bad("Nothing to set.") }
+        return (LightChange(colour: colour, dimming: c.brightness, power: c.power), speedOnly)
     }
 
     private static func temperature(_ kelvin: Int, _ scaleQuery: String?, _ model: Model) throws -> LightColour {
@@ -366,6 +381,43 @@ enum Scripting {
             return playingFlashes(at: speed, model)
         case .speed(let speed):
             return playingFlashes(at: speed, model)
+        default:
+            return nil
+        }
+    }
+
+    /// One of the bulb's stored scenes (Custom Mode 1–10) by name or number, if a query is for
+    /// one (and no built-in scene, as `scene` finds them first).
+    private static func storedScene(_ query: String) -> WizScene? {
+        guard find(query, in: Scenes.all.filter { !Scenes.isStoredSlot($0.id) }, name: { $0.name }, id: { String($0.id) }) == nil else { return nil }
+        return find(query, in: Scenes.all.filter { Scenes.isStoredSlot($0.id) }, name: { $0.name }, id: { String($0.id) })
+    }
+
+    /// Why a command is refused for starting one of the bulb's stored scenes (Custom Mode 1–10),
+    /// if it would: scripting never starts one, asked about or not (it can't be judged, so it's
+    /// only started in setPilot). By name, as a preset of one, or a speed for the one playing.
+    static func storedRefusal(_ command: ScriptCommand, fromWatch: Bool, _ model: Model) -> String? {
+        func refused(_ id: Int, preset: String? = nil) -> String {
+            BulbReasons.stored(Scenes.name(id), preset: preset, asks: Flashing.asks, fromWatch: fromWatch)
+        }
+        // The one playing, for a speed alone (once the light's been read).
+        func playing() -> String? {
+            guard model.isOn != nil, model.mode == .scene, Scenes.isStoredSlot(model.sceneId) else { return nil }
+            return refused(model.sceneId)
+        }
+        switch command {
+        case .preset(let q):
+            guard let p = find(q, in: model.library.presets, name: { $0.name }, id: { $0.id.uuidString }),
+                  case .scene(let id, _) = p.colour, Scenes.isStoredSlot(id) else { return nil }
+            return refused(id, preset: p.name)
+        case .scene(let q, _, _):
+            return storedScene(q).map { refused($0.id) }
+        case .set(let change):
+            if let q = change.scene { return storedScene(q).map { refused($0.id) } }
+            guard change.speed != nil, change.customScene == nil, change.rgbcw == nil, change.temp == nil else { return nil }
+            return playing()
+        case .speed:
+            return playing()
         default:
             return nil
         }

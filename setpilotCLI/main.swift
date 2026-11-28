@@ -43,9 +43,14 @@ Exit codes: 0 done, 2 bad arguments, 3 app unavailable, 4 no bulb chosen,
 // When the command was given: the app counts its waits from then (launching it counts).
 let started = Date()
 var args = Array(CommandLine.arguments.dropFirst())
+/// A flag given more than once (refused below, once --json is known: it says how to report it).
+var repeatedFlag: String?
 func takeFlag(_ name: String) -> Bool {
     guard let i = args.firstIndex(of: name) else { return false }
     args.remove(at: i)
+    // Given twice: refused as an option is (a second left behind would be taken for a name).
+    if args.contains(name), repeatedFlag == nil { repeatedFlag = name }
+    args.removeAll { $0 == name }
     return true
 }
 func takeOption(_ name: String) -> String? {
@@ -100,6 +105,7 @@ guard let verb = args.first?.lowercased() else {
     print(usage)
     exit(0)
 }
+if let repeatedFlag { badArguments("\(repeatedFlag) is given more than once.") }
 if offFlag, verb != "set" { badArguments("--off goes with set (for the others, use off).") }
 let rest = Array(args.dropFirst())
 
@@ -124,7 +130,8 @@ case "colour", "color", "rgb", "rgbcw":
     let v = rest.map { int($0, "Each channel") } + Array(repeating: 0, count: 5 - rest.count)
     command = .colour(r: v[0], g: v[1], b: v[2], c: v[3], w: v[4], power: switchOn)
 case "temp", "temperature", "kelvin":
-    command = .temperature(int(rest.first, "kelvin"), scale: scaleOption, power: switchOn)
+    guard let kelvin = rest.first else { badArguments("temp takes a kelvin, such as 2700.") }
+    command = .temperature(int(kelvin, "kelvin"), scale: scaleOption, power: switchOn)
 case "scene":
     guard !rest.isEmpty else { badArguments("scene takes a scene's name or number.") }
     command = .scene(rest.joined(separator: " "), speed: speedOption.map { int($0, "The speed") }, power: switchOn)

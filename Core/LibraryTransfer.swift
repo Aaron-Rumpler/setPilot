@@ -11,6 +11,34 @@ struct LibraryFile: Codable, Sendable {
     var customScenes: [CustomScene]
     /// Per bulb, keyed by lower-case MAC.
     var cctScales: [String: [CCTScale]]
+    /// Each item as it was in the file read, by place: a newer build's fields are taken from it
+    /// when it's merged (Library.takeExtras). Not written.
+    var raw: Raw?
+
+    struct Raw: Sendable {
+        var presets: [Data] = []
+        var customScenes: [Data] = []
+        var cctScales: [String: [Data]] = [:]
+    }
+
+    private enum CodingKeys: String, CodingKey { case setPilotLibrary, presets, customScenes, cctScales }
+
+    /// The file in `data`, with each item's JSON as it came (`raw`); nil if it won't decode.
+    static func read(_ data: Data) -> LibraryFile? {
+        guard var file = try? JSONDecoder().decode(LibraryFile.self, from: data) else { return nil }
+        if let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            // In the order decoded, so each is found by its item's place.
+            func items(_ value: Any?) -> [Data] {
+                (value as? [Any] ?? []).map {
+                    JSONSerialization.isValidJSONObject($0) ? (try? JSONSerialization.data(withJSONObject: $0)) ?? Data() : Data()
+                }
+            }
+            var raw = Raw(presets: items(top["presets"]), customScenes: items(top["customScenes"]))
+            for (mac, list) in top["cctScales"] as? [String: Any] ?? [:] { raw.cctScales[mac] = items(list) }
+            file.raw = raw
+        }
+        return file
+    }
 
     /// The format a file says it's in, read on its own: a newer file may not decode as this one.
     /// Any number (2.5 is newer too), but not true (an NSNumber as well, told apart by CF's type).
@@ -87,6 +115,9 @@ extension Library {
 
     var exportFile: LibraryFile { LibraryFile(presets: presets, customScenes: customScenes, cctScales: cctScales) }
 
+    /// The whole library as a file to export, with a newer build's fields kept (`encoded`).
+    var exportData: Data { encoded(exportFile, pretty: true) ?? Data() }
+
     /// What to do with an incoming item that's already here (the same ID: the same item, shared
     /// or exported before).
     enum Clash { case replace, keepBoth, skip }
@@ -145,7 +176,7 @@ extension Library {
 
     /// Adds what's in `file`, keeping everything else; an item that's already here is replaced, or
     /// added again as a copy (a new ID, and a name of its own), or left as it is. Returns what
-    /// changed, as a sentence starting with `verb`.
+    /// changed, as a sentence starting with `verb` (with no full stop, for a status line).
     func merge(_ file: LibraryFile, clash: Clash = .replace, verb: String = "Imported") -> String {
         var file = scalesOfOtherBulbsRenumbered(file)
         if clash == .keepBoth { file = copiesOfClashes(file) }
@@ -154,54 +185,69 @@ extension Library {
             file.presets[i].favourite = presets.first { $0.id == file.presets[i].id }?.favourite
         }
         var taken = 0 // what was actually added or replaced, per kind as it's merged
-        func merged<T: Identifiable>(_ mine: [T], _ theirs: [T]) -> [T] where T.ID == UUID {
+        // `raw`: each incoming item's JSON, by place (the file's items keep theirs through the
+        // renumbering above), for the newer-build fields it brings.
+        func merged<T: Identifiable & Encodable>(_ mine: [T], _ theirs: [T], raw: [Data]?) -> [T] where T.ID == UUID {
             var out = mine
             taken = 0
-            for item in theirs {
+            for (n, item) in theirs.enumerated() {
+                let data: Data? = raw.flatMap { n < $0.count ? $0[n] : nil }
                 if let i = out.firstIndex(where: { $0.id == item.id }) {
                     if clash == .replace {
                         out[i] = item
-                        dropExtras(item.id) // the copy replaced's newer fields aren't this one's
+                        takeExtras(data, of: item) // its own, not those of the copy replaced
                         taken += 1
                     }
                 } else {
                     out.append(item)
+                    takeExtras(data, of: item)
                     taken += 1
                 }
             }
             return out
         }
-        presets = merged(presets, file.presets)
+        presets = merged(presets, file.presets, raw: file.raw?.presets)
         let presetCount = taken
-        customScenes = merged(customScenes, file.customScenes)
+        customScenes = merged(customScenes, file.customScenes, raw: file.raw?.customScenes)
         let sceneCount = taken
         var scales = cctScales
         var scaleCount = 0
+        var scalesAside = 0 // for bulbs whose stored scales are kept raw, or all while unreadable
         for (mac, list) in file.cctScales {
-            scales[mac.lowercased()] = merged(scales[mac.lowercased()] ?? [], list)
+            scales[mac.lowercased()] = merged(scales[mac.lowercased()] ?? [], list, raw: file.raw?.cctScales[mac])
             scaleCount += taken
+            if !canEdit(Self.cctScalesKey) || rawScaleMACs.contains(mac.lowercased()) { scalesAside += taken }
         }
         cctScales = scales
-        guard presetCount + sceneCount + scaleCount > 0 else { return "Nothing new to add: you already have all of these." }
-        return "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))."
+        guard presetCount + sceneCount + scaleCount > 0 else { return "Nothing new to add: you already have all of these" }
+        let text = "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))"
+        // Kept aside, where a newer build's data can't take them: not synced yet (nor editable,
+        // while a whole list is unreadable).
+        let aside = [(canEdit(Self.presetsKey) ? 0 : presetCount, "preset"),
+                     (canEdit(Self.customScenesKey) ? 0 : sceneCount, "custom scene"),
+                     (scalesAside, "CCT scale")].filter { $0.0 > 0 }
+        guard !aside.isEmpty else { return text }
+        let one = aside.count == 1 && aside[0].0 == 1
+        let nouns = aside.map { one ? $0.1 : $0.1 + "s" }
+        let what = nouns.count == 1 ? nouns[0] : nouns.dropLast().joined(separator: ", ") + " and " + nouns[nouns.count - 1]
+        return text + "; the \(what) \(one ? "is" : "are") kept aside on this device and not synced until setPilot is updated here (a newer version saved what's here)"
     }
 }
 
 struct LibraryDocument: FileDocument {
     static let readableContentTypes: [UTType] = [.json]
-    var file: LibraryFile
+    /// The file as JSON, made by the library (Library.exportData), with a newer build's fields.
+    var data: Data
 
-    init(file: LibraryFile) { self.file = file }
+    init(data: Data) { self.data = data }
 
     init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
-        file = try JSONDecoder().decode(LibraryFile.self, from: data)
+        guard let data = configuration.file.regularFileContents, LibraryFile.read(data) != nil else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return FileWrapper(regularFileWithContents: try encoder.encode(file))
+        FileWrapper(regularFileWithContents: data)
     }
 }
 
@@ -209,6 +255,8 @@ struct LibraryDocument: FileDocument {
 struct LibraryTransferSection: View {
     let model: Model
     @State private var exporting = false
+    /// Made when Export is chosen, not at every redraw.
+    @State private var document: LibraryDocument?
     @State private var importing = false
     @State private var result: String?
     @State private var shownResult = ""
@@ -216,7 +264,10 @@ struct LibraryTransferSection: View {
     var body: some View {
         Section {
             HStack {
-                Button("Export…") { exporting = true }
+                Button("Export…") {
+                    document = LibraryDocument(data: model.library.exportData)
+                    exporting = true
+                }
                 Button("Import…") { importing = true }
             }
         } header: {
@@ -228,7 +279,7 @@ struct LibraryTransferSection: View {
                 .foregroundStyle(.secondary)
                 #endif
         }
-        .fileExporter(isPresented: $exporting, document: LibraryDocument(file: model.library.exportFile),
+        .fileExporter(isPresented: $exporting, document: document,
                       contentType: .json, defaultFilename: "setPilot Library") { outcome in
             if case .failure(let error) = outcome { result = "Couldn't export: \(error.localizedDescription)" }
         }
@@ -258,7 +309,7 @@ struct LibraryTransferSection: View {
                 result = "That library file is from a newer version of setPilot. Update setPilot here to import it."
                 return
             }
-            guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
+            guard let file = LibraryFile.read(data) else {
                 // setPilot's, but not readable here: likely newer (a colour this version lacks, say).
                 result = format != nil
                     ? "That library file couldn't be read: it may be from a newer version of setPilot. Update setPilot here to import it."
@@ -274,7 +325,7 @@ struct LibraryTransferSection: View {
             if model.library.clashes(file) > 0 {
                 IncomingItems.shared.offer(file, imported: true)
             } else {
-                result = model.library.merge(file)
+                result = model.library.merge(file) + "." // a sentence here, in an alert
             }
         } catch {
             result = "Couldn't import: \(error.localizedDescription)"

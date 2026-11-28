@@ -39,8 +39,10 @@ struct ConsoleComposer: View {
     private var parsed: Result<[String: Any], JSONText.ParamsError> { JSONText.parseParams(params) }
     /// The raw message, if it's a JSON object. Not one with a key repeated: JSONSerialization
     /// keeps one of them and the bulb's parser may take the other, so it's checked as text.
-    private var rawObject: [String: Any]? { rawRepeatsKey ? nil : Net.json(Data(raw.utf8)) }
+    /// Nor one with an escape in a key, which may decode to a repeat (or to sceneId).
+    private var rawObject: [String: Any]? { rawRepeatsKey || rawEscapesKey ? nil : Net.json(Data(raw.utf8)) }
     private var rawRepeatsKey: Bool { JSONText.hasRepeatedKey(raw) }
+    private var rawEscapesKey: Bool { JSONText.hasEscapedKey(raw) }
     /// The method being sent: the one typed, or the one in the raw message (if any).
     private var currentMethod: String { rawMode ? (rawObject?["method"] as? String ?? "") : trimmedMethod }
     private var known: BulbAPI.Method? { BulbAPI.method(currentMethod) }
@@ -247,6 +249,9 @@ struct ConsoleComposer: View {
             } else if rawRepeatsKey {
                 Label("A key is repeated: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
+            } else if rawEscapesKey {
+                Label("A key has an escape in it: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             } else {
                 Label("Not a JSON object: sent exactly as typed", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
@@ -344,7 +349,9 @@ struct ConsoleComposer: View {
         // playing flash: asked about first, as anywhere in the app.
         // Raw text that won't parse here (or repeats a key) but has a scene in it: the bulb's own
         // parser may still take it, and what it would play can't be judged, so asked about anyway.
-        if !flashOK, rawMode, rawObject == nil, raw.contains("elm") || raw.contains("sceneId") {
+        // So is any with an escaped key or a \u anywhere: it may spell either, unseen.
+        if !flashOK, rawMode, rawObject == nil,
+           rawEscapesKey || raw.contains("\\u") || raw.contains("elm") || raw.contains("sceneId") {
             confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
             return
         }
@@ -375,6 +382,30 @@ struct ConsoleComposer: View {
             if let p = params, let speed, !light.contains(where: { p[$0] != nil }),
                let name = Scripting.playingFlashes(at: speed, model) {
                 confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                return
+            }
+        }
+        // setEffect's pulse effect, and a broadcast pilot with a scene in it, may flash or start a
+        // stored scene. Not confirmed on firmware, so asked about as "may flash": the safe side.
+        if !flashOK, currentMethod == "setEffect" || currentMethod == "syncBroadcastPilot" {
+            var params: Any?
+            if rawMode { params = rawObject?["params"] } else if sendParams { params = try? parsed.get() }
+            // At any depth (a broadcast pilot may be nested).
+            func has(_ value: Any?, _ test: (String, Any) -> Bool) -> Bool {
+                if let dict = value as? [String: Any] { return dict.contains { test($0.key, $0.value) || has($0.value, test) } }
+                if let list = value as? [Any] { return list.contains { has($0, test) } }
+                return false
+            }
+            let mayFlash: Bool
+            if currentMethod == "setEffect" {
+                mayFlash = has(params) { key, value in
+                    key == "pulse" || key == "pulseCount" || (key == "type" && (value as? String) == "pulse")
+                }
+            } else {
+                mayFlash = has(params) { key, _ in key == "sceneId" || key == "elm" }
+            }
+            if mayFlash {
+                confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
                 return
             }
         }

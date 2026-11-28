@@ -106,7 +106,14 @@ enum JSONText {
 
     /// Whether an object in `text` has the same key twice (as written: escapes aren't decoded).
     /// JSONSerialization keeps one of them, and another parser (the bulb's) may take the other.
-    static func hasRepeatedKey(_ text: String) -> Bool {
+    static func hasRepeatedKey(_ text: String) -> Bool { scanKeys(text).repeated }
+
+    /// Whether a key in `text` has a backslash in it. Decoded, it may be any key ("\u0073ceneId"
+    /// is sceneId, and may repeat another), so what the text means can't be judged as written.
+    static func hasEscapedKey(_ text: String) -> Bool { scanKeys(text).escaped }
+
+    private static func scanKeys(_ text: String) -> (repeated: Bool, escaped: Bool) {
+        var repeated = false, escaped = false
         let b = Array(text.utf8)
         let quote = UInt8(ascii: "\""), backslash = UInt8(ascii: "\\"), colon = UInt8(ascii: ":")
         let space: Set<UInt8> = [0x20, 0x09, 0x0A, 0x0D]
@@ -126,7 +133,9 @@ enum JSONText {
                 while k < b.count, space.contains(b[k]) { k += 1 }
                 // A string followed by a colon, in an object: a key.
                 if k < b.count, b[k] == colon, let last = objects.last, var keys = last {
-                    if keys.contains(string) { return true }
+                    if keys.contains(string) { repeated = true }
+                    if string.contains(backslash) { escaped = true }
+                    if repeated, escaped { return (true, true) }
                     keys.insert(string)
                     objects[objects.count - 1] = keys
                 }
@@ -135,6 +144,6 @@ enum JSONText {
             }
             i += 1
         }
-        return false
+        return (repeated, escaped)
     }
 }

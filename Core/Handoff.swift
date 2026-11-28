@@ -38,7 +38,7 @@ final class HandoffRouter {
                 // Said first: takeDraft's own note (a scene missing here) matters more. Not for the
                 // same draft as here.
                 if model.composing, model.draft.loaded, !NSDictionary(dictionary: model.draft.handoffInfo).isEqual(to: draft as [AnyHashable: Any]) {
-                    model.status = "The draft here was replaced by the one from your other device."
+                    model.status = "The draft here was replaced by the one from your other device"
                 }
                 model.takeDraft(draft)
                 model.composing = true
@@ -77,7 +77,9 @@ private struct HandoffAdvertiser: ViewModifier {
     /// is, Compose's draft), read here so that a change re-runs this. Nothing else tells SwiftUI.
     private var carried: String {
         if route == .lightShow, let p = LightShowPlayer.current {
-            return "\(p.mediaName ?? "")|\(p.showName ?? "")|\(p.isPlaying)|\(p.currentCue ?? -1)"
+            // The time to 5 s, so the position handed on stays near where it is (while playing,
+            // or after seeking with no cue crossed) without filling it again every tick.
+            return "\(p.mediaName ?? "")|\(p.showName ?? "")|\(p.isPlaying)|\(p.currentCue ?? -1)|\(Int(p.time / 5))"
         }
         if route == .controls, Shared.model.composing {
             return Shared.model.draft.handoffInfo.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")

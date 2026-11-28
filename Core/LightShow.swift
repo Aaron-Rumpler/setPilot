@@ -410,7 +410,9 @@ final class LightShowPlayer {
 
     func play() {
         guard player.currentItem != nil else { return }
-        confirmed = true // Play: asked about flashing first, where it flashes (LightShowView)
+        // Asked about only where it flashes as judged now (LightShowView), or with asking off: a
+        // run started without asking is asked about if it comes to flash (a faster speed, say).
+        confirmed = confirmed || showFlashes || !Flashing.asks
         if runOver {
             // A new run: the last one's speed still to come (the light left as the show had it)
             // isn't this one's.
@@ -532,7 +534,12 @@ final class LightShowPlayer {
         }
         guard let saved else { return }
         self.saved = nil
-        if restores { restoreNote = model.restore(saved) }
+        if restores {
+            let before = model.ticket
+            restoreNote = model.restore(saved)
+            // Kept for the change putting it back, so its reply doesn't replace it.
+            if let note = restoreNote { model.keepNote(note, since: before) }
+        }
     }
 
     // MARK: Sending

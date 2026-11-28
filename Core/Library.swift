@@ -9,10 +9,20 @@ final class Library {
     static let cctScalesKey = "cctScales"
     static let activeCCTScaleKey = "activeCCTScale"
 
-    var presets: [Preset] { didSet { save(presets, Self.presetsKey); onChange?() } }
-    var customScenes: [CustomScene] { didSet { save(customScenes, Self.customScenesKey); onChange?() } }
+    var presets: [Preset] {
+        didSet { dropExtras(of: oldValue.map(\.id), keeping: presets.map(\.id)); save(presets, Self.presetsKey); onChange?() }
+    }
+    var customScenes: [CustomScene] {
+        didSet { dropExtras(of: oldValue.map(\.id), keeping: customScenes.map(\.id)); save(customScenes, Self.customScenesKey); onChange?() }
+    }
     /// Custom CCT scales per bulb (keyed by lower-case MAC), and the one in use for each.
-    var cctScales: [String: [CCTScale]] { didSet { save(cctScales, Self.cctScalesKey); onChange?(); onScalesChanged?() } }
+    var cctScales: [String: [CCTScale]] {
+        didSet {
+            // Across bulbs, so a scale moved to another bulb in one change keeps them.
+            dropExtras(of: oldValue.values.flatMap { $0.map(\.id) }, keeping: cctScales.values.flatMap { $0.map(\.id) })
+            save(cctScales, Self.cctScalesKey); onChange?(); onScalesChanged?()
+        }
+    }
     /// Called after the scales change (the model checks the one in use still has a range).
     @ObservationIgnored var onScalesChanged: (() -> Void)?
     var activeCCTScale: [String: UUID] { didSet { save(activeCCTScale, Self.activeCCTScaleKey) } }
@@ -139,9 +149,50 @@ final class Library {
         for id in ids { extras[id] = nil }
     }
 
-    /// Stops keeping a newer build's fields for an item replaced by another copy (an import's),
-    /// which would otherwise pick them up.
-    func dropExtras(_ id: UUID) { extras[id.uuidString] = nil }
+    /// For a bulb whose stored CCT scales aren't a list (a newer build's): why some may be
+    /// missing, and that what's made meanwhile stays here. The whole list's note first.
+    func newerNote(forScalesOf mac: String?) -> String? {
+        if let note = newerNote(Self.cctScalesKey) { return note }
+        guard let mac, rawScaleMACs.contains(mac.lowercased()) else { return nil }
+        return "Some of this bulb's CCT scales were saved by a newer version of setPilot, so they aren't shown. Scales made or changed here are kept on this device, not synced, until setPilot is updated here."
+    }
+
+    /// Stops keeping a newer build's fields for items no longer in a list (deleted here), so a
+    /// copy with the same ID added later doesn't pick them up.
+    private func dropExtras(of old: [UUID], keeping new: [UUID]) {
+        guard !extras.isEmpty else { return }
+        for id in Set(old).subtracting(new) { extras[id.uuidString] = nil }
+    }
+
+    /// Takes an incoming item's newer-build fields from `data` (the item as it came in a file or
+    /// link) in place of any kept for its ID: the copy that replaces another brings its own, or
+    /// none. Under `value`'s ID, which may be new (a copy's).
+    func takeExtras<T: Encodable & Identifiable>(_ data: Data?, of value: T) where T.ID == UUID {
+        let element = data.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+        extras[value.id.uuidString] = element.flatMap { Self.unknownFields($0, of: value) }
+    }
+
+    /// A library file as JSON, with the fields a newer build added to its items put back, so the
+    /// device that takes it (and iCloud, if it replaces its copies with these) keeps them.
+    func encoded(_ file: LibraryFile, pretty: Bool = false) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : .sortedKeys
+        guard let data = try? encoder.encode(file) else { return nil }
+        guard !extras.isEmpty, var top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return data }
+        for key in ["presets", "customScenes"] {
+            if let list = top[key] as? [Any] { top[key] = list.map(addingExtras) }
+        }
+        if let lists = top["cctScales"] as? [String: Any] {
+            top["cctScales"] = lists.mapValues { value -> Any in
+                guard let list = value as? [Any] else { return value }
+                return list.map(addingExtras)
+            }
+        }
+        let options: JSONSerialization.WritingOptions = pretty ? [.prettyPrinted, .sortedKeys] : .sortedKeys
+        guard JSONSerialization.isValidJSONObject(top),
+              let out = try? JSONSerialization.data(withJSONObject: top, options: options) else { return data }
+        return out
+    }
 
     /// Builds before item-by-item sync kept each list whole in iCloud key-value storage: take
     /// anything there that isn't here yet, once, so it goes up with the first sync.

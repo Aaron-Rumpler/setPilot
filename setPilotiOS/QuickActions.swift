@@ -48,8 +48,11 @@ enum QuickActions {
         default:
             return
         }
+        // A person's tap, with nothing to ask (or not asking): as if started in setPilot, so a preset
+        // of a scene stored on the bulb plays with "Ask before playing" off, as from the app's menus.
+        let started = !Flashing.asks
         Task {
-            if let error = await Scripting.run(command, on: model).error { model.status = error.message }
+            if let error = await Scripting.run(command, confirmed: started, on: model).error { model.status = error.message }
         }
     }
 }

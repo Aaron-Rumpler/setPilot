@@ -8,6 +8,22 @@ import UniformTypeIdentifiers
 struct SharedItem: Transferable {
     let file: LibraryFile
     let name: String
+    /// The file as JSON (sorted keys), with the fields a newer build added to its items kept
+    /// (Library.encoded): the device that takes it may be that build, or replace its own with it.
+    let data: Data?
+
+    @MainActor
+    init(file: LibraryFile, name: String, from library: Library?) {
+        self.file = file
+        self.name = name
+        if let library {
+            data = library.encoded(file)
+        } else {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            data = try? encoder.encode(file)
+        }
+    }
 
     static let contentType = UTType(exportedAs: "nz.aaronrumpler.setpilot.item", conformingTo: .json)
 
@@ -22,16 +38,18 @@ struct SharedItem: Transferable {
         }
         var shared = p
         shared.favourite = nil // someone else's favourites are theirs
-        return SharedItem(file: LibraryFile(presets: [shared], customScenes: scenes, cctScales: scales), name: p.name)
+        return SharedItem(file: LibraryFile(presets: [shared], customScenes: scenes, cctScales: scales), name: p.name, from: library)
     }
 
-    static func scene(_ s: CustomScene) -> SharedItem {
-        SharedItem(file: LibraryFile(presets: [], customScenes: [s], cctScales: [:]), name: s.name)
+    /// With the library, the scene's newer-build fields go with it.
+    @MainActor
+    static func scene(_ s: CustomScene, from library: Library? = nil) -> SharedItem {
+        SharedItem(file: LibraryFile(presets: [], customScenes: [s], cctScales: [:]), name: s.name, from: library)
     }
 
     /// The item as a link: setpilot://import?item=<base64url of the file>.
     var link: URL? {
-        guard let data = try? JSONEncoder().encode(file) else { return nil }
+        guard let data else { return nil }
         let b64 = data.base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         return URL(string: "setpilot://import?item=\(b64)")
@@ -39,9 +57,10 @@ struct SharedItem: Transferable {
 
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: contentType) { item in
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            return try encoder.encode(item.file)
+            guard let data = item.data else { throw CocoaError(.fileWriteUnknown) }
+            // Pretty, as a file people may open.
+            let json = try JSONSerialization.jsonObject(with: data)
+            return try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
         }
         .suggestedFileName { "\($0.name).setpilot" }
         ProxyRepresentation { item in item.link ?? URL(string: "setpilot://")! }
@@ -119,7 +138,7 @@ final class IncomingItems {
             problem = newer
             return
         }
-        guard let file = try? JSONDecoder().decode(LibraryFile.self, from: data) else {
+        guard let file = LibraryFile.read(data) else {
             problem = format != nil ? newer : "That isn't a setPilot preset, scene or library."
             return
         }
@@ -214,7 +233,7 @@ private struct IncomingItemsPrompt: ViewModifier {
 
     private func add(_ offer: IncomingItems.Offer, _ clash: Library.Clash) {
         keep(offer)
-        // What was added, as an import without clashes says it.
+        // What was added, as an import without clashes says it (a status line: no full stop).
         model.status = model.library.merge(offer.file, clash: clash, verb: offer.imported ? "Imported" : "Added")
         IncomingItems.shared.finish(offer)
     }

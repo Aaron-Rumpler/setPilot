@@ -10,7 +10,14 @@ struct CCTScalesList: View {
 
     var body: some View {
         let scales = model.library.scales(for: model.chosenMAC)
+        // Not while the stored scales are a newer build's: nothing here would reach them, or iCloud.
+        let locked = !model.library.canEdit(Library.cctScalesKey)
         List {
+            // Stored by a newer build this one can't read (some taken from iCloud meanwhile are
+            // listed): why they can't be added to or changed. Empty, the overlay says it.
+            if !scales.isEmpty, let note = model.library.newerNote(forScalesOf: model.chosenMAC) {
+                Text(note).font(.footnote).foregroundStyle(.secondary)
+            }
             ForEach(scales) { scale in
                 NavigationLink(value: scale.id) {
                     CCTScaleRow(scale: scale, inUse: model.scaleForTemperature == scale.id)
@@ -19,20 +26,21 @@ struct CCTScalesList: View {
                     Button { model.assignTemperatureScale(scale.id) } label: { Label("Use for Temperature", systemImage: "checkmark") }
                         .disabled(scale.range == nil)
                     Button { _ = model.duplicateScale(scale) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-                        .disabled(!model.library.canEdit(Library.cctScalesKey))
+                        .disabled(locked)
                     Button(role: .destructive) { deleting = scale } label: { Label("Delete", systemImage: "trash") }
+                        .disabled(locked)
                 }
             }
-            .onDelete { offsets in
+            .onDelete(perform: locked ? nil : { offsets in
                 if let i = offsets.first { deleting = scales[i] }
-            }
+            })
         }
         .overlay {
             if scales.isEmpty {
                 ContentUnavailableView {
                     Label("No Scales", systemImage: "thermometer.medium")
                 } description: {
-                    Text(model.library.newerNote(Library.cctScalesKey) ?? (model.chosenMAC == nil
+                    Text(model.library.newerNote(forScalesOf: model.chosenMAC) ?? (model.chosenMAC == nil
                          ? "Connect to a bulb first: scales are kept per bulb."
                          : "A scale turns kelvin into RGBCW, for Temperature's Scale choice. Start from the bulb's own table and change it, or extend it below 2200 K."))
                 } actions: {
@@ -57,7 +65,7 @@ struct CCTScalesList: View {
                             titleVisibility: .visible,
                             presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                if let mac = model.chosenMAC { model.library.removeScale(d.id, for: mac) }
+                if let mac = model.chosenMAC, model.library.canEdit(Library.cctScalesKey) { model.library.removeScale(d.id, for: mac) }
                 deleting = nil
             }
         } message: { _ in

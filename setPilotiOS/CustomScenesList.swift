@@ -12,7 +12,14 @@ struct CustomScenesList: View {
 
     var body: some View {
         let lib = model.library
+        // Not while the stored scenes are a newer build's: nothing here would reach them, or iCloud.
+        let locked = !lib.canEdit(Library.customScenesKey)
         List {
+            // Stored by a newer build this one can't read (some taken from iCloud meanwhile are
+            // listed): why they can't be added to or changed. Empty, the overlay says it.
+            if !lib.customScenes.isEmpty, let note = lib.newerNote(Library.customScenesKey) {
+                Text(note).font(.footnote).foregroundStyle(.secondary)
+            }
             ForEach(lib.customScenes) { scene in
                 NavigationLink(value: scene.id) { CustomSceneRow(scene: scene) }
                     .swipeActions(edge: .leading) {
@@ -25,23 +32,23 @@ struct CustomScenesList: View {
                         // Not .destructive: that takes the row away at once, before the confirmation.
                         Button { deleting = scene } label: { Label("Delete", systemImage: "trash") }
                             .tint(.red)
+                            .disabled(locked)
                     }
                     .contextMenu {
                         Button { confirmFlashing(scene.name, flashes: model.flashes(scene)) { model.playAsked(scene) } } label: { Label("Play on Bulb", systemImage: "play.fill") }
                             .disabled(!model.canControl)
                         Button { lib.duplicate(scene) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-                            .disabled(!lib.canEdit(Library.customScenesKey))
-                        ShareLink(item: SharedItem.scene(scene), preview: SharePreview(scene.name))
-                        if let link = SharedItem.scene(scene).link {
+                            .disabled(locked)
+                        ShareLink(item: SharedItem.scene(scene, from: lib), preview: SharePreview(scene.name))
+                        if let link = SharedItem.scene(scene, from: lib).link {
                             Button { Pasteboard.copy(link.absoluteString) } label: { Label("Copy Link", systemImage: "link") }
                         }
                         Button(role: .destructive) { deleting = scene } label: { Label("Delete", systemImage: "trash") }
+                            .disabled(locked)
                     }
             }
-            .onDelete { offsets in
-                if let i = offsets.first { deleting = lib.customScenes[i] }
-            }
-            .onMove { lib.customScenes.move(fromOffsets: $0, toOffset: $1) }
+            .onDelete(perform: locked ? nil : delete)
+            .onMove(perform: locked ? nil : move)
         }
         .overlay {
             if lib.customScenes.isEmpty {
@@ -64,7 +71,7 @@ struct CustomScenesList: View {
                 Button { created = lib.addCustomScene().id } label: { Label("New Scene", systemImage: "plus") }
                     .disabled(!lib.canEdit(Library.customScenesKey))
             }
-            if !lib.customScenes.isEmpty {
+            if !lib.customScenes.isEmpty, !locked {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }
             }
         }
@@ -74,11 +81,19 @@ struct CustomScenesList: View {
                             titleVisibility: .visible,
                             presenting: deleting) { d in
             Button("Delete", role: .destructive) {
-                lib.customScenes.removeAll { $0.id == d.id }
+                if lib.canEdit(Library.customScenesKey) { lib.customScenes.removeAll { $0.id == d.id } }
                 deleting = nil
             }
         } message: { _ in
             Text("Presets that use it will stop working.")
         }
+    }
+
+    private func delete(_ offsets: IndexSet) {
+        if let i = offsets.first { deleting = model.library.customScenes[i] }
+    }
+
+    private func move(_ from: IndexSet, _ to: Int) {
+        model.library.customScenes.move(fromOffsets: from, toOffset: to)
     }
 }

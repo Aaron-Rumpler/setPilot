@@ -57,8 +57,10 @@ struct OpenPresetIntent: OpenIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let model = Shared.model
+        // Started by a person in the app (which this opens): asked about if it flashes, and one
+        // of a scene stored on the bulb plays as from the app's menus (scripting never starts one).
         if let preset = model.library.presets.first(where: { $0.id == target.id }),
-           model.asksFirst(preset) {
+           model.asksFirst(preset) || preset.colour.isStoredScene {
             model.applyAsking(preset)
             return .result()
         }

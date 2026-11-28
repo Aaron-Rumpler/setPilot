@@ -11,6 +11,8 @@ final class PhoneLink: NSObject {
     private(set) var snapshot: LightSnapshot?
     private(set) var presets: [Preset] = []
     private(set) var scenes: [CustomSceneSummary] = []
+    /// The iPhone's presets are a newer build's it can't read: none are saved or edited from here.
+    private(set) var presetsLocked = false
     private(set) var reachable = false
     /// Activated, and the iPhone in reach: a command can go now.
     var ready: Bool { WCSession.default.activationState == .activated && WCSession.default.isReachable }
@@ -29,6 +31,7 @@ final class PhoneLink: NSObject {
         if let d = defaults.data(forKey: WatchKey.presets) { presets = (try? decoder.decode([Preset].self, from: d)) ?? [] }
         if let d = defaults.data(forKey: WatchKey.customScenes) { scenes = (try? decoder.decode([CustomSceneSummary].self, from: d)) ?? [] }
         if let d = defaults.data(forKey: WatchKey.snapshot) { snapshot = try? decoder.decode(LightSnapshot.self, from: d) }
+        presetsLocked = defaults.bool(forKey: WatchKey.presetsLocked)
     }
 
     func start() {
@@ -369,6 +372,12 @@ final class PhoneLink: NSObject {
             defaults.set(d, forKey: WatchKey.presetUsage)
             PresetUsage.merge(uses, into: SharedStore.defaults)
             reloadWidgets() // the preset complications' relevance in the Smart Stack
+        }
+        // Each context is the whole of it: not there, the presets can be edited.
+        let locked = context[WatchKey.presetsLocked] as? Bool ?? false
+        if locked != presetsLocked {
+            presetsLocked = locked
+            defaults.set(locked, forKey: WatchKey.presetsLocked)
         }
         if let d = context[WatchKey.snapshot] as? Data, let s = try? decoder.decode(LightSnapshot.self, from: d) {
             apply(s, context: true)

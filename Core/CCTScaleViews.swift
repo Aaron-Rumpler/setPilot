@@ -124,7 +124,8 @@ struct CCTScaleEditor: View {
             // Not edited while the stored scales are a newer build's: changes would be lost.
             let locked = !model.library.canEdit(Library.cctScalesKey)
             Form {
-                if let note = model.library.newerNote(Library.cctScalesKey) {
+                // Also for a bulb whose own stored scales are a newer build's (kept aside meanwhile).
+                if let note = model.library.newerNote(forScalesOf: mac) {
                     Section { Label(note, systemImage: "info.circle").foregroundStyle(.secondary) }
                 }
                 Section {

@@ -145,7 +145,7 @@ extension Model {
         if case .custom(let id) = d.scene, library.customScene(id) == nil { missing = true }
         if missing {
             if d.includeColour, d.kind == .scenes {
-                status = "The draft's scene isn't on this device yet, so Change Colour was turned off."
+                status = "The draft's scene isn't on this device yet, so Change Colour was turned off"
             }
             d.scene = .builtin(1)
             if d.kind == .scenes { d.includeColour = false }
@@ -153,7 +153,7 @@ extension Model {
         // A scale this device hasn't (or can't use): Send would play the bulb's own temperature
         // instead, so Colour goes off, as for a missing scene.
         if d.scaleID != nil, draftScale == nil, d.kind == .temperature {
-            if d.includeColour { status = "The draft's CCT scale isn't on this device yet, so Change Colour was turned off." }
+            if d.includeColour { status = "The draft's CCT scale can't be used with this bulb here, so Change Colour was turned off" }
             d.includeColour = false
         }
         d.scaleID = draftScale?.id
@@ -179,7 +179,7 @@ extension Model {
                 guard let self else { return }
                 // Its scene as asked about too (not edited or deleted meanwhile).
                 guard library.customScene(id) == scene else {
-                    status = "“\(scene.name)” was changed or deleted while being asked about; send it again."
+                    status = "“\(scene.name)” was changed or deleted while being asked about; send it again"
                     return
                 }
                 sendDraftNow(change)
@@ -196,7 +196,7 @@ extension Model {
 
     private func sendDraftNow(_ change: LightChange) {
         guard draftChange == change else {
-            status = "The change was edited while being asked about; send it again."
+            status = "The change was edited while being asked about; send it again"
             return
         }
         guard send(change) else { return }
