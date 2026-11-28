@@ -30,12 +30,15 @@ enum QuickBulb {
         switch command {
         case .applyPreset(let id):
             if (SharedStore.defaults.stringArray(forKey: SharedStore.flashingPresetsKey) ?? []).contains(id.uuidString) {
-                let preset = SharedStore.presets.first { $0.id == id }
-                let name = preset?.name ?? "That preset"
+                // Not in the shared list (rarely: both are written together): gone, as far as this knows.
+                guard let preset = SharedStore.presets.first(where: { $0.id == id }) else {
+                    throw WidgetError(localizedStringResource: "\(BulbReasons.presetGone)")
+                }
+                let name = preset.name
                 // One of the bulb's stored scenes: worded as the app's runner words it.
                 if (SharedStore.defaults.stringArray(forKey: SharedStore.storedPresetsKey) ?? []).contains(id.uuidString) {
                     let asks = SharedStore.defaults.object(forKey: SharedStore.asksFlashingKey) as? Bool ?? true
-                    guard case .scene(let sceneId, _)? = preset?.colour else {
+                    guard case .scene(let sceneId, _) = preset.colour else {
                         throw WidgetError(localizedStringResource: "\(BulbReasons.stored(name, asks: asks))")
                     }
                     throw WidgetError(localizedStringResource: "\(BulbReasons.stored(Scenes.name(sceneId), preset: name, asks: asks))")

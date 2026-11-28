@@ -1312,7 +1312,7 @@ final class Model {
         sceneId = Scenes.all[0].id
         customSceneId = nil
         if flashes, let custom {
-            return "“\(custom.name)” flashes quickly, so it wasn't started again (start it from Custom Scenes (or a preset of it) to be asked first)"
+            return "“\(custom.name)” flashes quickly, so it wasn't started again (start it from Custom Scenes, or a preset of it, to be asked first)"
         }
         if flashes { return "“\(stored)” is stored on the bulb and may flash quickly, so it wasn't started again (choose it to be asked first)" }
         return nil
@@ -1468,6 +1468,7 @@ final class Model {
     /// only as fast as it doesn't (it's asked about where it's started, not on a slider or the
     /// watch's Crown), saying so.
     func allowedSpeed(_ new: Double) -> Double {
+        speedNote = nil // only this one's: an earlier clamp that sent nothing doesn't carry over
         guard Flashing.asks, mode == .scene, sceneId == Scenes.inlineCustom,
               let scene = customSceneId.flatMap(library.customScene),
               scene.flashes(atSpeed: Int(new)), !scene.flashes(atSpeed: Int(speed)) else { return new }

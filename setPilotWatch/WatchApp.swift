@@ -391,25 +391,30 @@ struct PresetEditView: View {
             ErrorRow(link: link)
             if let preset {
                 Button { link.send(.applyPreset(preset.id)) } label: { Label("Apply", systemImage: "play.fill") }
+                // Stored by a newer build on the iPhone: applied, but not edited (as Edit's swipe).
+                let locked = link.presetsLocked
                 TextField("Name", text: $name)
                     .onSubmit {
                         let n = name.trimmingCharacters(in: .whitespaces)
                         if !n.isEmpty, n != preset.name { link.send(.renamePreset(preset.id, name: n)) }
                     }
+                    .disabled(locked)
                 Button { confirmingUpdate = true } label: {
                     Label("Update to Current Light", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .disabled(link.snapshot?.canControl != true) // it reads the light
+                .disabled(link.snapshot?.canControl != true || locked) // it reads the light
                 Button { link.send(.favourite(preset.id, !preset.isFavourite)) } label: {
                     Label(preset.isFavourite ? "Remove from Favourites" : "Add to Favourites",
                           systemImage: preset.isFavourite ? "star.slash" : "star")
                 }
+                .disabled(locked)
                 let i = link.presets.firstIndex { $0.id == presetID } ?? 0
                 Button { link.send(.movePreset(presetID, by: -1)) } label: { Label("Move Up", systemImage: "arrow.up") }
-                    .disabled(i == 0)
+                    .disabled(i == 0 || locked)
                 Button { link.send(.movePreset(presetID, by: 1)) } label: { Label("Move Down", systemImage: "arrow.down") }
-                    .disabled(i >= link.presets.count - 1)
+                    .disabled(i >= link.presets.count - 1 || locked)
                 Button(role: .destructive) { confirmingDelete = true } label: { Label("Delete", systemImage: "trash") }
+                    .disabled(locked)
             } else {
                 Text(BulbReasons.presetGone).foregroundStyle(.secondary)
             }

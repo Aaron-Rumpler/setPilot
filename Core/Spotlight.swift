@@ -35,7 +35,7 @@ struct OpenCustomSceneIntent: OpenIntent {
                     model.status = "“\(scene.name)” was changed or deleted while being asked about; start it again"
                     return
                 }
-                Task { if let error = await Scripting.run(.customScene(id, power: true), confirmed: true, on: model).error { model.status = error.message } }
+                Task { if let error = await Scripting.run(.customScene(id, power: true), confirmed: true, askedAbout: .customScene(scene), on: model).error { model.status = error.message } }
             }
             return .result()
         }
@@ -58,11 +58,20 @@ struct OpenPresetIntent: OpenIntent {
     func perform() async throws -> some IntentResult {
         let model = Shared.model
         // Started by a person in the app (which this opens): asked about if it flashes, and one
-        // of a scene stored on the bulb plays as from the app's menus (scripting never starts one).
-        if let preset = model.library.presets.first(where: { $0.id == target.id }),
-           model.asksFirst(preset) || preset.colour.isStoredScene {
-            model.applyAsking(preset)
-            return .result()
+        // of a scene stored on the bulb plays as from the app's menus (scripting unconfirmed
+        // never starts one).
+        if let preset = model.library.presets.first(where: { $0.id == target.id }) {
+            if model.asksFirst(preset) {
+                model.applyAsking(preset)
+                return .result()
+            }
+            // Not asked about: through the runner, which waits for a bulb the launch is still
+            // connecting to. Confirmed, as from the menus, so a stored scene isn't refused.
+            if preset.colour.isStoredScene {
+                let result = await Scripting.run(.preset(preset.id.uuidString), confirmed: true, on: model)
+                if let error = result.error { throw WizIntentError(localizedStringResource: "\(error.message)") }
+                return .result()
+            }
         }
         _ = try await script(.preset(target.id.uuidString))
         return .result()

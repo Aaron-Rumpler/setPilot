@@ -200,7 +200,12 @@ extension Model {
                     status = "“\(preset.name)” was changed or deleted while being asked about; start it again"
                     return
                 }
-                Task { if let error = await Scripting.run(.preset(preset.id.uuidString), confirmed: true, on: self).error { status = error.message } }
+                // And again just before it goes: it may wait its turn, or for the bulb.
+                Task {
+                    let run = await Scripting.run(.preset(preset.id.uuidString), confirmed: true,
+                                                  askedAbout: .preset(preset, scene: scene), on: self)
+                    if let error = run.error { status = error.message }
+                }
             }
         } else {
             _ = apply(preset)

@@ -588,6 +588,9 @@ extension Library {
         copy.id = UUID()
         copy.name = uniqueSceneName(scene.name + " copy") // as a CCT scale's duplicate is named
         copy.steps = scene.steps.map { var s = $0; s.id = UUID(); return s }
+        // Before it's added (and saved): a newer build's fields go with it.
+        copyExtras(from: scene.id, to: copy.id,
+                   remapping: Dictionary(zip(scene.steps.map(\.id), copy.steps.map(\.id)), uniquingKeysWith: { a, _ in a }))
         let i = customScenes.firstIndex { $0.id == scene.id }.map { $0 + 1 } ?? customScenes.endIndex
         customScenes.insert(copy, at: i)
         return copy

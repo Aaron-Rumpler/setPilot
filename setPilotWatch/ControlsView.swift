@@ -103,6 +103,8 @@ struct ControlsView: View {
             }
         case .scene:
             Picker("Scene", selection: Binding(get: { currentScene(s, v) }, set: { choice in
+                // The one playing again (a stored scene, listed only to show it): nothing to send.
+                guard choice != currentScene(s, v) else { return }
                 switch choice {
                 case .builtin(let id):
                     update { $0.sceneId = id }

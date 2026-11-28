@@ -119,7 +119,9 @@ case "get", "state": command = .get
 case "on": command = .power(true)
 case "off": command = .power(false)
 case "toggle": command = .power(nil)
-case "brightness", "dim", "dimming": command = .brightness(int(rest.first, "Brightness"))
+case "brightness", "dim", "dimming":
+    guard let level = rest.first else { badArguments("brightness takes a level, 1–100.") }
+    command = .brightness(int(level, "The brightness"))
 case "brighter", "dimmer":
     // A step of 1–100: the verb says which way (a negative one would go the other).
     let step = rest.first.map { int($0, "The step") } ?? 10
@@ -131,14 +133,16 @@ case "colour", "color", "rgb", "rgbcw":
     command = .colour(r: v[0], g: v[1], b: v[2], c: v[3], w: v[4], power: switchOn)
 case "temp", "temperature", "kelvin":
     guard let kelvin = rest.first else { badArguments("temp takes a kelvin, such as 2700.") }
-    command = .temperature(int(kelvin, "kelvin"), scale: scaleOption, power: switchOn)
+    command = .temperature(int(kelvin, "The kelvin"), scale: scaleOption, power: switchOn)
 case "scene":
     guard !rest.isEmpty else { badArguments("scene takes a scene's name or number.") }
     command = .scene(rest.joined(separator: " "), speed: speedOption.map { int($0, "The speed") }, power: switchOn)
 case "custom", "custom-scene", "customscene":
     guard !rest.isEmpty else { badArguments("custom takes one of your custom scenes' names.") }
     command = .customScene(rest.joined(separator: " "), power: switchOn)
-case "speed": command = .speed(int(rest.first, "The speed"))
+case "speed":
+    guard let speed = rest.first else { badArguments("speed takes 10–200.") }
+    command = .speed(int(speed, "The speed"))
 case "preset":
     guard !rest.isEmpty else { badArguments("preset takes a preset's name.") }
     command = .preset(rest.joined(separator: " "))
@@ -154,7 +158,7 @@ case "set":
     guard !(onFlag && offFlag) else { badArguments("--on or --off, not both.") }
     // An empty part is an error (as in links), not skipped.
     let rgb = rgbOption.map { $0.split(separator: ",", omittingEmptySubsequences: false).map { int(String($0).trimmingCharacters(in: .whitespaces), "Each channel") } }
-    command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "kelvin") }, scale: scaleOption,
+    command = .set(ScriptChange(rgbcw: rgb, temp: tempOption.map { int($0, "The kelvin") }, scale: scaleOption,
                                 scene: sceneOption, customScene: customOption,
                                 speed: speedOption.map { int($0, "The speed") },
                                 brightness: brightnessOption.map { int($0, "The brightness") },

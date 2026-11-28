@@ -24,6 +24,9 @@ extension Model {
         copy.id = UUID()
         copy.name = uniqueScaleName(scale.name + " copy", for: mac)
         copy.points = scale.points.map { var p = $0; p.id = UUID(); return p }
+        // Before it's added (and saved): a newer build's fields go with it.
+        library.copyExtras(from: scale.id, to: copy.id,
+                           remapping: Dictionary(zip(scale.points.map(\.id), copy.points.map(\.id)), uniquingKeysWith: { a, _ in a }))
         library.updateScale(copy, for: mac)
         return copy
     }

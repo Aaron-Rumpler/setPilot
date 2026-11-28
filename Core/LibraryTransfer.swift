@@ -212,15 +212,24 @@ extension Library {
         let sceneCount = taken
         var scales = cctScales
         var scaleCount = 0
-        var scalesAside = 0 // for bulbs whose stored scales are kept raw, or all while unreadable
+        var scalesAside = 0 // all, while the list is unreadable: not saved, so not synced
+        var scalesApart = 0 // for bulbs whose stored scales are kept raw: saved and synced, held apart
         for (mac, list) in file.cctScales {
             scales[mac.lowercased()] = merged(scales[mac.lowercased()] ?? [], list, raw: file.raw?.cctScales[mac])
             scaleCount += taken
-            if !canEdit(Self.cctScalesKey) || rawScaleMACs.contains(mac.lowercased()) { scalesAside += taken }
+            if !canEdit(Self.cctScalesKey) {
+                scalesAside += taken
+            } else if rawScaleMACs.contains(mac.lowercased()) {
+                scalesApart += taken
+            }
         }
         cctScales = scales
         guard presetCount + sceneCount + scaleCount > 0 else { return "Nothing new to add: you already have all of these" }
-        let text = "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))"
+        var text = "\(verb) \(LibraryFile.counted(presets: presetCount, scenes: sceneCount, scales: scaleCount))"
+        if scalesApart > 0 {
+            let single = scalesApart == 1
+            text += "; the CCT scale\(single ? "" : "s") for bulbs whose scales a newer version saved \(single ? "is" : "are") synced, but stored apart from those (not shown here) until setPilot is updated here"
+        }
         // Kept aside, where a newer build's data can't take them: not synced yet (nor editable,
         // while a whole list is unreadable).
         let aside = [(canEdit(Self.presetsKey) ? 0 : presetCount, "preset"),

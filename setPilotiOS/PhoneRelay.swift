@@ -116,8 +116,9 @@ final class PhoneRelay: NSObject {
         case .savePreset, .updatePreset, .renamePreset, .movePreset, .favourite, .deletePreset: true
         default: false
         }
+        // (Worded for the watch: it's the iPhone that needs updating.)
         if editsPresets, !model.library.canEdit(Library.presetsKey) {
-            return .failed(model.snapshot, model.library.newerNote(Library.presetsKey) ?? "Your presets were saved by a newer version of setPilot.")
+            return .failed(model.snapshot, "Your presets were saved by a newer version of setPilot. Update setPilot on your iPhone to edit them.")
         }
         // A stored scene (Custom Mode 1–10) can't be judged for flashing, so it's never started from
         // here, asked about or not, as scripts' aren't: refused at once, not after waiting for the bulb.
@@ -221,7 +222,20 @@ final class PhoneRelay: NSObject {
                                               error: ScriptError(code: .refused, message: model.refusal ?? model.status)))
             }
         case .modeChoice(let choice):
-            model.setModeChoice(choice)
+            // Back to Scenes from a stored scene (Custom Mode 1–10): not started again from here,
+            // Ask before playing on or off (the watch never starts one), so the first built-in
+            // scene instead, saying why.
+            if choice == .scenes, model.mode != .scene, Scenes.isStoredSlot(model.sceneId) {
+                let stored = Scenes.name(model.sceneId)
+                model.noteUndoPoint() // how it was, before the scene's replaced
+                model.sceneId = Scenes.all[0].id
+                model.customSceneId = nil
+                let before = model.ticket
+                model.setModeChoice(choice)
+                model.keepNote("“\(stored)” is stored on the bulb, so it isn't started from your watch (start it in setPilot on your iPhone)", since: before)
+            } else {
+                model.setModeChoice(choice)
+            }
         case .temperatureScale(let id):
             model.useTemperatureScale(id)
         case .updatePreset(let id):

@@ -22,27 +22,30 @@ enum Scripting {
     /// `confirmed`: a flashing scene that's been asked about (in the app), or one of the bulb's
     /// stored scenes started there; otherwise one is refused while "Ask before playing" is on
     /// (Shortcuts, links, the CLI and AppleScript can't ask), and a stored scene whether or not.
-    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, arrived: Date? = nil, fromWatch: Bool = false, confirmed: Bool = false, on model: Model) async -> ScriptResult {
-        // Refused at once if it's known to flash, or starts a scene stored on the bulb; checked
-        // again once the light's been read (below).
-        if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
+    /// `askedAbout`: with `confirmed`, what was asked about; checked again just before it goes, so
+    /// a preset or scene edited while this waited its turn (or for the bulb) doesn't play unasked.
+    static func run(_ command: ScriptCommand, fade: Int? = nil, asked: Date = .now, arrived: Date? = nil, fromWatch: Bool = false, confirmed: Bool = false, askedAbout: AskedAbout? = nil, on model: Model) async -> ScriptResult {
+        // Refused at once if it's known by name to flash, or to start a scene stored on the bulb;
+        // checked again once the light's been read (below). What depends on what's playing (a
+        // speed for it) waits for that read: the state here may be out of date.
+        if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, onlyByName: true, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
         }
-        if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
+        if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, onlyByName: true, model) {
             return ScriptResult(state: state(of: model), error: ScriptError(code: .refused,
                 message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
         }
         // Listing reads nothing from the bulb: not kept waiting behind changes.
-        if case .list = command { return await runNow(command, fade: fade, fromWatch: fromWatch, confirmed: confirmed, on: model) }
+        if case .list = command { return await runNow(command, fade: fade, fromWatch: fromWatch, confirmed: confirmed, askedAbout: askedAbout, on: model) }
         let previous = queue
         let task = Task { @MainActor () -> ScriptResult in
             let queued = min(arrived ?? .now, .now)
             _ = await previous?.value
             // Again after waiting its turn: the one before may have changed what it would play.
-            if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
+            if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, onlyByName: true, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: message))
             }
-            if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, model) {
+            if !confirmed, Flashing.asks, model.isOn != nil, let name = flashingScene(command, onlyByName: true, model) {
                 return ScriptResult(state: state(of: model), error: ScriptError(code: .refused, message: BulbReasons.flashes(name, fromWatch: fromWatch, unknown: unjudged(command, model))))
             }
             if command.changes, Date.now.timeIntervalSince(asked) > Model.answerTimeout {
@@ -55,7 +58,7 @@ enum Scripting {
             // for (switching bulbs, which lands elsewhere, gets the whole of it).
             deadline = command.changes ? asked.addingTimeInterval(Model.answerTimeout) : nil
             defer { deadline = nil }
-            return await runNow(command, fade: fade, fromWatch: fromWatch, confirmed: confirmed, on: model)
+            return await runNow(command, fade: fade, fromWatch: fromWatch, confirmed: confirmed, askedAbout: askedAbout, on: model)
         }
         queue = Task { @MainActor in _ = await task.value }
         return await task.value
@@ -64,13 +67,26 @@ enum Scripting {
     /// When the command being run has to have gone out by (see run).
     private static var deadline: Date?
 
-    private static func runNow(_ command: ScriptCommand, fade: Int?, fromWatch: Bool, confirmed: Bool, on model: Model) async -> ScriptResult {
+    /// What a person was asked about before a flashing preset or custom scene plays (run's
+    /// `askedAbout`), as it was then.
+    enum AskedAbout {
+        /// The preset, and its custom scene if it's one.
+        case preset(Preset, scene: CustomScene?)
+        case customScene(CustomScene)
+    }
+
+    /// Why something asked about doesn't go: it's not as it was then.
+    private static func changedSinceAsked(_ name: String) -> ScriptError {
+        ScriptError(code: .refused, message: "“\(name)” was changed or deleted while being asked about; start it again")
+    }
+
+    private static func runNow(_ command: ScriptCommand, fade: Int?, fromWatch: Bool, confirmed: Bool, askedAbout: AskedAbout?, on model: Model) async -> ScriptResult {
         if let fade, !(0...Fade.maximum).contains(fade) {
             return ScriptResult(state: state(of: model), error: bad("The fade is 0–\(Fade.maximum) ms (a day)."))
         }
         do {
             Log.scripting.info("\(String(describing: command), privacy: .public)")
-            return try await perform(command, fade, fromWatch: fromWatch, confirmed: confirmed, model)
+            return try await perform(command, fade, fromWatch: fromWatch, confirmed: confirmed, askedAbout: askedAbout, model)
         } catch let error as ScriptError {
             Log.scripting.error("\(error.code.rawValue, privacy: .public): \(error.message, privacy: .public)")
             return ScriptResult(state: state(of: model), error: error)
@@ -116,7 +132,7 @@ enum Scripting {
 
     // MARK: Running
 
-    private static func perform(_ command: ScriptCommand, _ fade: Int?, fromWatch: Bool, confirmed: Bool, _ model: Model) async throws -> ScriptResult {
+    private static func perform(_ command: ScriptCommand, _ fade: Int?, fromWatch: Bool, confirmed: Bool, askedAbout: AskedAbout?, _ model: Model) async throws -> ScriptResult {
         switch command {
         case .list(let kind):
             return ScriptResult(items: items(kind, model))
@@ -142,9 +158,18 @@ enum Scripting {
         default:
             break
         }
-        // A speed while it's off is only kept for later: nothing goes, so no time is needed.
-        // (Decided once the wait has read the light.)
-        try await ready(model) { if case .speed = command, model.isOn == false { return false }; return true }
+        // A speed while it's off is only kept for later: nothing goes, so no time is needed (a
+        // `set` of only a speed too). (Decided once the wait has read the light.)
+        try await ready(model) {
+            guard model.isOn == false else { return true }
+            switch command {
+            case .speed: return false
+            case .set(let c):
+                return c.speed == nil || c.rgbcw != nil || c.temp != nil || c.scene != nil || c.customScene != nil
+                    || c.brightness != nil || c.power != nil
+            default: return true
+            }
+        }
         // As the light is now it's been read (the speed it's on, perhaps not as it was thought).
         if !confirmed, let message = storedRefusal(command, fromWatch: fromWatch, model) {
             throw ScriptError(code: .refused, message: message)
@@ -180,7 +205,12 @@ enum Scripting {
         case let .scene(query, speed, power):
             try send(LightChange(colour: try scene(query, speed: speed, fromWatch: fromWatch), power: power), fade, model)
         case let .customScene(query, power):
-            try send(LightChange(colour: try customScene(query, speed: nil, model), power: power), fade, model)
+            let colour = try customScene(query, speed: nil, model)
+            // As it was asked about: not edited while this waited.
+            if case .customScene(let asked)? = askedAbout, model.library.customScene(asked.id) != asked {
+                throw changedSinceAsked(asked.name)
+            }
+            try send(LightChange(colour: colour, power: power), fade, model)
         case .speed(let speed):
             guard (10...200).contains(speed) else { throw bad("Speed is 10–200.") }
             guard fade == nil else { throw bad("A speed change can't have a fade.") }
@@ -202,6 +232,10 @@ enum Scripting {
                 throw ScriptError(code: .notFound, message: "No preset called “\(query)”.")
             }
             if model.presetPartGone(preset) { throw ScriptError(code: .notFound, message: BulbReasons.presetPartGone) }
+            // As it was asked about: not edited (or its scene) while this waited.
+            if case let .preset(asked, scene)? = askedAbout, !model.unchanged(preset, asked: asked, scene: scene) {
+                throw changedSinceAsked(asked.name)
+            }
             // (Through apply, with or without a fade: it's counted for habits and Siri too.)
             guard model.apply(preset, fade: fade) else { throw ScriptError(code: .refused, message: model.refusal ?? model.status) }
         case .set(let change):
@@ -209,6 +243,8 @@ enum Scripting {
             if let speed {
                 // Only a speed (with brightness or power): just that goes, as for `speed`, not the
                 // scene again (which would restart it as it's defined now, perhaps edited since).
+                // A fade only goes with a brightness or power, so alone it's refused, as for `speed`.
+                if fade != nil, light.dimming == nil, light.power == nil { throw bad("A speed change can't have a fade.") }
                 model.setSpeed(speed, dimming: light.dimming, power: light.power, fade: fade ?? model.fadeForControls)
             } else {
                 try send(light, fade, model)
@@ -361,7 +397,8 @@ enum Scripting {
 
     /// The flashing custom scene a command would play (at its speed), by name: refused where it
     /// can't be asked about first (widgets, the watch, Shortcuts, links, the CLI, AppleScript).
-    static func flashingScene(_ command: ScriptCommand, _ model: Model) -> String? {
+    /// `onlyByName`: not a speed for the one playing (judged once the light's been read).
+    static func flashingScene(_ command: ScriptCommand, onlyByName: Bool = false, _ model: Model) -> String? {
         let lib = model.library
         func scene(_ q: String) -> CustomScene? { find(q, in: lib.customScenes, name: { $0.name }, id: { $0.id.uuidString }) }
         switch command {
@@ -377,10 +414,10 @@ enum Scripting {
                 return model.flashes(s, speed: change.speed) ? s.name : nil
             }
             // Only a speed (with brightness or power, say) for the custom scene playing.
-            guard let speed = change.speed, change.scene == nil, change.rgbcw == nil, change.temp == nil else { return nil }
+            guard !onlyByName, let speed = change.speed, change.scene == nil, change.rgbcw == nil, change.temp == nil else { return nil }
             return playingFlashes(at: speed, model)
         case .speed(let speed):
-            return playingFlashes(at: speed, model)
+            return onlyByName ? nil : playingFlashes(at: speed, model)
         default:
             return nil
         }
@@ -395,15 +432,17 @@ enum Scripting {
 
     /// Why a command is refused for starting one of the bulb's stored scenes (Custom Mode 1–10),
     /// if it would: scripting never starts one, asked about or not (it can't be judged, so it's
-    /// only started in setPilot). By name, as a preset of one, or a speed for the one playing.
-    static func storedRefusal(_ command: ScriptCommand, fromWatch: Bool, _ model: Model) -> String? {
+    /// only started in setPilot). By name, as a preset of one, or a speed for the one playing
+    /// (not with `onlyByName`: that's judged once the light's been read).
+    static func storedRefusal(_ command: ScriptCommand, fromWatch: Bool, onlyByName: Bool = false, _ model: Model) -> String? {
         func refused(_ id: Int, preset: String? = nil) -> String {
             BulbReasons.stored(Scenes.name(id), preset: preset, asks: Flashing.asks, fromWatch: fromWatch)
         }
-        // The one playing, for a speed alone (once the light's been read).
+        // The one playing, for a speed alone (once the light's been read): not started, but its
+        // speed isn't changed from here either.
         func playing() -> String? {
-            guard model.isOn != nil, model.mode == .scene, Scenes.isStoredSlot(model.sceneId) else { return nil }
-            return refused(model.sceneId)
+            guard !onlyByName, model.isOn != nil, model.mode == .scene, Scenes.isStoredSlot(model.sceneId) else { return nil }
+            return BulbReasons.storedSpeed(Scenes.name(model.sceneId), fromWatch: fromWatch)
         }
         switch command {
         case .preset(let q):

@@ -349,9 +349,11 @@ struct ConsoleComposer: View {
         // playing flash: asked about first, as anywhere in the app.
         // Raw text that won't parse here (or repeats a key) but has a scene in it: the bulb's own
         // parser may still take it, and what it would play can't be judged, so asked about anyway.
-        // So is any with an escaped key or a \u anywhere: it may spell either, unseen.
+        // So is any with an escaped key or a \u anywhere: it may spell either, unseen. And any that
+        // names a method that may flash: its speed or pulse can't be judged from unparsed text.
         if !flashOK, rawMode, rawObject == nil,
-           rawEscapesKey || raw.contains("\\u") || raw.contains("elm") || raw.contains("sceneId") {
+           rawEscapesKey || raw.contains("\\u") || raw.contains("elm") || raw.contains("sceneId")
+            || ["setPilot", "setEffect", "syncBroadcastPilot"].contains(where: { raw.contains($0) }) {
             confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
             return
         }
@@ -407,6 +409,20 @@ struct ConsoleComposer: View {
             if mayFlash {
                 confirmFlashing("", flashes: true, unknown: true) { send(confirmed: confirmed, flashOK: true) }
                 return
+            }
+            // A broadcast speed with no light in it changes the custom scene playing, as a
+            // setPilot's does, so it's checked the same way.
+            if currentMethod == "syncBroadcastPilot" {
+                var speeds: [Int] = []
+                let light = ["r", "g", "b", "c", "w", "temp"]
+                let lit = has(params) { key, value in
+                    if key == "speed", let n = value as? NSNumber { speeds.append(n.intValue) }
+                    return light.contains(key)
+                }
+                if !lit, let name = speeds.lazy.compactMap({ Scripting.playingFlashes(at: $0, model) }).first {
+                    confirmFlashing(name, flashes: true) { send(confirmed: confirmed, flashOK: true) }
+                    return
+                }
             }
         }
         if !confirmed, let caution {

@@ -77,7 +77,8 @@ final class CloudLibrary {
         /// Not yet confirmed saved: queued again at launch, in case the app quit before the sync
         /// engine kept its own record of the change.
         var unsent = true
-        /// For a CCT scale, its bulb's MAC. No longer read; kept so saved state decodes as before.
+        /// For a CCT scale, its bulb's MAC: a scale of a bulb whose stored scales this build can't
+        /// read isn't taken for deleted when it's missing here (undecodedHere).
         var mac: String? = nil
     }
 
@@ -311,6 +312,10 @@ final class CloudLibrary {
     /// Why a household step couldn't be done yet: shown instead of "Up to date" until Sync Now
     /// tries it again (or it's through).
     private var householdProblem: String?
+    /// The CCT scales' record names in the library as last seen (at launch, each local change,
+    /// and as iCloud's are put in): one gone since was deleted here, so not kept from deletion
+    /// as a bulb's scales this build can't read are (undecodedHere).
+    private var scalesSeen: Set<String> = []
 
     private static var fileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -331,6 +336,7 @@ final class CloudLibrary {
             saved.leaveAttempt = nil
         }
         makeEngine()
+        noteScalesSeen()
         if saved.switchPending == true {
             progress.accountSwitched = true
         } else if settling {
@@ -349,7 +355,9 @@ final class CloudLibrary {
                 Self.showQuestion()
             }
         }
-        if saved.leftQuestion != nil {
+        // (Not while a join that answers it is part way: resumeJoin finishes that, or asks again
+        // if it isn't there.)
+        if saved.leftQuestion != nil, saved.joiningTo == nil {
             progress.leftSelf = saved.leftSelf == true
             progress.leftHousehold = true // asked again (checkHousehold may find it answered elsewhere)
             Self.showQuestion()
@@ -366,6 +374,8 @@ final class CloudLibrary {
     /// The library or the bulb names changed here (not from iCloud).
     func localChanged(_ kind: Kind) {
         #if WIZ_ICLOUD
+        // (After this change is worked out, which tells a deletion here by the last look.)
+        defer { if kind == .cctScale { noteScalesSeen() } }
         guard let engine, !applying else { return }
         // Holding what's only here for where it goes: a change here is one of those too (a
         // deletion takes it out).
@@ -469,9 +479,18 @@ final class CloudLibrary {
         case .cctScale: library.unreadableIDs(Library.cctScalesKey)
         case .bulbName, .signingKey, .knownBulb: []
         }
-        // (A bulb whose stored scales this build can't read: its readable ones are held and in
-        // `current`, so one gone from there was deleted.)
         var names = Set(ids.map { Self.recordName(kind, $0) })
+        if kind == .cctScale {
+            // Scales of a bulb whose stored scales this build can't read: what's here may not be
+            // all, so one missing isn't deleted. Unless it was here at the last look: deleted here.
+            let raw = library.rawScaleMACs
+            if !raw.isEmpty {
+                names.formUnion(saved.meta.filter { $0.key.hasPrefix(kind.rawValue + ".") && $0.value.mac.map { raw.contains($0.lowercased()) } == true }.keys)
+            }
+            if !names.isEmpty {
+                names.subtract(scalesSeen.subtracting(current(.cctScale).keys.map { Self.recordName(.cctScale, $0) }))
+            }
+        }
         // Stored data of the kind this build can't read at all: none of its items is deleted.
         let key: String? = switch kind {
         case .preset: Library.presetsKey
@@ -487,6 +506,10 @@ final class CloudLibrary {
             }
         }
         return names
+    }
+
+    private func noteScalesSeen() {
+        scalesSeen = Set(current(.cctScale).keys.map { Self.recordName(.cctScale, $0) })
     }
 
     /// Where this device's library goes is being worked out (signed out, signed back in, put out
@@ -547,7 +570,7 @@ final class CloudLibrary {
         for kind in Kind.allCases {
             for (id, item) in current(kind) {
                 saved.meta[Self.recordName(kind, id)] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: .distantPast,
-                                                             orderModified: .distantPast, unsent: false)
+                                                             orderModified: .distantPast, unsent: false, mac: item.mac)
             }
         }
         saved.seeded = true
@@ -612,7 +635,7 @@ final class CloudLibrary {
                     max(plan.stamps?[name] ?? plan.stamp ?? .now, plan.before ?? .distantPast)
                 } ?? .distantPast
                 saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: stamp,
-                                        orderModified: stamp, systemFields: saved.meta[name]?.systemFields)
+                                        orderModified: stamp, systemFields: saved.meta[name]?.systemFields, mac: item.mac)
                 pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
             }
         }
@@ -926,7 +949,10 @@ final class CloudLibrary {
         guard accountChanges == changes else { return nil }
         // Put out of one and asked about it: the account's other devices follow here instead
         // (once the join record's there for them). Not over an answer another device gave.
-        if let put = saved.leftQuestion {
+        // So too for the one this device is in, if it's gone (not among those being left) and it
+        // hadn't noticed yet: the others may be asked about it already.
+        let unnoticed = membership.flatMap { $0.zone != household && !intent.leaving.contains($0.zone) ? $0 : nil }
+        if let put = saved.leftQuestion ?? unnoticed {
             let read = await readRecord(Self.leaveRecordName(put.zone))
             // (One a newer setPilot wrote, which this build can't read, is an answer too.)
             let answered = read.decoded(HouseholdLeave.self).map { $0.ends(put) && !$0.isJoin } ?? read.exists
@@ -959,6 +985,8 @@ final class CloudLibrary {
                 saved.leaving = nil
             }
             persist()
+            // Put out and asked, the join meant to answer it: asked again (not at launch, while it was under way).
+            askLeftAgain()
             return
         }
         if saved.shared == intent.household {
@@ -998,8 +1026,20 @@ final class CloudLibrary {
         // (Signed out meanwhile: finished on signing back in, which resumes it.)
         guard accountChanges == changes, saved.joiningTo?.household == household else { return }
         if !addMine { clearLibraryHere() }
+        // Back into the one it was put out of (or was in when signed out), adding: what changed
+        // here and hadn't gone up is newer than the household's, so it keeps its own stamp rather
+        // than being offered as oldest. (Taken before the switch, which forgets what was synced.)
+        let rejoining = saved.leftQuestion?.zone == household || saved.returning?.membership?.zone == household
+        let unsent = addMine && rejoining ? unsentHere() : [:]
         progress.leftHousehold = false
         switchLibrary(to: household, join: record) // (the question about a household gone goes with it)
+        for (kind, list) in unsent {
+            for (id, (_, at)) in list where at > .distantPast {
+                let name = Self.recordName(kind, id)
+                saved.meta[name]?.modified = at
+                saved.meta[name]?.orderModified = at
+            }
+        }
         saved.toLeave = stillIn.isEmpty ? nil : stillIn
         persist()
     }
@@ -1327,7 +1367,7 @@ final class CloudLibrary {
         for (kind, list) in items {
             for (id, (item, modified)) in list {
                 let name = Self.recordName(kind, id)
-                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: modified, orderModified: modified)
+                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: modified, orderModified: modified, mac: item.mac)
                 pending.append(.saveRecord(CKRecord.ID(recordName: name, zoneID: zoneID)))
             }
         }
@@ -1498,11 +1538,20 @@ final class CloudLibrary {
                     }
                     return
                 }
-                // Left for another household that's there: followed there.
+                // Left for another household that's there: followed there. Gone too, and its own
+                // leave says where the account went since: followed on (followJoin), as that's
+                // the answer now.
                 var standing = !leave.isJoin
-                if case .joined(let target) = leave.mode {
+                var answer = leave
+                if case .joined = leave.mode {
                     guard let zones = try? await container.sharedCloudDatabase.allRecordZones() else { break } // not known: tried again
-                    standing = zones.contains { $0.zoneID.zoneName == target.zoneName && $0.zoneID.ownerName == target.ownerName }
+                    let end = await chainEnd(leave, zones: zones)
+                    guard accountChanges == changes else { return }
+                    guard saved.leaving == nil, put != nil ? saved.leftQuestion == put : saved.shared == was.zone else { return }
+                    if case .failed = end { break } // not known: tried again
+                    if case .newer = end { return needsUpdate() } // answered with a newer setPilot: not overwritten
+                    if case .leave(let last) = end { answer = last }
+                    if case .noWord = end { standing = false } else { standing = true }
                 }
                 guard accountChanges == changes else { return }
                 if standing {
@@ -1513,7 +1562,7 @@ final class CloudLibrary {
                         guard accountChanges == changes, saved.shared == was.zone else { return }
                     }
                     follow(leave)
-                    if progress.householdQuestion == nil { answeredElsewhere(leave) }
+                    if progress.householdQuestion == nil { answeredElsewhere(answer) }
                     return
                 }
             } else if read.undecodable(HouseholdLeave.self), !predates(read, was) {
@@ -1664,7 +1713,7 @@ final class CloudLibrary {
             saved.unreadable = unreadable
             for (name, item) in unreadable {
                 guard let id = ids[name] else { continue }
-                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: leave.at, orderModified: leave.at)
+                saved.meta[name] = Meta(id: id, hash: Self.hash(item), order: item.order, modified: leave.at, orderModified: leave.at, mac: item.mac)
             }
             engine.state.add(pendingRecordZoneChanges: unreadable.keys.map { .saveRecord(CKRecord.ID(recordName: $0, zoneID: zoneID)) })
             persist()
@@ -1871,15 +1920,16 @@ final class CloudLibrary {
                 ask(.leftFresh(new.values.reduce(0) { $0 + $1.count }), nil)
             }
             forgetJoin(leave)
-        case .joined(let other):
-            Task { await followJoin(to: other, from: was, addMine: leave.addMine, deletions: deletions) }
+        case .joined:
+            Task { await followJoin(leave, from: was, deletions: deletions) }
         }
     }
 
-    /// Left for another household (`other`) on another device: joined too, as that device joined
-    /// it (what's only here added, or asked about). Not there after all (its join failed): asked
-    /// whether to keep a copy of the one left.
-    private func followJoin(to other: SharedZone, from was: Membership?, addMine joinedAdding: Bool? = nil, deletions: Set<String> = []) async {
+    /// Left for another household on another device (`leave`): joined too, as that device joined
+    /// it (what's only here added, or asked about). Left since as well: followed on, as its own
+    /// leave says. Not there and no word of it (its join failed): asked whether to keep a copy
+    /// of the one left.
+    private func followJoin(_ leave: HouseholdLeave, from was: Membership?, deletions: Set<String> = []) async {
         guard !followingJoin else { return } // once (the household's going can be heard twice)
         followingJoin = true
         defer { followingJoin = false }
@@ -1887,7 +1937,23 @@ final class CloudLibrary {
         guard let zones = try? await container.sharedCloudDatabase.allRecordZones(), accountChanges == changes else { return } // tried again later
         // Still where it was (not followed meanwhile).
         guard saved.leaving == nil, saved.shared == nil || saved.shared == was?.zone else { return }
-        guard zones.contains(where: { $0.zoneID.zoneName == other.zoneName && $0.zoneID.ownerName == other.ownerName }) else {
+        let end = await chainEnd(leave, zones: zones)
+        guard accountChanges == changes, saved.leaving == nil, saved.shared == nil || saved.shared == was?.zone else { return }
+        let other: SharedZone
+        let joinedAdding: Bool?
+        switch end {
+        case .household(let zone, let addMine):
+            other = zone
+            joinedAdding = addMine
+        case .leave(let last):
+            // Left that one too, for the own library: followed as its leave says (not asked
+            // about the first, whose answer could undo what's been done since).
+            return follow(last)
+        case .newer:
+            return needsUpdate()
+        case .failed:
+            return // tried again later
+        case .noWord:
             if let was { askLeft(was) }
             return
         }
@@ -1905,6 +1971,33 @@ final class CloudLibrary {
             hold(new, deleting: deleting)
             ask(record == nil && adding == nil ? .noRecord : .newItems(new.values.reduce(0) { $0 + $1.count }), other)
         }
+    }
+
+    private enum ChainEnd { case household(SharedZone, addMine: Bool?), leave(HouseholdLeave), noWord, newer, failed }
+
+    /// Where the account went after a leave for another household (`leave`): that household if
+    /// it's there; gone too, on along its own leave record (to the own library, or a further
+    /// household), as far as the records go.
+    private func chainEnd(_ leave: HouseholdLeave, zones: [CKRecordZone]) async -> ChainEnd {
+        var last = leave
+        var visited = Set<SharedZone>()
+        while case .joined(let target) = last.mode {
+            if zones.contains(where: { $0.zoneID.zoneName == target.zoneName && $0.zoneID.ownerName == target.ownerName }) {
+                return .household(target, addMine: last.addMine)
+            }
+            // (A loop, or longer than any real chain: taken as no word.)
+            guard visited.insert(target).inserted, visited.count <= 8 else { return .noWord }
+            let read = await readRecord(Self.leaveRecordName(target))
+            if read.failed { return .failed }
+            // Only the leave of the membership that join began, not an earlier one's of it.
+            let began = Membership(zone: target, joinID: nil, joinedAt: last.at)
+            guard let next = read.decoded(HouseholdLeave.self) else {
+                return read.exists && !predates(read, began) ? .newer : .noWord
+            }
+            guard next.ends(began) else { return .noWord }
+            last = next
+        }
+        return .leave(last)
     }
 
     /// Back on the account's own library with only `new` here, held (not sent) until it's decided
@@ -2102,6 +2195,7 @@ final class CloudLibrary {
         model.setSigningKeysFromCloud([:])
         model.setKnownBulbsFromCloud([])
         applying = false
+        noteScalesSeen()
     }
 
     private func persist() {
@@ -2259,6 +2353,7 @@ final class CloudLibrary {
                 if scales[mac]?.isEmpty == true { scales[mac] = nil }
             }
             library.takeFromCloud { $0.cctScales = scales }
+            noteScalesSeen() // (iCloud's, not deleted here)
         case .bulbName:
             var names = model.names
             for (mac, change) in changes { names[mac] = change.map { String(decoding: $0.data, as: UTF8.self) } }
@@ -2367,6 +2462,7 @@ final class CloudLibrary {
             meta.order = remote.order
             meta.orderModified = orderModified
             meta.unsent = false
+            meta.mac = mac
             saved.meta[name] = meta
             return (kind, id, remote)
         }
@@ -2379,7 +2475,7 @@ final class CloudLibrary {
         let keepContent = meta.modified > modified && meta.hash != remoteHash
         let keepOrder = meta.orderModified > orderModified && meta.order != remote.order
         meta.systemFields = fields
-        if !keepContent { meta.hash = remoteHash; meta.modified = modified }
+        if !keepContent { meta.hash = remoteHash; meta.modified = modified; meta.mac = mac }
         if !keepOrder { meta.order = remote.order; meta.orderModified = orderModified }
         meta.unsent = keepContent || keepOrder
         saved.meta[name] = meta

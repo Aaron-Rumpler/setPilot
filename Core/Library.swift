@@ -150,11 +150,12 @@ final class Library {
     }
 
     /// For a bulb whose stored CCT scales aren't a list (a newer build's): why some may be
-    /// missing, and that what's made meanwhile stays here. The whole list's note first.
+    /// missing, and that what's made meanwhile is stored apart (it syncs: the list is saved, and
+    /// in iCloud's `current`). The whole list's note first.
     func newerNote(forScalesOf mac: String?) -> String? {
         if let note = newerNote(Self.cctScalesKey) { return note }
         guard let mac, rawScaleMACs.contains(mac.lowercased()) else { return nil }
-        return "Some of this bulb's CCT scales were saved by a newer version of setPilot, so they aren't shown. Scales made or changed here are kept on this device, not synced, until setPilot is updated here."
+        return "Some of this bulb's CCT scales were saved by a newer version of setPilot, so they aren't shown. Scales made or changed here are still synced, but stored apart from those on this device until setPilot is updated here."
     }
 
     /// Stops keeping a newer build's fields for items no longer in a list (deleted here), so a
@@ -170,6 +171,27 @@ final class Library {
     func takeExtras<T: Encodable & Identifiable>(_ data: Data?, of value: T) where T.ID == UUID {
         let element = data.flatMap { try? JSONSerialization.jsonObject(with: $0) }
         extras[value.id.uuidString] = element.flatMap { Self.unknownFields($0, of: value) }
+    }
+
+    /// Gives a duplicate the original's newer-build fields, as import's Keep Both does, so the
+    /// copy syncs with them. `ids` maps the original's step or point IDs to the copy's.
+    func copyExtras(from original: UUID, to copy: UUID, remapping ids: [UUID: UUID]) {
+        guard let more = extras[original.uuidString] else { return }
+        let keys = Dictionary(ids.map { ($0.key.uuidString, $0.value.uuidString) }, uniquingKeysWith: { a, _ in a })
+        extras[copy.uuidString] = Self.remapped(more, keys)
+    }
+
+    /// Extras with their elements' ID keys changed by `keys`, at any depth.
+    private static func remapped(_ more: [String: Extra], _ keys: [String: String]) -> [String: Extra] {
+        more.mapValues { extra -> Extra in
+            switch extra {
+            case .value: return extra
+            case .fields(let fields): return .fields(remapped(fields, keys))
+            case .elements(let byKey):
+                return .elements(Dictionary(byKey.map { (keys[$0.key] ?? $0.key, remapped($0.value, keys)) },
+                                            uniquingKeysWith: { a, _ in a }))
+            }
+        }
     }
 
     /// A library file as JSON, with the fields a newer build added to its items put back, so the

@@ -51,22 +51,30 @@ enum BulbReasons {
 
     /// A scene that flashes, where it can't be asked about. `fromWatch`: asked for on the watch
     /// (judged on the iPhone, which words it for the watch). `unknown`: one that can't be judged
-    /// (stored on the bulb), so it may.
-    static func flashes(_ name: String, fromWatch: Bool = false, unknown: Bool = false) -> String {
+    /// (stored on the bulb), so it may. `offerSetting`: whether turning the question off would let
+    /// it go (not for a stored scene, which is refused either way).
+    static func flashes(_ name: String, fromWatch: Bool = false, unknown: Bool = false, offerSetting: Bool = true) -> String {
         let what = unknown ? "may flash quickly (setPilot can't tell how fast it changes the light)" : "flashes quickly"
-        return "“\(name)” \(what), so it's only started \(startedIn(fromWatch)), which asks first (or turn off \(askSetting) in setPilot's Settings)."
+        let setting = offerSetting ? " (or turn off \(askSetting) in setPilot's Settings)" : ""
+        return "“\(name)” \(what), so it's only started \(startedIn(fromWatch)), which asks first\(setting)."
     }
 
     /// One of the bulb's stored scenes (Custom Mode 1–10), which scripting never starts: it can't
     /// be judged for flashing, so with `asks` it's refused as one that may flash, and without, it's
     /// still only started in setPilot. `preset`: the preset of it that was asked for, if one was.
     static func stored(_ name: String, preset: String? = nil, asks: Bool, fromWatch: Bool = false) -> String {
-        if asks { return flashes(preset ?? name, fromWatch: fromWatch, unknown: true) }
+        if asks { return flashes(preset ?? name, fromWatch: fromWatch, unknown: true, offerSetting: false) }
         let what = preset.map { "“\($0)” plays “\(name)”, which" } ?? "“\(name)”"
         return "\(what) is stored on the bulb, so it's only started \(startedIn(fromWatch))."
     }
 
-    /// Where a scene that scripting won't start is started (the iPhone, for the watch).
+    /// A speed for one of the bulb's stored scenes that's playing: nothing's started, but scripting
+    /// doesn't change it either.
+    static func storedSpeed(_ name: String, fromWatch: Bool = false) -> String {
+        "“\(name)” is stored on the bulb, so its speed is only changed \(startedIn(fromWatch))."
+    }
+
+    /// Where a scene that scripting won't start (or speed up) is started (the iPhone, for the watch).
     private static func startedIn(_ fromWatch: Bool) -> String {
         #if os(watchOS)
         let watch = true
